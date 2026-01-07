@@ -1,0 +1,44 @@
+//!  Delulu Travel Agent
+//!
+//!  Copyright (C) 2026  Mamy Ratsimbazafy
+//!
+//!  This program is free software: you can redistribute it and/or modify
+//!  it under the terms of the GNU Affero General Public License as published by
+//!  the Free Software Foundation, either version 3 of the License, or
+//!  (at your option) any later version.
+//!
+//!  This program is distributed in the hope that it will be useful,
+//!  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//!  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//!  GNU Affero General Public License for more details.
+//!
+//!  You should have received a copy of the GNU Affero General Public License
+//!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+syntax = "proto3";
+
+package google_flights.cookies;
+
+// =============================================================================
+// SOCS Cookie Structures
+// =============================================================================
+// Used for generating valid SOCS cookies to bypass consent redirects.
+// Shared by Google Flights and Google Hotels scrapers.
+
+// Information contains session identifiers (GWS ID, locale)
+message Information {
+  string gws = 2; // Format: gws_YYYYMMDD-0_RC2
+  string locale = 3; // Locale code (en, de, fr...)
+}
+
+// Datetime contains timestamp information
+message Datetime {
+  uint32 timestamp = 1; // Unix epoch timestamp in seconds
+}
+
+// SOCS combines Information and Datetime
+// Maps to HTTP SOCS cookie value (base64-encoded protobuf)
+message SOCS {
+  Information info = 2;
+  Datetime datetime = 3;
+}

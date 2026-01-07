@@ -1,0 +1,94 @@
+//!  Delulu Travel Agent
+//!
+//!  Copyright (C) 2026  Mamy Ratsimbazafy
+//!
+//!  This program is free software: you can redistribute it and/or modify
+//!  it under the terms of the GNU Affero General Public License as published by
+//!  the Free Software Foundation, either version 3 of the License, or
+//!  (at your option) any later version.
+//!
+//!  This program is distributed in the hope that it will be useful,
+//!  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//!  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//!  GNU Affero General Public License for more details.
+//!
+//!  You should have received a copy of the GNU Affero General Public License
+//!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+syntax = "proto3";
+
+package google_flights;
+
+// -----------------------------------------------------------------------------
+// Airport - Simple nested message for IATA/ICAO codes
+// Used inside FlightData.from_flight and FlightData.to_flight
+//
+// NOTE: Fields marked as optional in proto3 behave identically to required
+// for scalar/string/message types - they're always serializable.
+// The "optional" keyword primarily aids in code generation clarity and
+// distinguishing presence from default values.
+// -----------------------------------------------------------------------------
+message Airport {
+  string airport = 2; // Field 2: airport code as string
+}
+
+// -----------------------------------------------------------------------------
+// FlightData - Core search parameters for a single leg
+//
+// Optional markers indicate fields that may be omitted from encoding:
+// - max_stops: When omitted/absent → treat as unrestricted stops
+// - airlines: When empty → no airline filtering applied
+// - from_flight/to_flight: REQUIRED - searches won't work without airports
+// -----------------------------------------------------------------------------
+message FlightData {
+  string date = 2; // REQUIRED: departure date (ISO 8601: "YYYY-MM-DD")
+  optional int32 max_stops = 5; // OPTIONAL: 0=none, 1=1 stop, 2=2 stops; omit for unrestricted
+  repeated string airlines = 6; // OPTIONAL: airline carrier codes (AA, UA, DL...); empty = no filter
+  Airport from_flight = 13; // REQUIRED: origin airport
+  Airport to_flight = 14; // REQUIRED: destination airport
+}
+
+// -----------------------------------------------------------------------------
+// Enums for Info message
+//
+// Zero value (UNKNOWN*) indicates "unset/unknown" state - useful for
+// distinguishing unset cabins from economy, etc.
+// -----------------------------------------------------------------------------
+
+enum Seat {
+  UNKNOWN_SEAT = 0; // Unspecified (useful for some queries)
+  ECONOMY = 1; // Standard economy
+  PREMIUM_ECONOMY = 2; // Premium economy
+  BUSINESS = 3; // Business class
+  FIRST = 4; // First class
+}
+
+enum Trip {
+  UNKNOWN_TRIP = 0; // Unspecified
+  ROUND_TRIP = 1; // Round trip booking
+  ONE_WAY = 2; // One-way booking
+  MULTI_CITY = 3; // Multi-city/itinerary booking
+}
+
+enum Passenger {
+  UNKNOWN_PASSENGER = 0; // Unspecified passenger type
+  ADULT = 1; // Adult (ages 12+ typically)
+  CHILD = 2; // Child (ages 2-12)
+  INFANT_IN_SEAT = 3; // Infant requiring own seat
+  INFANT_ON_LAP = 4; // Infant on lap (no seat assigned)
+}
+
+// -----------------------------------------------------------------------------
+// Info - Top-level container sent to Google Flights
+// Contains complete search configuration including multiple flight legs,
+// passenger breakdown, cabin class, and trip type.
+//
+// All top-level fields in Info are effectively optional per Google Flights'
+// TFS protocol - the service fills reasonable defaults for anything omitted.
+// -----------------------------------------------------------------------------
+message Info {
+  repeated FlightData data = 3; // Multiple FlightData for multi-leg/multi-city trips
+  repeated Passenger passengers = 8; // OPTIONAL: passenger mix; default assumed [Adult x 1]
+  optional Seat seat = 9; // OPTIONAL: cabin class; default economy
+  optional Trip trip = 19; // OPTIONAL: trip type; default round-trip
+}

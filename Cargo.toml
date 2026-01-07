@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "delulu-apps/*",
+    "delulu-internals/query-queues",
+]
+resolver = "2"

@@ -1,0 +1,20 @@
+[package]
+name = "delulu-query-queues"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "A work queue for rate limiting, backoff, and jitter for external service calls"
+repository = "https://github.com/mratsim/delulu"
+categories = ["asynchronous", "network", "web-programming::http-client"]
+keywords = ["async", "rate-limit", "backoff", "jitter", "work-queue"]
+
+[features]
+default = ["std"]
+std = ["tokio/rt", "tokio/rt-multi-thread", "tokio/macros"]
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+rand = "0.8"
+time = { version = "0.3", features = ["std"] }
+thiserror = "1.0"
+anyhow = "1.0"

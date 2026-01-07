@@ -1,0 +1,898 @@
+{
+  "total_cases": 59,
+  "cases": [
+    {
+      "name": "passenger_adult_only",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1,
+          "children": 0,
+          "infants_in_seat": 0,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC"
+    },
+    {
+      "name": "passenger_child_with_adult",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1,
+          "children": 1,
+          "infants_in_seat": 0,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0ICAQJIAZgBAg=="
+    },
+    {
+      "name": "passenger_infant_in_seat",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1,
+          "children": 0,
+          "infants_in_seat": 1,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0ICAQNIAZgBAg=="
+    },
+    {
+      "name": "passenger_infant_on_lap",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1,
+          "children": 0,
+          "infants_in_seat": 0,
+          "infants_on_lap": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0ICAQRIAZgBAg=="
+    },
+    {
+      "name": "family_couple",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 2,
+          "children": 0,
+          "infants_in_seat": 0,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0ICAQFIAZgBAQ=="
+    },
+    {
+      "name": "family_two_adults_two_kids",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 2,
+          "children": 2,
+          "infants_in_seat": 0,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IEAQECAkgBmAEB"
+    },
+    {
+      "name": "family_infant_on_lap",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 2,
+          "children": 0,
+          "infants_in_seat": 0,
+          "infants_on_lap": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IDAQEESAGYAQE="
+    },
+    {
+      "name": "family_infant_with_seat",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 2,
+          "children": 0,
+          "infants_in_seat": 1,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IDAQEDSAGYAQE="
+    },
+    {
+      "name": "family_extended_family",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 4,
+          "children": 3,
+          "infants_in_seat": 0,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IHAQEBAQICAkgBmAEB"
+    },
+    {
+      "name": "family_single_parent_child",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 1,
+          "children": 1,
+          "infants_in_seat": 0,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0ICAQJIAZgBAQ=="
+    },
+    {
+      "name": "family_single_parent_infant_lap",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 1,
+          "children": 0,
+          "infants_in_seat": 0,
+          "infants_on_lap": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0ICAQRIAZgBAQ=="
+    },
+    {
+      "name": "family_mixed_all_types",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 2,
+          "children": 1,
+          "infants_in_seat": 1,
+          "infants_on_lap": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IFAQECAwRIAZgBAQ=="
+    },
+    {
+      "name": "family_multiple_infants",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 3,
+          "children": 0,
+          "infants_in_seat": 2,
+          "infants_on_lap": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IGAQEBAwMESAGYAQE="
+    },
+    {
+      "name": "airports_LAX_to_SFO",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "SFO",
+        "depart_date": "2025-06-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDYtMTVqBRIDTEFYcgUSA1NGT0IBAUgBmAEC"
+    },
+    {
+      "name": "airports_JFK_to_LHR",
+      "input": {
+        "from_airport": "JFK",
+        "to_airport": "LHR",
+        "depart_date": "2025-06-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDYtMTVqBRIDSkZLcgUSA0xIUkIBAUgBmAEC"
+    },
+    {
+      "name": "airports_SLC_to_DEN",
+      "input": {
+        "from_airport": "SLC",
+        "to_airport": "DEN",
+        "depart_date": "2025-06-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDYtMTVqBRIDU0xDcgUSA0RFTkIBAUgBmAEC"
+    },
+    {
+      "name": "date_2025-01-01_new_year",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-01-01",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDEtMDFqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC"
+    },
+    {
+      "name": "date_2025-12-31_year_end",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-12-31",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMTItMzFqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC"
+    },
+    {
+      "name": "date_2025-06-15_mid_year",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-06-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDYtMTVqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC"
+    },
+    {
+      "name": "date_2024-02-29_leap_year",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2024-02-29",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjQtMDItMjlqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC"
+    },
+    {
+      "name": "cabin_economy",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-20",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMjBqBRIDTEFYcgUSA09SREIBAUgBmAEC"
+    },
+    {
+      "name": "cabin_premium_economy",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-20",
+        "cabin_class": "premium-economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMjBqBRIDTEFYcgUSA09SREIBAUgCmAEC"
+    },
+    {
+      "name": "cabin_business",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-20",
+        "cabin_class": "business",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMjBqBRIDTEFYcgUSA09SREIBAUgDmAEC"
+    },
+    {
+      "name": "cabin_first",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-20",
+        "cabin_class": "first",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMjBqBRIDTEFYcgUSA09SREIBAUgEmAEC"
+    },
+    {
+      "name": "group_size_1",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "LHR",
+        "depart_date": "2025-09-15",
+        "cabin_class": "business",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDktMTVqBRIDU0ZPcgUSA0xIUkIBAUgDmAEB"
+    },
+    {
+      "name": "group_size_2",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "LHR",
+        "depart_date": "2025-09-15",
+        "cabin_class": "business",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 2
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDktMTVqBRIDU0ZPcgUSA0xIUkICAQFIA5gBAQ=="
+    },
+    {
+      "name": "group_size_5",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "LHR",
+        "depart_date": "2025-09-15",
+        "cabin_class": "business",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 5
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDktMTVqBRIDU0ZPcgUSA0xIUkIFAQEBAQFIA5gBAQ=="
+    },
+    {
+      "name": "group_size_9",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "LHR",
+        "depart_date": "2025-09-15",
+        "cabin_class": "business",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 9
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDktMTVqBRIDU0ZPcgUSA0xIUkIJAQEBAQEBAQEBSAOYAQE="
+    },
+    {
+      "name": "trip_one_way",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC"
+    },
+    {
+      "name": "trip_round_trip",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IBAUgBmAEB"
+    },
+    {
+      "name": "trip_multi_city",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-07-15",
+        "cabin_class": "economy",
+        "trip_type": "multi-city",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IBAUgBmAED"
+    },
+    {
+      "name": "max_stops_0",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-01",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        },
+        "max_stops": 0
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMDFqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC"
+    },
+    {
+      "name": "max_stops_1",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-01",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        },
+        "max_stops": 1
+      },
+      "expected_tfs": "GhwSCjIwMjUtMDgtMDEoAWoFEgNTRk9yBRIDSkZLQgEBSAGYAQI="
+    },
+    {
+      "name": "max_stops_2",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-01",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        },
+        "max_stops": 2
+      },
+      "expected_tfs": "GhwSCjIwMjUtMDgtMDEoAmoFEgNTRk9yBRIDSkZLQgEBSAGYAQI="
+    },
+    {
+      "name": "max_stops_any",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-01",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        },
+        "max_stops": null
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMDFqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC"
+    },
+    {
+      "name": "combo_00_SFO_to_JFK_eco_one_1a",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC"
+    },
+    {
+      "name": "combo_01_SFO_to_JFK_eco_one_2a",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 2
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0ICAQFIAZgBAg=="
+    },
+    {
+      "name": "combo_02_SFO_to_JFK_eco_rou_1a",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IBAUgBmAEB"
+    },
+    {
+      "name": "combo_03_SFO_to_JFK_eco_rou_2a",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 2
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0ICAQFIAZgBAQ=="
+    },
+    {
+      "name": "combo_04_SFO_to_JFK_bus_one_1a",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "business",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IBAUgDmAEC"
+    },
+    {
+      "name": "combo_05_SFO_to_JFK_bus_one_2a",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "business",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 2
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0ICAQFIA5gBAg=="
+    },
+    {
+      "name": "combo_06_SFO_to_JFK_bus_rou_1a",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "business",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IBAUgDmAEB"
+    },
+    {
+      "name": "combo_07_SFO_to_JFK_bus_rou_2a",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "business",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 2
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0ICAQFIA5gBAQ=="
+    },
+    {
+      "name": "combo_08_LAX_to_ORD_eco_one_1a",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDTEFYcgUSA09SREIBAUgBmAEC"
+    },
+    {
+      "name": "combo_09_LAX_to_ORD_eco_one_2a",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 2
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDTEFYcgUSA09SREICAQFIAZgBAg=="
+    },
+    {
+      "name": "combo_10_LAX_to_ORD_eco_rou_1a",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDTEFYcgUSA09SREIBAUgBmAEB"
+    },
+    {
+      "name": "combo_11_LAX_to_ORD_eco_rou_2a",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 2
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDTEFYcgUSA09SREICAQFIAZgBAQ=="
+    },
+    {
+      "name": "combo_12_LAX_to_ORD_bus_one_1a",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-15",
+        "cabin_class": "business",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDTEFYcgUSA09SREIBAUgDmAEC"
+    },
+    {
+      "name": "combo_13_LAX_to_ORD_bus_one_2a",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-15",
+        "cabin_class": "business",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 2
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDTEFYcgUSA09SREICAQFIA5gBAg=="
+    },
+    {
+      "name": "combo_14_LAX_to_ORD_bus_rou_1a",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-15",
+        "cabin_class": "business",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDTEFYcgUSA09SREIBAUgDmAEB"
+    },
+    {
+      "name": "combo_15_LAX_to_ORD_bus_rou_2a",
+      "input": {
+        "from_airport": "LAX",
+        "to_airport": "ORD",
+        "depart_date": "2025-08-15",
+        "cabin_class": "business",
+        "trip_type": "round-trip",
+        "passengers": {
+          "adults": 2
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDTEFYcgUSA09SREICAQFIA5gBAQ=="
+    },
+    {
+      "name": "mixed_2a_1c",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 2,
+          "children": 1,
+          "infants_in_seat": 0,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IDAQECSAGYAQI="
+    },
+    {
+      "name": "mixed_1a_2c",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1,
+          "children": 2,
+          "infants_in_seat": 0,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IDAQICSAGYAQI="
+    },
+    {
+      "name": "mixed_2a_1c_1i_lap",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 2,
+          "children": 1,
+          "infants_in_seat": 0,
+          "infants_on_lap": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IEAQECBEgBmAEC"
+    },
+    {
+      "name": "mixed_2a_1c_1i_seat",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 2,
+          "children": 1,
+          "infants_in_seat": 1,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IEAQECA0gBmAEC"
+    },
+    {
+      "name": "mixed_1a_1c_1i_lap_1i_seat",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 1,
+          "children": 1,
+          "infants_in_seat": 1,
+          "infants_on_lap": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IEAQIDBEgBmAEC"
+    },
+    {
+      "name": "mixed_3a_2c_1i_lap",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 3,
+          "children": 2,
+          "infants_in_seat": 0,
+          "infants_on_lap": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IGAQEBAgIESAGYAQI="
+    },
+    {
+      "name": "mixed_4a_3c",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 4,
+          "children": 3,
+          "infants_in_seat": 0,
+          "infants_on_lap": 0
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IHAQEBAQICAkgBmAEC"
+    },
+    {
+      "name": "mixed_large_mixed",
+      "input": {
+        "from_airport": "SFO",
+        "to_airport": "JFK",
+        "depart_date": "2025-08-15",
+        "cabin_class": "economy",
+        "trip_type": "one-way",
+        "passengers": {
+          "adults": 4,
+          "children": 2,
+          "infants_in_seat": 2,
+          "infants_on_lap": 1
+        }
+      },
+      "expected_tfs": "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0IJAQEBAQICAwMESAGYAQI="
+    }
+  ]
+}
