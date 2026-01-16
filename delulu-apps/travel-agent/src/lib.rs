@@ -37,4 +37,4 @@ pub use hotels_query_builder::{Amenity, HotelSearchParams, HotelSearchParamsBuil
 pub use hotels_results_parser::{Hotel, HotelSearchResult};
 
 // Re-export hotels_search
-pub use hotels_search::{GoogleHotelsClient, build_search_url};
+pub use hotels_search::{build_search_url, GoogleHotelsClient};

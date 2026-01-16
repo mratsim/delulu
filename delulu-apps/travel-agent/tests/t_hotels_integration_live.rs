@@ -448,7 +448,11 @@ async fn fetch_single_fixture(
     let url_display = &url[0..url.len().min(100)];
     println!("Fetching '{}': {}", name, url_display);
 
-    let resp = client.get(url).send().await.map_err(|e| anyhow::anyhow!(e))?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
     let status = resp.status();
     if !status.is_success() {
         return Err(anyhow::anyhow!("HTTP {}: {}", status, url_display).into());
@@ -478,13 +482,9 @@ async fn fetch_fixture_tokyo_standard() {
     let checkin = today + Months::new(2);
     let checkout = checkin + chrono::Duration::days(2);
 
-    let params = HotelSearchParams::builder(
-        "Tokyo".to_string(),
-        checkin,
-        checkout,
-        2,
-        Vec::new(),
-    ).build().expect("params should build");
+    let params = HotelSearchParams::builder("Tokyo".to_string(), checkin, checkout, 2, Vec::new())
+        .build()
+        .expect("params should build");
 
     let ts = params.generate_ts().expect("encode ts");
     let url = format!("https://www.google.com/travel/search?q=Tokyo&ts={}", ts);
@@ -508,17 +508,12 @@ async fn fetch_fixture_paris_budget() {
     let checkin = today + Months::new(3);
     let checkout = checkin + chrono::Duration::days(2);
 
-    let params = HotelSearchParams::builder(
-        "Paris".to_string(),
-        checkin,
-        checkout,
-        2,
-        Vec::new(),
-    )
-    .min_guest_rating(3.0)
-    .min_price(Some(50))
-    .max_price(Some(150))
-    .build().expect("params should build");
+    let params = HotelSearchParams::builder("Paris".to_string(), checkin, checkout, 2, Vec::new())
+        .min_guest_rating(3.0)
+        .min_price(Some(50))
+        .max_price(Some(150))
+        .build()
+        .expect("params should build");
 
     let ts = params.generate_ts().expect("encode ts");
     let url = format!("https://www.google.com/travel/search?q=Paris&ts={}", ts);
@@ -542,16 +537,11 @@ async fn fetch_fixture_tokyo_5star() {
     let checkin = today + Months::new(2);
     let checkout = checkin + chrono::Duration::days(2);
 
-    let params = HotelSearchParams::builder(
-        "Tokyo".to_string(),
-        checkin,
-        checkout,
-        2,
-        Vec::new(),
-    )
-    .hotel_stars(vec![5])
-    .min_guest_rating(4.0)
-    .build().expect("params should build");
+    let params = HotelSearchParams::builder("Tokyo".to_string(), checkin, checkout, 2, Vec::new())
+        .hotel_stars(vec![5])
+        .min_guest_rating(4.0)
+        .build()
+        .expect("params should build");
 
     let ts = params.generate_ts().expect("encode ts");
     let url = format!("https://www.google.com/travel/search?q=Tokyo&ts={}", ts);
@@ -575,17 +565,13 @@ async fn fetch_fixture_nyc_families() {
     let checkin = today + Months::new(2);
     let checkout = checkin + chrono::Duration::days(5);
 
-    let params = HotelSearchParams::builder(
-        "New York".to_string(),
-        checkin,
-        checkout,
-        2,
-        vec![5, 8],
-    )
-    .hotel_stars(vec![4, 5])
-    .amenities(vec![Amenity::KidFriendly])
-    .max_price(Some(300))
-    .build().expect("params should build");
+    let params =
+        HotelSearchParams::builder("New York".to_string(), checkin, checkout, 2, vec![5, 8])
+            .hotel_stars(vec![4, 5])
+            .amenities(vec![Amenity::KidFriendly])
+            .max_price(Some(300))
+            .build()
+            .expect("params should build");
 
     let ts = params.generate_ts().expect("encode ts");
     let url = format!("https://www.google.com/travel/search?q=New+York&ts={}", ts);
@@ -609,17 +595,12 @@ async fn fetch_fixture_london_long_stay() {
     let checkin = today + Months::new(3);
     let checkout = checkin + chrono::Duration::days(14);
 
-    let params = HotelSearchParams::builder(
-        "London".to_string(),
-        checkin,
-        checkout,
-        2,
-        Vec::new(),
-    )
-    .amenities(vec![Amenity::KidFriendly])
-    .min_guest_rating(3.0)
-    .max_price(Some(200))
-    .build().expect("params should build");
+    let params = HotelSearchParams::builder("London".to_string(), checkin, checkout, 2, Vec::new())
+        .amenities(vec![Amenity::KidFriendly])
+        .min_guest_rating(3.0)
+        .max_price(Some(200))
+        .build()
+        .expect("params should build");
 
     let ts = params.generate_ts().expect("encode ts");
     let url = format!("https://www.google.com/travel/search?q=London&ts={}", ts);
