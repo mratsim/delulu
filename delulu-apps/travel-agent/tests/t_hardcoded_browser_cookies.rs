@@ -105,7 +105,7 @@ async fn test_our_vs_browser_socs() -> Result<()> {
     let browser_header = format!("CONSENT=PENDING+987; SOCS={}", browser_socs);
 
     // Our SOCS
-    let our_header = delulu_travel_agent::consent_cookie::generate_cookie_header();
+    let our_header = delulu_travel_agent::generate_cookie_header();
     let our_socs = our_header
         .split("CONSENT=PENDING+987; ")
         .nth(1)

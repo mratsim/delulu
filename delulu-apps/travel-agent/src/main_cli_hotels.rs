@@ -60,7 +60,6 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use delulu_travel_agent::{Amenity, GoogleHotelsClient, HotelSearchParams};
-use std::println;
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-hotels")]
@@ -146,14 +145,19 @@ fn parse_children_ages(s: &str) -> Result<Vec<i32>, std::num::ParseIntError> {
         .collect()
 }
 
-fn parse_amenities(s: &str) -> Vec<Amenity> {
+fn parse_amenities(s: &str) -> (Vec<Amenity>, Vec<String>) {
     if s.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
-    s.split(',')
+    let (valid, invalid): (Vec<_>, Vec<_>) = s
+        .split(',')
         .map(|a| a.trim().to_uppercase().replace('-', "_"))
+        .partition(|a| Amenity::from_str_name(a).is_some());
+    let valid: Vec<Amenity> = valid
+        .into_iter()
         .filter_map(|a| Amenity::from_str_name(&a))
-        .collect()
+        .collect();
+    (valid, invalid)
 }
 
 fn parse_stars(s: &str) -> Result<Vec<i32>> {
@@ -197,11 +201,17 @@ async fn main() -> Result<()> {
         .transpose()
         .map_err(|e| anyhow::anyhow!("Failed to parse stars: {}", e))?
         .unwrap_or_default();
-    let amenities_filter: Vec<Amenity> = args
+    let (amenities_filter, invalid_amenities) = args
         .amenities
         .as_deref()
         .map(parse_amenities)
         .unwrap_or_default();
+    if !invalid_amenities.is_empty() {
+        eprintln!(
+            "Warning: Unknown amenities ignored: {}",
+            invalid_amenities.join(", ")
+        );
+    }
 
     let sort_order = match args.sort {
         Some(SortOption::Relevance) => None,
@@ -277,7 +287,8 @@ async fn main() -> Result<()> {
 
     println!("\n🔗 Search URL: {}\n", search_url);
 
-    let client = GoogleHotelsClient::new(4)?;
+    const MAX_CONCURRENT_REQUESTS: u64 = 4;
+    let client = GoogleHotelsClient::new(MAX_CONCURRENT_REQUESTS)?;
     match client.search_hotels(&request).await {
         Ok(results) => {
             if results.hotels.is_empty() {

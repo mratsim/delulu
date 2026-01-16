@@ -3,7 +3,6 @@
 //! Run: cargo test --test e2e_smoke_socs_verification -- --ignored --nocapture
 
 use anyhow::Result;
-use delulu_travel_agent::consent_cookie;
 use wreq::redirect::Policy;
 use wreq_util::Emulation;
 
@@ -36,7 +35,7 @@ fn has_hotel_content(text: &str) -> bool {
 async fn test_flights_socs() -> Result<()> {
     println!("\n=== Flights + SOCS ===");
     let client = build_wreq_client();
-    let header = consent_cookie::generate_cookie_header();
+    let header = delulu_travel_agent::generate_cookie_header();
     let resp = client
         .get("https://www.google.com/travel/flights?q=sfo+to+lax")
         .header("Cookie", &header)
@@ -54,7 +53,7 @@ async fn test_flights_socs() -> Result<()> {
 async fn test_hotels_socs() -> Result<()> {
     println!("\n=== Hotels + SOCS ===");
     let client = build_wreq_client();
-    let header = consent_cookie::generate_cookie_header();
+    let header = delulu_travel_agent::generate_cookie_header();
     let resp = client
         .get("https://www.google.com/travel/search?q=tokyo")
         .header("Cookie", &header)

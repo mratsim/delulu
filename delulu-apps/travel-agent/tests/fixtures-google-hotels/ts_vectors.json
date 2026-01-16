@@ -592,8 +592,8 @@
       "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAIYARIHCOoPEAIYCBgHMgIIASoJCgU6A0VVUhoA"
     },
     {
-      "name": "tokyo07_leap_year_boundary",
-      "description": "Tokyo leap year date transition Feb 28-Mar 1",
+      "name": "tokyo07_feb_end_transition",
+      "description": "Tokyo date transition Feb 28-Mar 1 (non-leap year)",
       "input": {
         "display_name": "Tokyo",
         "checkin_date": "2026-02-28",

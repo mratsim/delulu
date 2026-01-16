@@ -297,46 +297,46 @@ async fn test_real_query_iata_code() {
 #[tokio::test]
 #[ignore]
 async fn test_real_query_seasonal_variation() {
-    println!("\n=== Seasonal Variation Test ===");
+    println!("\n=== Date Variation Test ===");
 
-    let summer_chk = (today() + Months::new(2)).format("%Y-%m-%d").to_string();
-    let summer_out = compute_checkout(&summer_chk, 3);
+    let earlier_chk = (today() + Months::new(1)).format("%Y-%m-%d").to_string();
+    let earlier_out = compute_checkout(&earlier_chk, 3);
 
     match rate_limited_query(
         "NYC",
-        &summer_chk,
-        &summer_out.format("%Y-%m-%d").to_string(),
+        &earlier_chk,
+        &earlier_out.format("%Y-%m-%d").to_string(),
         2,
         0,
     )
     .await
     {
-        Ok(_) => println!("✓ Summer NYC query succeeded"),
+        Ok(_) => println!("✓ Earlier NYC query succeeded"),
         Err(e) => {
-            eprintln!("✗ Summer NYC failed: {}", e);
+            eprintln!("✗ Earlier NYC failed: {}", e);
             if e.to_string().contains("HTTP") || e.to_string().contains("network") {
-                println!("⚠ Transient error - skipping seasonal comparison");
+                println!("⚠ Transient error - skipping date comparison");
                 return;
             }
             panic!("Unexpected error: {}", e);
         }
     }
 
-    let winter_chk = (today() + Months::new(1)).format("%Y-%m-%d").to_string();
-    let winter_out = compute_checkout(&winter_chk, 3);
+    let later_chk = (today() + Months::new(2)).format("%Y-%m-%d").to_string();
+    let later_out = compute_checkout(&later_chk, 3);
 
     match rate_limited_query(
         "NYC",
-        &winter_chk,
-        &winter_out.format("%Y-%m-%d").to_string(),
+        &later_chk,
+        &later_out.format("%Y-%m-%d").to_string(),
         2,
         1,
     )
     .await
     {
-        Ok(_) => println!("✓ Winter NYC query succeeded"),
+        Ok(_) => println!("✓ Later NYC query succeeded"),
         Err(e) => {
-            eprintln!("✗ Winter NYC failed: {}", e);
+            eprintln!("✗ Later NYC failed: {}", e);
             if e.to_string().contains("HTTP") || e.to_string().contains("network") {
                 println!("⚠ Transient error - skipping");
                 return;
@@ -405,132 +405,227 @@ async fn run_quick_smoke_test() {
 // FIXTURE FETCHING TESTS (IGNORED - FOR SETUP ONLY)
 // =============================================================================
 // These tests fetch HTML from Google and save as compressed fixtures.
-// Run with: cargo test --test t_hotels_integration_live fetch_fixtures -- --ignored --nocapture
+// Run with: cargo test --test t_hotels_integration_live fetch_fixture_xxx -- --ignored --nocapture
 // Rate limited to 2 seconds between requests to avoid being banned.
 
 const FIXTURE_RATE_LIMIT_SECS: u64 = 2;
 
+fn compress_and_save(html: &str, name: &str) {
+    use std::fs;
+    use std::path::Path;
+
+    let fixtures_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures-hotels-parsing");
+    fs::create_dir_all(&fixtures_dir).expect("create fixtures dir");
+
+    let output_path = fixtures_dir.join(format!("{}.html.zst", name));
+    let file = fs::File::create(&output_path).expect("create output file");
+
+    let mut encoder = zstd::stream::Encoder::new(file, 0).expect("create zstd encoder");
+    use std::io::Write;
+    encoder.write_all(html.as_bytes()).expect("write bytes");
+    encoder.finish().expect("finish compression");
+
+    println!("Saved fixture: {:?}", output_path);
+}
+
+async fn rate_limited_fetch(
+    client: &wreq::Client,
+    url: &str,
+    delay_secs: u64,
+    name: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    if delay_secs > 0 {
+        sleep(std::time::Duration::from_secs(delay_secs)).await;
+    }
+    fetch_single_fixture(client, url, name).await
+}
+
+async fn fetch_single_fixture(
+    client: &wreq::Client,
+    url: &str,
+    name: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let url_display = &url[0..url.len().min(100)];
+    println!("Fetching '{}': {}", name, url_display);
+
+    let resp = client.get(url).send().await.map_err(|e| anyhow::anyhow!(e))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(anyhow::anyhow!("HTTP {}: {}", status, url_display).into());
+    }
+    let text = resp.text().await.map_err(|e| anyhow::anyhow!(e))?;
+
+    if text.to_lowercase().contains("consent") {
+        return Err(anyhow::anyhow!("Blocked by consent cookie").into());
+    }
+    if text.len() < 1000 {
+        return Err(anyhow::anyhow!("Response too short ({} bytes)", text.len()).into());
+    }
+
+    Ok(text)
+}
+
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_tokyo_standard() {
-    println!("Fetching Tokyo standard fixture...");
+    let client = wreq::Client::builder()
+        .emulation(wreq_util::Emulation::Chrome126)
+        .redirect(wreq::redirect::Policy::default())
+        .build()
+        .expect("wreq client");
 
-    let checkin = today() + Months::new(2);
-    let checkout = compute_checkout(&checkin.format("%Y-%m-%d").to_string(), 2);
+    let today = Local::now().date_naive();
+    let checkin = today + Months::new(2);
+    let checkout = checkin + chrono::Duration::days(2);
 
-    match rate_limited_query(
-        "Tokyo",
-        &checkin.format("%Y-%m-%d").to_string(),
-        &checkout.format("%Y-%m-%d").to_string(),
+    let params = HotelSearchParams::builder(
+        "Tokyo".to_string(),
+        checkin,
+        checkout,
         2,
-        FIXTURE_RATE_LIMIT_SECS,
-    )
-    .await
-    {
-        Ok(_) => println!("✓ Tokyo fixture fetched"),
-        Err(e) => {
-            eprintln!("✗ Tokyo fixture fetch failed: {}", e);
-            panic!("Fixture fetch failed: {}", e);
-        }
+        Vec::new(),
+    ).build().expect("params should build");
+
+    let ts = params.generate_ts().expect("encode ts");
+    let url = format!("https://www.google.com/travel/search?q=Tokyo&ts={}", ts);
+
+    match rate_limited_fetch(&client, &url, FIXTURE_RATE_LIMIT_SECS, "tokyo-standard").await {
+        Ok(text) => compress_and_save(&text, "tokyo-standard"),
+        Err(e) => panic!("Failed: {}", e),
     }
 }
 
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_paris_budget() {
-    println!("\nFetching Paris budget fixture...");
+    let client = wreq::Client::builder()
+        .emulation(wreq_util::Emulation::Chrome126)
+        .redirect(wreq::redirect::Policy::default())
+        .build()
+        .expect("wreq client");
 
-    let checkin = today() + Months::new(3);
-    let checkout = compute_checkout(&checkin.format("%Y-%m-%d").to_string(), 2);
+    let today = Local::now().date_naive();
+    let checkin = today + Months::new(3);
+    let checkout = checkin + chrono::Duration::days(2);
 
-    match rate_limited_query(
-        "Paris",
-        &checkin.format("%Y-%m-%d").to_string(),
-        &checkout.format("%Y-%m-%d").to_string(),
+    let params = HotelSearchParams::builder(
+        "Paris".to_string(),
+        checkin,
+        checkout,
         2,
-        FIXTURE_RATE_LIMIT_SECS,
+        Vec::new(),
     )
-    .await
-    {
-        Ok(_) => println!("✓ Paris budget fixture fetched"),
-        Err(e) => {
-            eprintln!("✗ Paris budget fixture fetch failed: {}", e);
-            panic!("Fixture fetch failed: {}", e);
-        }
+    .min_guest_rating(3.0)
+    .min_price(Some(50))
+    .max_price(Some(150))
+    .build().expect("params should build");
+
+    let ts = params.generate_ts().expect("encode ts");
+    let url = format!("https://www.google.com/travel/search?q=Paris&ts={}", ts);
+
+    match rate_limited_fetch(&client, &url, FIXTURE_RATE_LIMIT_SECS, "paris-budget").await {
+        Ok(text) => compress_and_save(&text, "paris-budget"),
+        Err(e) => panic!("Failed: {}", e),
     }
 }
 
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_tokyo_5star() {
-    println!("\nFetching Tokyo 5-star fixture...");
+    let client = wreq::Client::builder()
+        .emulation(wreq_util::Emulation::Chrome126)
+        .redirect(wreq::redirect::Policy::default())
+        .build()
+        .expect("wreq client");
 
-    let checkin = today() + Months::new(4);
-    let checkout = compute_checkout(&checkin.format("%Y-%m-%d").to_string(), 3);
+    let today = Local::now().date_naive();
+    let checkin = today + Months::new(2);
+    let checkout = checkin + chrono::Duration::days(2);
 
-    match rate_limited_query(
-        "Tokyo 5 star hotel",
-        &checkin.format("%Y-%m-%d").to_string(),
-        &checkout.format("%Y-%m-%d").to_string(),
+    let params = HotelSearchParams::builder(
+        "Tokyo".to_string(),
+        checkin,
+        checkout,
         2,
-        FIXTURE_RATE_LIMIT_SECS,
+        Vec::new(),
     )
-    .await
-    {
-        Ok(_) => println!("✓ Tokyo 5-star fixture fetched"),
-        Err(e) => {
-            eprintln!("✗ Tokyo 5-star fixture fetch failed: {}", e);
-            panic!("Fixture fetch failed: {}", e);
-        }
+    .hotel_stars(vec![5])
+    .min_guest_rating(4.0)
+    .build().expect("params should build");
+
+    let ts = params.generate_ts().expect("encode ts");
+    let url = format!("https://www.google.com/travel/search?q=Tokyo&ts={}", ts);
+
+    match rate_limited_fetch(&client, &url, FIXTURE_RATE_LIMIT_SECS, "tokyo-5star").await {
+        Ok(text) => compress_and_save(&text, "tokyo-5star"),
+        Err(e) => panic!("Failed: {}", e),
     }
 }
 
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_nyc_families() {
-    println!("\nFetching NYC families fixture...");
+    let client = wreq::Client::builder()
+        .emulation(wreq_util::Emulation::Chrome126)
+        .redirect(wreq::redirect::Policy::default())
+        .build()
+        .expect("wreq client");
 
-    let checkin = today() + Months::new(2);
-    let checkout = compute_checkout(&checkin.format("%Y-%m-%d").to_string(), 5);
+    let today = Local::now().date_naive();
+    let checkin = today + Months::new(2);
+    let checkout = checkin + chrono::Duration::days(5);
 
-    match rate_limited_query(
-        "New York family hotel",
-        &checkin.format("%Y-%m-%d").to_string(),
-        &checkout.format("%Y-%m-%d").to_string(),
+    let params = HotelSearchParams::builder(
+        "New York".to_string(),
+        checkin,
+        checkout,
         2,
-        FIXTURE_RATE_LIMIT_SECS,
+        vec![5, 8],
     )
-    .await
-    {
-        Ok(_) => println!("✓ NYC families fixture fetched"),
-        Err(e) => {
-            eprintln!("✗ NYC families fixture fetch failed: {}", e);
-            panic!("Fixture fetch failed: {}", e);
-        }
+    .hotel_stars(vec![4, 5])
+    .amenities(vec![Amenity::KidFriendly])
+    .max_price(Some(300))
+    .build().expect("params should build");
+
+    let ts = params.generate_ts().expect("encode ts");
+    let url = format!("https://www.google.com/travel/search?q=New+York&ts={}", ts);
+
+    match rate_limited_fetch(&client, &url, FIXTURE_RATE_LIMIT_SECS, "nyc-families").await {
+        Ok(text) => compress_and_save(&text, "nyc-families"),
+        Err(e) => panic!("Failed: {}", e),
     }
 }
 
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_london_long_stay() {
-    println!("\nFetching London long-stay fixture...");
+    let client = wreq::Client::builder()
+        .emulation(wreq_util::Emulation::Chrome126)
+        .redirect(wreq::redirect::Policy::default())
+        .build()
+        .expect("wreq client");
 
-    let checkin = today() + Months::new(1);
-    let checkout = compute_checkout(&checkin.format("%Y-%m-%d").to_string(), 14);
+    let today = Local::now().date_naive();
+    let checkin = today + Months::new(3);
+    let checkout = checkin + chrono::Duration::days(14);
 
-    match rate_limited_query(
-        "London apartment long stay",
-        &checkin.format("%Y-%m-%d").to_string(),
-        &checkout.format("%Y-%m-%d").to_string(),
+    let params = HotelSearchParams::builder(
+        "London".to_string(),
+        checkin,
+        checkout,
         2,
-        FIXTURE_RATE_LIMIT_SECS,
+        Vec::new(),
     )
-    .await
-    {
-        Ok(_) => println!("✓ London long-stay fixture fetched"),
-        Err(e) => {
-            eprintln!("✗ London long-stay fixture fetch failed: {}", e);
-            panic!("Fixture fetch failed: {}", e);
-        }
+    .amenities(vec![Amenity::KidFriendly])
+    .min_guest_rating(3.0)
+    .max_price(Some(200))
+    .build().expect("params should build");
+
+    let ts = params.generate_ts().expect("encode ts");
+    let url = format!("https://www.google.com/travel/search?q=London&ts={}", ts);
+
+    match rate_limited_fetch(&client, &url, FIXTURE_RATE_LIMIT_SECS, "london-long-stay").await {
+        Ok(text) => compress_and_save(&text, "london-long-stay"),
+        Err(e) => panic!("Failed: {}", e),
     }
 }

@@ -28,7 +28,7 @@ use std::sync::Arc;
 use wreq::redirect::Policy;
 use wreq_util::Emulation;
 
-fn build_search_url(location: &str, ts_param: &str) -> String {
+pub fn build_search_url(location: &str, ts_param: &str) -> String {
     let encoded_location = urlencoding::encode(location);
     format!(
         "https://www.google.com/travel/search?q={}&ts={}",
