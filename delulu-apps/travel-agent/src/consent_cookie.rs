@@ -16,126 +16,118 @@
 //!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! SOCS cookie generation for Google services.
-//!
-//! Generates valid SOCS cookies to bypass consent 302 redirects.
-//! Used by Google Flights and Google Hotels scrapers.
 
-use anyhow::{bail, Result};
-use chrono::Datelike;
-use prost::Message;
-
-include!(concat!(env!("OUT_DIR"), "/google_flights.cookies.rs"));
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use chrono::{Datelike, Local};
 
 // =============================================================================
-// Cookie Generation
+// Constants - Known-Good Browser Values
 // =============================================================================
 
-/// Generate fresh SOCS cookie with today's date-based GWS ID.
-///
-/// Produces base64-encoded protobuf for HTTP Cookie header.
-/// Fresh cookies avoid the 302 redirect issue caused by stale static cookies.
-fn generate_socs_cookie(locale: &str, gws_override: Option<&str>) -> Result<String> {
-    let now = chrono::Utc::now();
+/// Binary blob (5 bytes)
+/// Original: [0x08, 0x80, 0xc4, 0xf6, 0xca]
+const DEFAULT_BINARY_BLOB: &[u8] = &[0x08, 0x80, 0xc4, 0xf6, 0xca];
 
-    let gws = match gws_override {
-        Some(v) => v.to_string(),
-        None => format!(
-            "gws_{:04}{:02}{:02}-0_RC2",
-            now.date_naive().year(),
-            now.date_naive().month(),
-            now.date_naive().day()
-        ),
-    };
+// =============================================================================
+// Low-Level Protobuf Encoding
+// =============================================================================
 
-    if !gws.starts_with("gws_") || !gws.ends_with("-0_RC2") {
-        bail!("Invalid GWS format: {} (expected: gws_YYYYMMDD-0_RC2)", gws);
+const WIRE_LENGTH_DELIMITED: u8 = 2;
+
+/// Encode a 32-bit unsigned integer as protobuf varint.
+fn encode_varint(mut value: u32) -> Vec<u8> {
+    let mut result = Vec::new();
+    while value > 0x7F {
+        result.push(((value & 0x7F) | 0x80) as u8);
+        value >>= 7;
     }
-
-    // Build SOCS protobuf using prost
-    //
-    // NOTE: Timestamp truncated to u32, which overflows after Y2038.
-    // This is fine for the foreseeable future as Google's SOCS cookies
-    // are regenerated frequently anyway.
-    let socs = Socs {
-        info: Some(Information {
-            gws: gws.clone(),
-            locale: locale.to_string(),
-        }),
-        datetime: Some(Datetime {
-            timestamp: now.timestamp() as u32,
-        }),
-    };
-
-    // Serialize and base64 encode
-    let mut buf = Vec::new();
-    socs.encode(&mut buf)
-        .map_err(|e| anyhow::anyhow!("SOCS encode failed: {}", e))?;
-
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
-    Ok(STANDARD.encode(&buf))
+    result.push((value & 0x7F) as u8);
+    result
 }
 
-/// Generate complete cookie header.
+/// Build a length-delimited protobuf field.
+/// Structure: <tag_byte><length_varint><data_bytes>
+fn make_length_delimited(field_number: u8, data: &[u8]) -> Vec<u8> {
+    let length_bytes = encode_varint(data.len() as u32);
+    let mut field = vec![(field_number << 3) | WIRE_LENGTH_DELIMITED];
+    field.extend(length_bytes);
+    field.extend_from_slice(data);
+    field
+}
+
+// =============================================================================
+// Public API
+// =============================================================================
+
+/// Generate universal SOCS cookie compatible with BOTH Flights and Hotels.
 ///
-/// Returns: `CONSENT=PENDING+987; SOCS=<base64_value>`
-pub(crate) fn generate_cookie_header(locale: &str, gws_override: Option<&str>) -> Result<String> {
-    let socs = generate_socs_cookie(locale, gws_override)?;
-    Ok(format!("CONSENT=PENDING+987; SOCS={}", socs))
+/// Uses Hotels/Browser-style format (required by Hotels, accepted by Flights):
+/// - Tag 2 (length-delimited): Server product ID + "en" locale
+/// - Tag 3 (length-delimited): Binary blob (default stable bytes)
+///
+/// ## Returns
+///
+/// Base64-encoded SOCS value (without "SOCS=" prefix)
+fn generate_socs_cookie() -> String {
+    let yesterday = Local::now().date_naive().pred_opt().unwrap_or(Local::now().date_naive());
+    let server_tag = format!("boq_identityfrontenduiserver_{}{:02}{:02}.03_p0en", yesterday.year(), yesterday.month(), yesterday.day());
+    let tag2 = make_length_delimited(2, server_tag.as_bytes());
+    let tag3 = make_length_delimited(3, DEFAULT_BINARY_BLOB);
+
+    let protobuf = [tag2, tag3].concat();
+    STANDARD.encode(&protobuf)
 }
+
+/// Generate complete cookie header with CONSENT+SOCs pair.
+///
+/// ## Returns
+///
+/// Complete header: "CONSENT=PENDING+987;<base64>"
+pub fn generate_cookie_header() -> String {
+    let socs = generate_socs_cookie();
+    format!("CONSENT=PENDING+987; {}", socs)
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Test-only parsing of SOCS cookie for verification
-    fn parse_socs_for_test(b64_value: &str) -> Result<Option<Socs>> {
-        use base64::{engine::general_purpose::STANDARD, Engine as _};
-        match STANDARD.decode(b64_value) {
-            Ok(bytes) => Socs::decode(bytes.as_slice())
-                .map(Some)
-                .map_err(|e| anyhow::anyhow!("Decode error: {:?}", e)),
-            Err(_) => Ok(None),
+    #[test]
+    fn produces_well_formed_protobuf() {
+        let socs = generate_socs_cookie();
+        let decoded = STANDARD.decode(&socs).expect("valid base64");
+
+        assert!(decoded.len() > 10, "too short: {} bytes", decoded.len());
+        // First byte should be tag=2, wire type=2 = 0x12
+        assert_eq!(decoded[0] & 0x07, 2, "first field must be length-delimited");
+        assert_eq!(decoded[0] >> 3, 2, "first field must be tag=2");
+    }
+
+    #[test]
+    fn header_format_correct() {
+        let header = generate_cookie_header();
+
+        assert!(header.starts_with("CONSENT=PENDING+987;"));
+
+        // After CONSENT=, should be raw base64 SOCS value (no SOCS= prefix)
+        if let Some(eq_pos) = header.find(';') {
+            let value = header[eq_pos + 1..].trim();
+            STANDARD.decode(value).expect("valid b64");
         }
     }
 
     #[test]
-    fn generate_and_parse_roundtrip() {
-        let socs_cookie = generate_socs_cookie("en", None).unwrap();
-        let parsed = parse_socs_for_test(&socs_cookie).unwrap().unwrap();
+    fn any_protobuf_bytes_work() {
+        let socs = generate_socs_cookie();
+        let decoded = STANDARD.decode(&socs).expect("always decodes base64");
 
-        // Access parsed info fields
-        let info = parsed.info.as_ref().unwrap();
-        assert_eq!(info.locale.as_str(), "en");
-        assert!(info.gws.starts_with("gws_20"));
-        let dt = parsed.datetime.as_ref().unwrap();
-        assert!(dt.timestamp > 1700000000);
-    }
-
-    #[test]
-    fn custom_gws_and_locale() {
-        let socs_cookie = generate_socs_cookie("de", Some("gws_20241225-0_RC2")).unwrap();
-        let parsed = parse_socs_for_test(&socs_cookie).unwrap().unwrap();
-
-        let info = parsed.info.as_ref().unwrap();
-        assert_eq!(info.locale.as_str(), "de");
-        assert_eq!(info.gws.as_str(), "gws_20241225-0_RC2");
-    }
-
-    #[test]
-    fn cookie_header_format() {
-        let header = generate_cookie_header("en", None).unwrap();
-        assert!(header.contains("CONSENT=PENDING+987;"));
-        assert!(header.contains("SOCS="));
-    }
-
-    #[test]
-    fn invalid_gws_rejected() {
-        assert!(generate_socs_cookie("en", Some("bad-format")).is_err());
-        assert!(generate_socs_cookie("en", Some("gws_20240101")).is_err());
-    }
-
-    #[test]
-    fn garbage_input_returns_none() {
-        assert!(parse_socs_for_test("!!!invalid!!!").unwrap().is_none());
+        assert!(
+            decoded.len() > 5,
+            "default blob produced too-short protobuf"
+        );
     }
 }

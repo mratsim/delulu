@@ -18,10 +18,22 @@
 // Library for delulu-mcp-travel-agent
 // MCP server for travel services (flights, hotels)
 
-// Private modules
-mod consent_cookie;
+// Exports for testing access
+pub mod consent_cookie;
 mod flights_proto;
 mod flights_search;
+mod hotels_query_builder;
+mod hotels_results_parser;
+mod hotels_search;
 
 // Re-export commonly used items from flights_search
 pub use flights_search::*;
+
+// Re-export hotels_query_builder
+pub use hotels_query_builder::{HotelSearchParams, HotelSearchParamsBuilder, Amenity};
+
+// Re-export hotels_results_parser
+pub use hotels_results_parser::{Hotel, HotelSearchResult};
+
+// Re-export hotels_search
+pub use hotels_search::*;

@@ -1,0 +1,1754 @@
+{
+  "description": "Google Hotels TS parameter test vectors. Each case contains input configuration and expected decoded/encoded values.",
+  "cases": [
+    {
+      "name": "paris01_basic_week",
+      "description": "Paris default, late January, simple 2-adult stay",
+      "input": {
+        "display_name": "",
+        "checkin_date": "2026-01-25",
+        "checkout_date": "2026-01-31",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAEaIAoCGgASGhIUCgcI6g8QARgZEgcI6g8QARgfGAYyAggBKgkKBToDRVVSGgA"
+    },
+    {
+      "name": "paris02_month_stay",
+      "description": "Paris default, extended stay crossing into February",
+      "input": {
+        "display_name": "",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-25",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaIAoCGgASGhIUCgcI6g8QARgfEgcI6g8QAhgZGBkyAggBKgkKBToDRVVSGgA"
+    },
+    {
+      "name": "paris03_two_children",
+      "description": "Family trip with 4 adults + 2 children (15yo, 6yo), no filters",
+      "input": {
+        "display_name": "",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-25",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": [
+            15,
+            6
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "",
+        "coordinates": "",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESHgoCCAMKAggDCgIIAwoCCAMKBAgCEA8KBAgCEAYQARogCgIaABIaEhQKBwjqDxABGB8SBwjqDxACGBkYGTICCAEqCQoFOgNFVVIaAA"
+    },
+    {
+      "name": "paris04_toddlers",
+      "description": "Large family with toddlers (0-1 yo infants), no filters",
+      "input": {
+        "display_name": "",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-25",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": [
+            1,
+            1
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "",
+        "coordinates": "",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESHgoCCAMKAggDCgIIAwoCCAMKBAgCEAEKBAgCEAEQARogCgIaABIaEhQKBwjqDxABGB8SBwjqDxACGBkYGTICCAEqCQoFOgNFVVIaAA"
+    },
+    {
+      "name": "paris05_champs_elysees_no_filters",
+      "description": "Champs-Élysées district, 4 adults + 2 children (15yo, 6yo), no filters",
+      "input": {
+        "display_name": "Champs-Élysées",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-25",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": [
+            1,
+            1
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0jd4j",
+        "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESHgoCCAMKAggDCgIIAwoCCAMKBAgCEAEKBAgCEAEQARplCkcSQwoIL20vMGpkNGoyJTB4NDdlNjZmYzRmODAwNzg1MToweDVhYTFhNzg3ZjM4ZjY0ZjY6EENoYW1wcy3DiWx5c8OpZXMaABIaEhQKBwjqDxABGB8SBwjqDxACGBkYGTICCAEqCQoFOgNFVVIaAA"
+    },
+    {
+      "name": "paris06_champs_4plus_rating",
+      "description": "Champs-Élysées with 4+ guest rating filter",
+      "input": {
+        "display_name": "Champs-Élysées",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-25",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": [
+            1,
+            1
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0jd4j",
+        "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
+        "min_guest_rating": 4.0,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESHgoCCAMKAggDCgIIAwoCCAMKBAgCEAEKBAgCEAEQARplCkcSQwoIL20vMGpkNGoyJTB4NDdlNjZmYzRmODAwNzg1MToweDVhYTFhNzg3ZjM4ZjY0ZjY6EENoYW1wcy3DiWx5c8OpZXMaABIaEhQKBwjqDxABGB8SBwjqDxACGBkYGTICCAEqDwoFOgNFVVIaACICGAEoCA"
+    },
+    {
+      "name": "paris07_champs_45plus_rating",
+      "description": "Champs-Élysées with 4.5+ guest rating filter",
+      "input": {
+        "display_name": "Champs-Élysées",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-25",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": [
+            1,
+            1
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0jd4j",
+        "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
+        "min_guest_rating": 4.5,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESHgoCCAMKAggDCgIIAwoCCAMKBAgCEAEKBAgCEAEQARplCkcSQwoIL20vMGpkNGoyJTB4NDdlNjZmYzRmODAwNzg1MToweDVhYTFhNzg3ZjM4ZjY0ZjY6EENoYW1wcy3DiWx5c8OpZXMaABIaEhQKBwjqDxABGB8SBwjqDxACGBkYGTICCAEqCwoFOgNFVVIaACgJ"
+    },
+    {
+      "name": "Paris08",
+      "description": "Champs-Élysées with infant twins, same 4.5+ rating filter, sorted by highest rating",
+      "input": {
+        "display_name": "Champs-Élysées",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-25",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": [
+            1,
+            1
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "highest_rating",
+        "location_id": "/m/0jd4j",
+        "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
+        "min_guest_rating": 4.5,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESHgoCCAMKAggDCgIIAwoCCAMKBAgCEAEKBAgCEAEQARplCkcSQwoIL20vMGpkNGoyJTB4NDdlNjZmYzRmODAwNzg1MToweDVhYTFhNzg3ZjM4ZjY0ZjY6EENoYW1wcy3DiWx5c8OpZXMaABIaEhQKBwjqDxABGB8SBwjqDxACGBkYGTICCAEqEQoHKAg6A0VVUhoAIgIYASgJ"
+    },
+    {
+      "name": "paris09_champs_multi_filters",
+      "description": "Champs-Élysées with 4.5+ rating, 4-5 star, and Spa filters",
+      "input": {
+        "display_name": "Champs-Élysées",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-25",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": [
+            1,
+            1
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0jd4j",
+        "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
+        "min_guest_rating": 4.5,
+        "amenities": [
+          "spa"
+        ],
+        "hotel_stars": [
+          4,
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESHgoCCAMKAggDCgIIAwoCCAMKBAgCEAEKBAgCEAEQARplCkcSQwoIL20vMGpkNGoyJTB4NDdlNjZmYzRmODAwNzg1MToweDVhYTFhNzg3ZjM4ZjY0ZjY6EENoYW1wcy3DiWx5c8OpZXMaABIaEhQKBwjqDxABGB8SBwjqDxACGBkYGTICCAEqFgoMCgEKEgIEBToDRVVSGgAiAhgBKAk"
+    },
+    {
+      "name": "paris10_vincennes_price_under100",
+      "description": "Vincennes suburb with under €100 price filter",
+      "input": {
+        "display_name": "Vincennes",
+        "checkin_date": "2026-02-10",
+        "checkout_date": "2026-02-11",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0275wy",
+        "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
+        "price_max": 100,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESEgoCCAMKAggDCgIIAwoCCAMQARpeCkASPAoJL20vMDI3NXd5MiQweDQ3ZTY3MmEzOWJlYWM1NGQ6MHg0MGI4MmMzNjg4YjM3NDA6CVZpbmNlbm5lcxoAEhoSFAoHCOoPEAIYChIHCOoPEAIYCxgBMgIIASoPCgU6A0VVUhoAIgQSAhBk"
+    },
+    {
+      "name": "paris11_champs_family_three_year_old",
+      "description": "Champs-Élysées with 2 adults + 1 child age 3, multiple filters",
+      "input": {
+        "display_name": "Champs-Élysées",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-25",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": [
+            3
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0jd4j",
+        "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
+        "min_guest_rating": 4.5,
+        "amenities": [
+          "spa"
+        ],
+        "hotel_stars": [
+          4,
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESEAoCCAMKAggDCgQIAhADEAEaZQpHEkMKCC9tLzBqZDRqMiUweDQ3ZTY2ZmM0ZjgwMDc4NTE6MHg1YWExYTc4N2YzOGY2NGY2OhBDaGFtcHMtw4lseXPDqWVzGgASGhIUCgcI6g8QARgfEgcI6g8QAhgZGBkyAggBKhIKDAoBChICBAU6A0VVUhoAKAk"
+    },
+    {
+      "name": "paris12_champs_single_traveler",
+      "description": "Champs-Élysées solo traveler, multiple filters",
+      "input": {
+        "display_name": "Champs-Élysées",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-25",
+        "guests": {
+          "adults": 1,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0jd4j",
+        "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
+        "min_guest_rating": 4.5,
+        "amenities": [
+          "spa"
+        ],
+        "hotel_stars": [
+          4,
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESBgoCCAMQARplCkcSQwoIL20vMGpkNGoyJTB4NDdlNjZmYzRmODAwNzg1MToweDVhYTFhNzg3ZjM4ZjY0ZjY6EENoYW1wcy3DiWx5c8OpZXMaABIaEhQKBwjqDxABGB8SBwjqDxACGBkYGTICCAEqEgoMCgEKEgIEBToDRVVSGgAoCQ"
+    },
+    {
+      "name": "paris13_cdg_airport",
+      "description": "Paris Charles de Gaulle Airport, solo overnight",
+      "input": {
+        "display_name": "Paris Charles De Gaulle Airport",
+        "checkin_date": "2026-01-11",
+        "checkout_date": "2026-01-12",
+        "guests": {
+          "adults": 1,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0qk79",
+        "coordinates": "0x47e63e038e4ccf5b:0x42be0982f5ba62c",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESBgoCCAMQARpzClUSUQoIL20vMHFrNzkyJDB4NDdlNjNlMDM4ZTRjY2Y1YjoweDQyYmUwOTgyZjViYTYyYzofUGFyaXMgQ2hhcmxlcyBEZSBHYXVsbGUgQWlycG9ydBoAEhoSFAoHCOoPEAEYCxIHCOoPEAEYDBgBMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "paris14_orly_airport",
+      "description": "Paris Orly Airport with price filter under €150",
+      "input": {
+        "display_name": "Orly",
+        "checkin_date": "2026-01-11",
+        "checkout_date": "2026-01-12",
+        "guests": {
+          "adults": 1,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/04nz96",
+        "coordinates": "",
+        "price_max": 150,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESBgoCCAMQARozChUSEQoJL20vMDRuejk2OgRPcmx5GgASGhIUCgcI6g8QARgLEgcI6g8QARgMGAEyAggBKhAKBToDRVVSGgAiBRIDEJYB"
+    },
+    {
+      "name": "paris15_vincennes_price_under99",
+      "description": "Vincennes suburb with under €99 price filter",
+      "input": {
+        "display_name": "Vincennes",
+        "checkin_date": "2026-02-10",
+        "checkout_date": "2026-02-11",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0275wy",
+        "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
+        "price_max": 99,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESEgoCCAMKAggDCgIIAwoCCAMQARpeCkASPAoJL20vMDI3NXd5MiQweDQ3ZTY3MmEzOWJlYWM1NGQ6MHg0MGI4MmMzNjg4YjM3NDA6CVZpbmNlbm5lcxoAEhoSFAoHCOoPEAIYChIHCOoPEAIYCxgBMgIIASoRCgU6A0VVUhoAIgYSAhBjGAE"
+    },
+    {
+      "name": "paris16_vincennes_price_over99",
+      "description": "Vincennes suburb with over €99 price filter",
+      "input": {
+        "display_name": "Vincennes",
+        "checkin_date": "2026-02-10",
+        "checkout_date": "2026-02-11",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0275wy",
+        "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
+        "price_min": 99,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESEgoCCAMKAggDCgIIAwoCCAMQARpeCkASPAoJL20vMDI3NXd5MiQweDQ3ZTY3MmEzOWJlYWM1NGQ6MHg0MGI4MmMzNjg4YjM3NDA6CVZpbmNlbm5lcxoAEhoSFAoHCOoPEAIYChIHCOoPEAIYCxgBMgIIASoRCgU6A0VVUhoAIgYKAhBjGAE"
+    },
+    {
+      "name": "paris17_vincennes_price_under101",
+      "description": "Vincennes suburb with under €101 price filter",
+      "input": {
+        "display_name": "Vincennes",
+        "checkin_date": "2026-02-10",
+        "checkout_date": "2026-02-11",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0275wy",
+        "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
+        "price_max": 101,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESEgoCCAMKAggDCgIIAwoCCAMQARpeCkASPAoJL20vMDI3NXd5MiQweDQ3ZTY3MmEzOWJlYWM1NGQ6MHg0MGI4MmMzNjg4YjM3NDA6CVZpbmNlbm5lcxoAEhoSFAoHCOoPEAIYChIHCOoPEAIYCxgBMgIIASoRCgU6A0VVUhoAIgYSAhBlGAE"
+    },
+    {
+      "name": "paris18_vincennes_price_over101",
+      "description": "Vincennes suburb with over €101 price filter",
+      "input": {
+        "display_name": "Vincennes",
+        "checkin_date": "2026-02-10",
+        "checkout_date": "2026-02-11",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0275wy",
+        "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
+        "price_min": 101,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESEgoCCAMKAggDCgIIAwoCCAMQARpeCkASPAoJL20vMDI3NXd5MiQweDQ3ZTY3MmEzOWJlYWM1NGQ6MHg0MGI4MmMzNjg4YjM3NDA6CVZpbmNlbm5lcxoAEhoSFAoHCOoPEAIYChIHCOoPEAIYCxgBMgIIASoRCgU6A0VVUhoAIgYKAhBlGAE"
+    },
+    {
+      "name": "paris19_vincennes_price_between99and101",
+      "description": "Vincennes suburb with €99->€101 price filter",
+      "input": {
+        "display_name": "Vincennes",
+        "checkin_date": "2026-02-10",
+        "checkout_date": "2026-02-11",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/0275wy",
+        "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
+        "price_min": 99,
+        "price_max": 101,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESEgoCCAMKAggDCgIIAwoCCAMQARpeCkASPAoJL20vMDI3NXd5MiQweDQ3ZTY3MmEzOWJlYWM1NGQ6MHg0MGI4MmMzNjg4YjM3NDA6CVZpbmNlbm5lcxoAEhoSFAoHCOoPEAIYChIHCOoPEAIYCxgBMgIIASoVCgU6A0VVUhoAIgoKAhBjEgIQZRgB"
+    },
+    {
+      "name": "london01_february_week",
+      "description": "London early February short stay",
+      "input": {
+        "display_name": "London",
+        "checkin_date": "2026-02-01",
+        "checkout_date": "2026-02-07",
+        "guests": {
+          "adults": 1,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/04jpl",
+        "coordinates": "0x47d8a00baf21de75:0x52963a5addd52a99",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESBgoCCAMQARpbCj0SOQoIL20vMDRqcGwyJTB4NDdkOGEwMGJhZjIxZGU3NToweDUyOTYzYTVhZGRkNTJhOTk6BkxvbmRvbhoAEhoSFAoHCOoPEAIYARIHCOoPEAIYBxgGMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "london02_overnight_extension",
+      "description": "London same week but one extra night",
+      "input": {
+        "display_name": "London",
+        "checkin_date": "2026-02-01",
+        "checkout_date": "2026-02-08",
+        "guests": {
+          "adults": 1,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/04jpl",
+        "coordinates": "0x47d8a00baf21de75:0x52963a5addd52a99",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESBgoCCAMQARpbCj0SOQoIL20vMDRqcGwyJTB4NDdkOGEwMGJhZjIxZGU3NToweDUyOTYzYTVhZGRkNTJhOTk6BkxvbmRvbhoAEhoSFAoHCOoPEAIYARIHCOoPEAIYCBgHMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "london03_march_stay",
+      "description": "London March extended stay",
+      "input": {
+        "display_name": "London",
+        "checkin_date": "2026-03-03",
+        "checkout_date": "2026-03-08",
+        "guests": {
+          "adults": 1,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/04jpl",
+        "coordinates": "0x47d8a00baf21de75:0x52963a5addd52a99",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESBgoCCAMQARpbCj0SOQoIL20vMDRqcGwyJTB4NDdkOGEwMGJhZjIxZGU3NToweDUyOTYzYTVhZGRkNTJhOTk6BkxvbmRvbhoAEhoSFAoHCOoPEAMYAxIHCOoPEAMYCBgFMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo01_jan_baseline",
+      "description": "Tokyo January mid-month, 2-night stay",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-01-15",
+        "checkout_date": "2026-01-17",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAEYDxIHCOoPEAEYERgCMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo02_feb_baseline",
+      "description": "Tokyo February mid-month, demonstrates monthly progression",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-02-15",
+        "checkout_date": "2026-02-17",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAIYDxIHCOoPEAIYERgCMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo03_march_baseline",
+      "description": "Tokyo March progression, validates month encoding",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-03-15",
+        "checkout_date": "2026-03-17",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAMYDxIHCOoPEAMYERgCMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo04_april_progression",
+      "description": "Tokyo April validation of monthly increment",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-04-15",
+        "checkout_date": "2026-04-17",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAQYDxIHCOoPEAQYERgCMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo05_early_feb_short",
+      "description": "Tokyo early February, 2-night quick visit",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-02-01",
+        "checkout_date": "2026-02-03",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAIYARIHCOoPEAIYAxgCMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo06_extended_feb",
+      "description": "Tokyo February extended 7-night stay",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-02-01",
+        "checkout_date": "2026-02-08",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAIYARIHCOoPEAIYCBgHMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo07_leap_year_boundary",
+      "description": "Tokyo leap year date transition Feb 28-Mar 1",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-02-28",
+        "checkout_date": "2026-03-01",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAIYHBIHCOoPEAMYARgBMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo08_jan_end_transition",
+      "description": "Tokyo Jan 31 to Feb 2 month boundary crossing",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-01-31",
+        "checkout_date": "2026-02-02",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAEYHxIHCOoPEAIYAhgCMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo09_mar_to_apr_boundary",
+      "description": "Tokyo March 31 to April 2 spring transition",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-03-31",
+        "checkout_date": "2026-04-02",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAMYHxIHCOoPEAQYAhgCMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo10_august_peak_season",
+      "description": "Tokyo mid-August summer peak season",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-08-15",
+        "checkout_date": "2026-08-17",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAgYDxIHCOoPEAgYERgCMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo11_august_half_month",
+      "description": "Tokyo early August half-month stay",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-08-01",
+        "checkout_date": "2026-08-17",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAgYARIHCOoPEAgYERgQMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo12_jul_aug_transition",
+      "description": "Tokyo July 31 to Aug 17 summer vacation stretch",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-07-31",
+        "checkout_date": "2026-08-17",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAcYHxIHCOoPEAgYERgRMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo13_winter_holiday",
+      "description": "Tokyo extended winter holiday Dec 4-Jan 3",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-12-04",
+        "checkout_date": "2027-01-03",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAwYBBIHCOsPEAEYAxgeMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo14_solo_winter",
+      "description": "Tokyo solo traveler, same winter holiday dates",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-12-04",
+        "checkout_date": "2027-01-03",
+        "guests": {
+          "adults": 1,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESBgoCCAMQARozChUSEQoIL20vMDdkZms6BVRva3lvGgASGhIUCgcI6g8QDBgEEgcI6w8QARgDGB4yAggBKgkKBToDRVVSGgA"
+    },
+    {
+      "name": "tokyo15_triple_adult",
+      "description": "Tokyo with 3 adults, winter holiday dates",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-12-04",
+        "checkout_date": "2027-01-03",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESDgoCCAMKAggDCgIIAxABGjMKFRIRCggvbS8wN2RmazoFVG9reW8aABIaEhQKBwjqDxAMGAQSBwjrDxABGAMYHjICCAEqCQoFOgNFVVIaAA"
+    },
+    {
+      "name": "tokyo16_quad_adult",
+      "description": "Tokyo with 4 adults, same extended holiday",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-12-04",
+        "checkout_date": "2027-01-03",
+        "guests": {
+          "adults": 4,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESEgoCCAMKAggDCgIIAwoCCAMQARozChUSEQoIL20vMDdkZms6BVRva3lvGgASGhIUCgcI6g8QDBgEEgcI6w8QARgDGB4yAggBKgkKBToDRVVSGgA"
+    },
+    {
+      "name": "tokyo17_max_party_size",
+      "description": "Tokyo maximum party size 6 adults, extended holiday",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-12-04",
+        "checkout_date": "2027-01-03",
+        "guests": {
+          "adults": 6,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESGgoCCAMKAggDCgIIAwoCCAMKAggDCgIIAxABGjMKFRIRCggvbS8wN2RmazoFVG9reW8aABIaEhQKBwjqDxAMGAQSBwjrDxABGAMYHjICCAEqCQoFOgNFVVIaAA"
+    },
+    {
+      "name": "tokyo18_children_four_teen_winter",
+      "description": "Tokyo winter holidays 2026-12-04 to 2027-01-03 with family (0~1, 6, 16)",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-12-04",
+        "checkout_date": "2027-01-03",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": [
+            1,
+            6,
+            16
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESHAoCCAMKAggDCgQIAhABCgQIAhAGCgQIAhAQEAEaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAwYBBIHCOsPEAEYAxgeMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo19_children_variant_order",
+      "description": "Tokyo same dates/guests as tokyo18, different child age presentation order",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-12-04",
+        "checkout_date": "2027-01-03",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": [
+            16,
+            1,
+            6
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESHAoCCAMKAggDCgQIAhAQCgQIAhABCgQIAhAGEAEaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAwYBBIHCOsPEAEYAxgeMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo20_two_adults_default_ui",
+      "description": "Tokyo summer 2026 with 2 adults - DEFAULT factory setting ([10 00] marker present) - demonstrates implicit guest dropdown state",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-06-01",
+        "checkout_date": "2026-06-10",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAYYARIHCOoPEAYYChgJMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo21_two_adults_explicit_dropdown",
+      "description": "Tokyo summer 2026 with 2 adults - EXPLICIT dropdown selection ([10 01] marker instead of [10 00]) - demonstrates intentional guest count selection",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-06-01",
+        "checkout_date": "2026-06-10",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAEaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAYYARIHCOoPEAYYChgJMgIIASoJCgU6A0VVUhoA"
+    },
+    {
+      "name": "tokyo22_between_100_and_150_EUR",
+      "description": "Tokyo summer 2026 with 2 adults - DEFAULT factory setting ([10 00] marker present) - price between 100€ and 150€",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-06-01",
+        "checkout_date": "2026-06-10",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "price_min": 100,
+        "price_max": 150,
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAYYARIHCOoPEAYYChgJMgIIASoWCgU6A0VVUhoAIgsKAhBkEgMQlgEYAQ"
+    },
+    {
+      "name": "tokyo23_between_140_and_200_EUR",
+      "description": "Tokyo summer 2026 with 2 adults - DEFAULT factory setting ([10 00] marker present) - price between 140€ and 200€",
+      "input": {
+        "display_name": "Tokyo",
+        "checkin_date": "2026-06-01",
+        "checkout_date": "2026-06-10",
+        "guests": {
+          "adults": 2,
+          "children_with_ages": []
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/07dfk",
+        "coordinates": "",
+        "price_min": 140,
+        "price_max": 200,
+        "used_guests_dropdown": false
+      },
+      "expected_ts": "CAESCgoCCAMKAggDEAAaMwoVEhEKCC9tLzA3ZGZrOgVUb2t5bxoAEhoSFAoHCOoPEAYYARIHCOoPEAYYChgJMgIIASoXCgU6A0VVUhoAIgwKAxCMARIDEMgBGAE"
+    },
+    {
+      "name": "denver01_baseline",
+      "description": "Denver baseline, 3 adults + 3 children (12, 8, 5), no filters",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGjIKFBISCggvbS8wMmNsMToGRGVudmVyEhoSFAoHCOoPEAgYCRIHCOoPEAgYEBgHMgIIAQ"
+    },
+    {
+      "name": "denver02_3_5_plus_rating",
+      "description": "Denver with 3.5+ guest rating filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "min_guest_rating": 3.5,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgsKBToDRVVSGgAoBw"
+    },
+    {
+      "name": "denver02_4_plus_rating",
+      "description": "Denver with 4.0+ guest rating filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "min_guest_rating": 4.0,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgsKBToDRVVSGgAoCA"
+    },
+    {
+      "name": "denver03_4_5_plus_rating",
+      "description": "Denver with 4.5+ guest rating filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "min_guest_rating": 4.5,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgsKBToDRVVSGgAoCQ"
+    },
+    {
+      "name": "denver04_2_star",
+      "description": "Denver with 2-star hotel class filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          2
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgwKCBIBAjoDRVVSGgA"
+    },
+    {
+      "name": "denver05_3_star",
+      "description": "Denver with 3-star hotel class filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          3
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgwKCBIBAzoDRVVSGgA"
+    },
+    {
+      "name": "denver06_4_star",
+      "description": "Denver with 4-star hotel class filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          4
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgwKCBIBBDoDRVVSGgA"
+    },
+    {
+      "name": "denver07_5_star",
+      "description": "Denver with 5-star hotel class filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgwKCBIBBToDRVVSGgA"
+    },
+    {
+      "name": "denver08_3_4_5_stars",
+      "description": "Denver with 3, 4, and 5 star hotel class filters",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          3,
+          4,
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKg4KChIDAwQFOgNFVVIaAA"
+    },
+    {
+      "name": "denver09_3_and_5_stars",
+      "description": "Denver with 3 and 5 star hotel class filters (no 4-star)",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          3,
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKg0KCRICAwU6A0VVUhoA"
+    },
+    {
+      "name": "denver10_4_and_5_stars",
+      "description": "Denver with 4 and 5 star hotel class filters",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          4,
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKg0KCRICBAU6A0VVUhoA"
+    },
+    {
+      "name": "denver11_4_5_stars_highest_rating_sort",
+      "description": "Denver with 4 and 5 star filters, sorted by highest rating",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "highest_rating",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          4,
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKhMKCxICBAUoCDoDRVVSGgAiAhgB"
+    },
+    {
+      "name": "denver12_4_5_stars_most_reviewed_sort",
+      "description": "Denver with 4 and 5 star filters, sorted by most reviewed",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "most_reviewed",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          4,
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKhMKCxICBAUoDToDRVVSGgAiAhgB"
+    },
+    {
+      "name": "denver13_4_5_stars_relevance_sort",
+      "description": "Denver with 4 and 5 star filters, sorted by relevance",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "relevance",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          4,
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKhEKCRICBAU6A0VVUhoAIgIYAQ"
+    },
+    {
+      "name": "denver14_4_5_stars_lowest_price_sort",
+      "description": "Denver with 4 and 5 star filters, sorted by lowest price",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "lowest_price",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "hotel_stars": [
+          4,
+          5
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKhMKCxICBAUoAzoDRVVSGgAiAhgB"
+    },
+    {
+      "name": "denver15_spa_amenity",
+      "description": "Denver with spa amenity filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "amenities": [
+          "spa"
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgwKCAoBCjoDRVVSGgA"
+    },
+    {
+      "name": "denver16_pool_amenity",
+      "description": "Denver with pool amenity filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "amenities": [
+          "pool"
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgwKCAoBBjoDRVVSGgA"
+    },
+    {
+      "name": "denver17_indoor_pool_amenity",
+      "description": "Denver with indoor pool amenity filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "amenities": [
+          "indoor_pool"
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgwKCAoBBDoDRVVSGgA"
+    },
+    {
+      "name": "denver18_outdoor_pool_amenity",
+      "description": "Denver with outdoor pool amenity filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "amenities": [
+          "outdoor_pool"
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgwKCAoBBToDRVVSGgA"
+    },
+    {
+      "name": "denver19_ev_charger",
+      "description": "Denver with EV charger amenity",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "amenities": [
+          "ev_charger"
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgwKCAoBPToDRVVSGgA"
+    },
+    {
+      "name": "denver20_ev_charger_air_conditioned",
+      "description": "Denver with EV charger and air-conditioned amenities",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "amenities": [
+          "ev_charger",
+          "air_conditioned"
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKg0KCQoCPSg6A0VVUhoA"
+    },
+    {
+      "name": "denver21_ev_charger_air_conditioned_kid_friendly",
+      "description": "Denver with EV charger, air-conditioned, and kid-friendly amenities",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "amenities": [
+          "ev_charger",
+          "air_conditioned",
+          "kid_friendly"
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKg4KCgoDPSgMOgNFVVIaAA"
+    },
+    {
+      "name": "denver22_kid_friendly",
+      "description": "Denver with kid-friendly amenity",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "amenities": [
+          "kid_friendly"
+        ],
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKgwKCAoBDDoDRVVSGgA"
+    },
+    {
+      "name": "denver23_price_under_250",
+      "description": "Denver with price under €250 filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "price_max": 250,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKhIKBToDRVVSGgAiBxIDEPoBGAE"
+    },
+    {
+      "name": "denver24_price_100_250",
+      "description": "Denver with price between €100 and €250 filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "price_min": 100,
+        "price_max": 250,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKhYKBToDRVVSGgAiCwoCEGQSAxD6ARgB"
+    },
+    {
+      "name": "denver25_price_190_310",
+      "description": "Denver with price between €190 and €310 filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "price_min": 190,
+        "price_max": 310,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKhcKBToDRVVSGgAiDAoDEL4BEgMQtgIYAQ"
+    },
+    {
+      "name": "denver26_price_over_285",
+      "description": "Denver with price over €285 filter",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "unspecified",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "price_min": 285,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKhIKBToDRVVSGgAiBwoDEJ0CGAE"
+    },
+    {
+      "name": "denver27_combined_filters",
+      "description": "Denver with 4+ rating, air-conditioned, kid-friendly, 4-5 stars, €100-€300, sorted by highest rating",
+      "input": {
+        "display_name": "Denver",
+        "checkin_date": "2026-08-09",
+        "checkout_date": "2026-08-16",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "highest_rating",
+        "location_id": "/m/02cl1",
+        "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
+        "min_guest_rating": 4.0,
+        "amenities": [
+          "air_conditioned",
+          "kid_friendly"
+        ],
+        "hotel_stars": [
+          4,
+          5
+        ],
+        "price_min": 100,
+        "price_max": 300,
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGlsKPRI5CggvbS8wMmNsMTIlMHg4NzZiODBhYTIzMWYxN2NmOjB4MTE4ZWY0ZjgyNzhhMzZkNjoGRGVudmVyGgASGhIUCgcI6g8QCBgJEgcI6g8QCBgQGAcyAggBKiIKDwoCDCgSAgQFKAg6A0VVUhoAIgsKAhBkEgMQrAIYASgI"
+    },
+    {
+      "name": "berlin01_highest_rating",
+      "description": "Berlin with highest_rating sort",
+      "input": {
+        "display_name": "Berlin",
+        "checkin_date": "2026-04-01",
+        "checkout_date": "2026-04-10",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "highest_rating",
+        "location_id": "/m/0156q",
+        "coordinates": "0x47a84e373f035901:0x42120465b5e3b70",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGloKPBI4CggvbS8wMTU2cTIkMHg0N2E4NGUzNzNmMDM1OTAxOjB4NDIxMjA0NjViNWUzYjcwOgZCZXJsaW4aABIaEhQKBwjqDxAEGAESBwjqDxAEGAoYCTICCAEqDQoJKAg6A0VVUlAAGgA"
+    },
+    {
+      "name": "berlin02_most_reviewed",
+      "description": "Berlin with most_reviewed sort",
+      "input": {
+        "display_name": "Berlin",
+        "checkin_date": "2026-04-01",
+        "checkout_date": "2026-04-10",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "most_reviewed",
+        "location_id": "/m/0156q",
+        "coordinates": "0x47a84e373f035901:0x42120465b5e3b70",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGloKPBI4CggvbS8wMTU2cTIkMHg0N2E4NGUzNzNmMDM1OTAxOjB4NDIxMjA0NjViNWUzYjcwOgZCZXJsaW4aABIaEhQKBwjqDxAEGAESBwjqDxAEGAoYCTICCAEqEQoJKA06A0VVUlAAGgAiAhgB"
+    },
+    {
+      "name": "berlin03_lowest_price",
+      "description": "Berlin with lowest_price sort",
+      "input": {
+        "display_name": "Berlin",
+        "checkin_date": "2026-04-01",
+        "checkout_date": "2026-04-10",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "lowest_price",
+        "location_id": "/m/0156q",
+        "coordinates": "0x47a84e373f035901:0x42120465b5e3b70",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGloKPBI4CggvbS8wMTU2cTIkMHg0N2E4NGUzNzNmMDM1OTAxOjB4NDIxMjA0NjViNWUzYjcwOgZCZXJsaW4aABIaEhQKBwjqDxAEGAESBwjqDxAEGAoYCTICCAEqEQoJKAM6A0VVUlAAGgAiAhgB"
+    },
+    {
+      "name": "berlin04_relevance",
+      "description": "Berlin with relevance (default) sort",
+      "input": {
+        "display_name": "Berlin",
+        "checkin_date": "2026-04-01",
+        "checkout_date": "2026-04-10",
+        "guests": {
+          "adults": 3,
+          "children_with_ages": [
+            12,
+            8,
+            5
+          ]
+        },
+        "currency": "EUR",
+        "sort_by": "relevance",
+        "location_id": "/m/0156q",
+        "coordinates": "0x47a84e373f035901:0x42120465b5e3b70",
+        "used_guests_dropdown": true
+      },
+      "expected_ts": "CAESIAoCCAMKAggDCgIIAwoECAIQDAoECAIQCAoECAIQBRABGloKPBI4CggvbS8wMTU2cTIkMHg0N2E4NGUzNzNmMDM1OTAxOjB4NDIxMjA0NjViNWUzYjcwOgZCZXJsaW4aABIaEhQKBwjqDxAEGAESBwjqDxAEGAoYCTICCAEqDwoHOgNFVVJQABoAIgIYAQ"
+    }
+  ]
+}

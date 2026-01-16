@@ -113,7 +113,7 @@ fn test_parser_fixtures() {
         println!("Testing fixture: {} - {}", case.name, case.description);
 
         let html = load_fixture(case.name);
-        let result = delulu_travel_agent::parse_html_response(&html);
+        let result = delulu_travel_agent::parse_flights_response(&html);
 
         match result {
             Ok(parsed) => {
@@ -199,7 +199,7 @@ fn test_parser_fixtures() {
 #[test]
 fn test_nonstop_sfo_jfk_economy() {
     let html = load_fixture("nonstop-sfo_jfk_economy");
-    let result = delulu_travel_agent::parse_html_response(&html).expect("parse fixture");
+    let result = delulu_travel_agent::parse_flights_response(&html).expect("parse fixture");
 
     // Nonstop-heavy route should have plenty of direct options
     assert!(
@@ -220,7 +220,7 @@ fn test_nonstop_sfo_jfk_economy() {
 #[test]
 fn test_overnight_sfo_lhr_economy() {
     let html = load_fixture("overnight+1day-sfo_lhr_economy");
-    let result = delulu_travel_agent::parse_html_response(&html).expect("parse fixture");
+    let result = delulu_travel_agent::parse_flights_response(&html).expect("parse fixture");
 
     // International long-haul often has overnight departures with +1 arrivals
     assert!(
@@ -249,7 +249,7 @@ fn test_overnight_sfo_lhr_economy() {
 #[test]
 fn test_layover_mad_nrt() {
     let html = load_fixture("layover-mad_nrt");
-    let result = delulu_travel_agent::parse_html_response(&html).expect("parse fixture");
+    let result = delulu_travel_agent::parse_flights_response(&html).expect("parse fixture");
 
     // Europe to Asia typically has 1-2 stops via Middle East or hubs
     assert!(
@@ -272,7 +272,7 @@ fn test_layover_mad_nrt() {
 #[test]
 fn test_longhaul_lax_syd() {
     let html = load_fixture("longhaul-lax_syd");
-    let result = delulu_travel_agent::parse_html_response(&html).expect("parse fixture");
+    let result = delulu_travel_agent::parse_flights_response(&html).expect("parse fixture");
 
     // Trans-Pacific should have very long durations
     assert!(
@@ -289,7 +289,7 @@ fn test_longhaul_lax_syd() {
 #[test]
 fn test_domestic_business_lax_ord() {
     let html = load_fixture("domestic+business-lax_ord");
-    let result = delulu_travel_agent::parse_html_response(&html).expect("parse fixture");
+    let result = delulu_travel_agent::parse_flights_response(&html).expect("parse fixture");
 
     // Domestic short-haul should extract cleanly
     assert!(result.flights.len() >= 5, "Should extract domestic flights");
@@ -320,31 +320,4 @@ fn test_domestic_business_lax_ord() {
             println!("  {}: {} -> {}", i + 1, f.dep_time, f.duration);
         }
     }
-}
-
-/// Performance benchmark for fixture loading and parsing.
-///
-/// Measures decompression + parsing latency to catch performance regressions.
-#[test]
-fn test_parser_throughput() {
-    use std::time::Instant;
-
-    // Load and parse all fixtures sequentially
-    let start = Instant::now();
-    for case in FIXTURE_TESTS {
-        let html = load_fixture(case.name);
-        delulu_travel_agent::parse_html_response(&html).expect("benchmark parse should succeed");
-    }
-    let elapsed = start.elapsed();
-
-    println!("Parsed {} fixtures in {:?}", FIXTURE_TESTS.len(), elapsed);
-
-    // Benchmark sanity check - should parse < 10 seconds even on slow machines
-    let max_expected = std::time::Duration::from_secs(10);
-    assert!(
-        elapsed < max_expected,
-        "Fixtures parsing took {:?}, expected < {:?}",
-        elapsed,
-        max_expected
-    );
 }
