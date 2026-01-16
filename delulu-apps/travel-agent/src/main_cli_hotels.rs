@@ -58,9 +58,8 @@
 //! - Available amenities
 
 use anyhow::Result;
-use chrono::Duration;
 use clap::{Parser, ValueEnum};
-use delulu_travel_agent::{Amenity, GoogleHotelsClient, HotelSearchParams};
+use delulu_travel_agent::{GoogleHotelsClient, HotelSearchParams, Amenity};
 use std::println;
 
 #[derive(Parser, Debug)]
@@ -173,11 +172,6 @@ async fn main() -> Result<()> {
 
     let checkin = parse_date(&args.checkin)?;
     let checkout = parse_date(&args.checkout)?;
-    let checkout = if checkout <= checkin {
-        checkin + Duration::days(2)
-    } else {
-        checkout
-    };
 
     let children_ages = args
         .children

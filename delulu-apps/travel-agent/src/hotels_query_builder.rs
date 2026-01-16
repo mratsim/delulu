@@ -45,7 +45,7 @@ pub struct HotelSearchParams {
     pub nights: i32,
     pub used_guests_dropdown: i32,
     pub currency: String,
-    pub sort_order: Option<String>,
+    pub sort_order: Option<i32>,
     pub min_guest_rating: Option<f64>,
     pub hotel_stars: Vec<i32>,
     pub amenities: Vec<Amenity>,
@@ -219,13 +219,7 @@ impl HotelSearchParams {
                     currency: self.currency.clone(),
                     amenity: self.amenities.iter().map(|&a| a as i32).collect(),
                     stars: self.hotel_stars.clone(),
-                    sort_type: self
-                        .sort_order
-                        .as_ref()
-                        .and_then(|s| {
-                            proto::SortType::from_str_name(&s.to_uppercase()).map(|st| st as i32)
-                        })
-                        .unwrap_or(0),
+                    sort_type: self.sort_order.unwrap_or(0),
                     padding: Some(proto::UnknownMessage { flags: 0 }),
                 }),
                 guest_rating: guest_rating_val,
@@ -327,9 +321,7 @@ impl HotelSearchParams {
                     hotel_stars.push(star);
                 }
                 if f.sort_type != 0 {
-                    if let Some(sort_type) = proto::SortType::try_from(f.sort_type).ok() {
-                        sort_order = Some(sort_type.as_str_name().to_lowercase());
-                    }
+                    sort_order = Some(f.sort_type);
                 }
             }
             if let Some(pd) = &fc.price_data {
@@ -446,11 +438,7 @@ impl HotelSearchParamsBuilder {
             nights: (self.checkout_date - self.checkin_date).num_days() as i32,
             used_guests_dropdown: 0,
             currency: self.currency.unwrap_or_default(),
-            sort_order: self.sort_order.and_then(|s| {
-                proto::SortType::try_from(s)
-                    .ok()
-                    .map(|st| st.as_str_name().to_lowercase())
-            }),
+            sort_order: self.sort_order,
             min_guest_rating: self.min_guest_rating,
             hotel_stars: self.hotel_stars,
             amenities: self.amenities,
