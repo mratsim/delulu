@@ -239,12 +239,7 @@ async fn main() -> Result<()> {
     .sort_order(sort_order)
     .build()?;
 
-    let ts_param = request.generate_ts()?;
-    let encoded_location = urlencoding::encode(&args.location);
-    let search_url = format!(
-        "https://www.google.com/travel/search?q={}&ts={}",
-        encoded_location, ts_param
-    );
+    let search_url = request.get_search_url();
 
     let children_count = children_ages.len() as u32;
 

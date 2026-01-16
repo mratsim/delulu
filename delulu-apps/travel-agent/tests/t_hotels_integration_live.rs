@@ -127,14 +127,12 @@ fn test_url_construction_sanity() {
         .build()
         .expect("params should build");
 
-    let ts = params.generate_ts().expect("TS encoding should work");
-
-    let url = format!("https://www.google.com/travel/hotels/tokyo?ths={}", ts);
+    let url = params.get_search_url();
     assert!(
-        url.starts_with("https://www.google.com/travel/hotels/tokyo?ths="),
-        "URL should start with hotel endpoint"
+        url.starts_with("https://www.google.com/travel/search?q="),
+        "URL should start with search endpoint"
     );
-    assert!(!ts.is_empty(), "Base64 should not be empty");
+    assert!(url.contains("ts="), "URL should contain ts param");
 
     println!(
         "Constructed URL (first 100 chars): {}",

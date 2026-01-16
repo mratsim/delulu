@@ -28,14 +28,6 @@ use std::sync::Arc;
 use wreq::redirect::Policy;
 use wreq_util::Emulation;
 
-pub fn build_search_url(location: &str, ts_param: &str) -> String {
-    let encoded_location = urlencoding::encode(location);
-    format!(
-        "https://www.google.com/travel/search?q={}&ts={}",
-        encoded_location, ts_param
-    )
-}
-
 #[derive(Clone)]
 pub struct GoogleHotelsClient {
     client: Arc<wreq::Client>,
@@ -59,15 +51,13 @@ impl GoogleHotelsClient {
 
 impl GoogleHotelsClient {
     async fn fetch_raw(&self, request: &HotelSearchParams) -> Result<String> {
-        let ts_param = request.generate_ts().context("TS encode failed")?;
-        let location = request.location();
         let cookie_header = generate_cookie_header();
         let client_inner = Arc::clone(&self.client);
 
         let response = self
             .query_queue
             .with_retry(move || {
-                let url = build_search_url(&location, &ts_param);
+                let url = request.get_search_url();
                 let cookie = cookie_header.clone();
                 let http_client = client_inner.clone();
                 async move {
@@ -87,7 +77,8 @@ impl GoogleHotelsClient {
         let body = response.text().await.context("Read body")?;
 
         if !status.is_success() {
-            bail!("HTTP error {}: {}", status, &body[..body.len().min(500)]);
+            let body_preview = body.chars().take(500).collect::<String>();
+            bail!("HTTP error {}: {}", status, body_preview);
         }
 
         let is_consent_page = body.contains("consent.google.com")
@@ -95,11 +86,12 @@ impl GoogleHotelsClient {
             || body.contains("ppConfig");
 
         if is_consent_page {
+            let body_preview = body.chars().take(300).collect::<String>();
             bail!(
                 "Consent wall detected - cookies not accepted. \
                  Consider using a proxy or residential IP. \
                  Body preview: {}",
-                &body[..body.len().min(300)]
+                body_preview
             );
         }
 

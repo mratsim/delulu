@@ -236,6 +236,15 @@ impl HotelSearchParams {
         Ok(URL_SAFE_NO_PAD.encode(&bytes))
     }
 
+    pub fn get_search_url(&self) -> String {
+        let ts_param = self.generate_ts().expect("TS encoding should work");
+        let encoded_location = urlencoding::encode(&self.loc_q_search);
+        format!(
+            "https://www.google.com/travel/search?q={}&ts={}",
+            encoded_location, ts_param
+        )
+    }
+
     pub fn from_ts(ts_base64: &str) -> Result<Self> {
         let ts_bytes = URL_SAFE_NO_PAD
             .decode(ts_base64)
