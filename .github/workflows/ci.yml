@@ -90,8 +90,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Use typos with config file
         uses: crate-ci/typos@master
-        # with:
-        #   config: .config/typos.toml
+        with:
+          config: .typos.toml
 
   unused_dependencies_machete:
     runs-on: ubuntu-latest

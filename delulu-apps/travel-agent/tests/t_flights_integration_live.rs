@@ -46,7 +46,8 @@ use wreq::redirect::Policy;
 use wreq_util::Emulation;
 
 use delulu_travel_agent::{
-    encode_tfs, parse_html_response, CabinClass, FlightSearchConfig, PassengerType, Tfs, TripType,
+    encode_tfs, parse_flights_response, CabinClass, FlightSearchConfig, PassengerType, Tfs,
+    TripType,
 };
 
 // Compute dates dynamically to avoid stale tests
@@ -186,7 +187,7 @@ async fn execute_query(
     println!("Response body: {} KB", body_len_kb);
 
     // Try parsing HTML
-    match parse_html_response(&body) {
+    match parse_flights_response(&body) {
         Ok(parsed) => {
             println!("Parsed {} flights", parsed.flights.len());
             if let Some(ref price) = parsed.best_price {

@@ -90,8 +90,7 @@ impl GoogleFlightsClient {
         tracing::info!(url = %url, "Generated search URL");
 
         // Generate fresh SOCS cookie (avoids 302 redirect from stale cookies)
-        let cookie_header = generate_cookie_header(&self.language, None)
-            .map_err(|e| anyhow!("Failed to generate SOCS cookie: {:?}", e))?;
+        let cookie_header = generate_cookie_header();
 
         // Clone client arc for use in retry closure (must be cloneable for FnMut closure)
         let client_inner = Arc::clone(&self.client);
@@ -115,7 +114,7 @@ impl GoogleFlightsClient {
             .map_err(|e| anyhow!("Request failed: {:?}", e))?;
 
         let text = response.text().await.context("Read response body")?;
-        let parsed = parse_html_response(&text)?;
+        let parsed = parse_flights_response(&text)?;
         let itineraries = convert_to_itineraries(parsed, config);
 
         Ok(FlightSearchResult {
@@ -346,7 +345,7 @@ fn extract_price_from_text(text: &str) -> Option<String> {
     PRICE_RE.find(text).map(|m| m.as_str().to_string())
 }
 
-pub fn parse_html_response(html: &str) -> Result<ParsedFlightResults> {
+pub fn parse_flights_response(html: &str) -> Result<ParsedFlightResults> {
     let selectors = FlightSelectors::new();
     let document = Html::parse_document(html);
 

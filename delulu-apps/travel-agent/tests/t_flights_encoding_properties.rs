@@ -21,7 +21,6 @@
 //! - All cabin classes encode correctly
 //! - Valid passenger combinations encode correctly
 //! - Invalid passenger combinations are rejected
-//! - Throughput benchmarks
 //!
 //! Run with:
 //!     cargo test --test t_flights_encoding_properties
