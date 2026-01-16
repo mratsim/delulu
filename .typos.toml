@@ -1,2 +1,2 @@
 [files]
-exclude = ["*.json", "*.jsonc"]
+extend-exclude = ["*.json", "*.jsonc"]

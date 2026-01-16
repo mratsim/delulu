@@ -74,8 +74,9 @@ impl HotelSearchResult {
                 .or_else(|| card.select(&selectors.rating_aria).next())
                 .and_then(|e| e.text().collect::<String>().trim().parse().ok());
             let reviews = card.select(&selectors.reviews).next().and_then(|e| {
-                let text = e.text().collect::<String>();
-                text.trim_matches(|c: char| !c.is_numeric()).parse().ok()
+                let text: String = e.text().collect();
+                let digits: String = text.chars().filter(|c| c.is_ascii_digit()).collect();
+                digits.parse().ok()
             });
             let amenities: Vec<String> = card
                 .select(&selectors.amenities)

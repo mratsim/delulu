@@ -85,7 +85,7 @@
     },
     {
       "name": "paris05_champs_elysees_no_filters",
-      "description": "Champs-Élysées district, 4 adults + 2 children (15yo, 6yo), no filters",
+      "description": "Champs-Élysées district, 4 adults + 2 children (0~1yo, 0~1yo), no filters",
       "input": {
         "display_name": "Champs-Élysées",
         "checkin_date": "2026-01-31",

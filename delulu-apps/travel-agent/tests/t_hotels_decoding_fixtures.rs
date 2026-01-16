@@ -9,14 +9,16 @@
 //! Combined with `t_hotels_codec_roundtrip.rs`, we can be more confident that our encoder matches Google's
 //! and so that our protobuf schema is correct.
 
-use delulu_travel_agent::HotelSearchParams;
+use delulu_travel_agent::{HotelSearchParams, SortType};
 use std::fs;
 
 #[derive(serde::Deserialize)]
 struct TestVectorCase {
     name: String,
+    #[allow(dead_code)]
     description: String,
     input: TestVectorInput,
+    #[allow(dead_code)]
     expected_ts: String,
 }
 
@@ -24,6 +26,7 @@ struct TestVectorCase {
 struct TestVectorInput {
     display_name: String,
     checkin_date: String,
+    #[allow(dead_code)]
     checkout_date: String,
     guests: TestVectorGuests,
     currency: String,
@@ -46,6 +49,7 @@ struct TestVectorGuests {
 
 #[derive(serde::Deserialize)]
 struct TestVectors {
+    #[allow(dead_code)]
     description: String,
     cases: Vec<TestVectorCase>,
 }
@@ -165,12 +169,10 @@ fn test_validate_decoder_with_ui() {
                     .collect();
                 let expected_guest_rating = case.input.min_guest_rating;
 
-                let expected_sort =
-                    if case.input.sort_by == "unspecified" || case.input.sort_by == "relevance" {
-                        None
-                    } else {
-                        Some(case.input.sort_by.clone())
-                    };
+                let expected_sort = match case.input.sort_by.to_uppercase().as_str() {
+                    "RELEVANCE" => None,
+                    _ => SortType::from_str_name(&case.input.sort_by.to_uppercase()).map(|s| s as i32),
+                };
 
                 let actual_stars: Vec<i32> = decoded.hotel_stars.clone();
 
@@ -179,7 +181,7 @@ fn test_validate_decoder_with_ui() {
 
                 let actual_guest_rating = decoded.min_guest_rating;
 
-                let actual_sort = decoded.sort_order.clone().map(|s| s.to_string());
+                let actual_sort = decoded.sort_order;
 
                 let mut star_mismatch = false;
                 if expected_stars.is_empty() && !actual_stars.is_empty() {

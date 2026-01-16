@@ -29,7 +29,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
 
-pub use proto::Amenity;
+pub use proto::{Amenity, SortType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HotelSearchParams {
@@ -135,6 +135,7 @@ impl HotelSearchParams {
     }
 
     pub fn generate_ts(&self) -> Result<String> {
+        self.validate()?;
         let checkin = NaiveDate::parse_from_str(&self.checkin_date, "%Y-%m-%d")
             .context(format!("Invalid checkin date: {}", self.checkin_date))?;
         let checkout = NaiveDate::parse_from_str(&self.checkout_date, "%Y-%m-%d")

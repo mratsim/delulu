@@ -2,13 +2,16 @@
 //! This test validates internal consistency via an encoder->decoder roundtrip
 
 use delulu_travel_agent::HotelSearchParams;
+use delulu_travel_agent::SortType;
 use std::fs;
 
 #[derive(serde::Deserialize)]
 struct TestVectorCase {
     name: String,
+    #[allow(dead_code)]
     description: String,
     input: TestVectorInput,
+    #[allow(dead_code)]
     expected_ts: String,
 }
 
@@ -27,6 +30,7 @@ struct TestVectorInput {
     sort_by: String,
     location_id: String,
     coordinates: String,
+    #[allow(dead_code)]
     used_guests_dropdown: bool,
 }
 
@@ -38,6 +42,7 @@ struct TestVectorGuests {
 
 #[derive(serde::Deserialize)]
 struct TestVectors {
+    #[allow(dead_code)]
     description: String,
     cases: Vec<TestVectorCase>,
 }
@@ -73,11 +78,9 @@ fn test_roundtrip_internal_codec() {
             .iter()
             .filter_map(|a| delulu_travel_agent::Amenity::from_str_name(&a.to_uppercase()))
             .collect();
-        let sort_order = match case.input.sort_by.as_str() {
-            "highest_rating" => Some(8),
-            "most_reviewed" => Some(13),
-            "lowest_price" => Some(3),
-            "relevance" | "unspecified" | _ => None,
+        let sort_order = match case.input.sort_by.to_uppercase().as_str() {
+            "RELEVANCE" => None,
+            _ => SortType::from_str_name(&case.input.sort_by.to_uppercase()).map(|s| s as i32),
         };
         let min_price = case.input.price_min.map(|p| p as i32);
         let max_price = case.input.price_max.map(|p| p as i32);
@@ -111,7 +114,7 @@ fn test_roundtrip_internal_codec() {
         match params {
             Ok(mut params) => match params.generate_ts() {
                 Ok(encoded) => match HotelSearchParams::from_ts(&encoded) {
-                    Ok(decoded) => {
+                    Ok(_decoded) => {
                         params.loc_ts_id = case.input.location_id.clone();
                         params.loc_ts_coords = case.input.coordinates.clone();
                         params.loc_ts_name = case.input.display_name.clone();
@@ -160,13 +163,9 @@ fn test_roundtrip_internal_codec() {
                             expected_filters.push(format!("min_price: {}", min as i32));
                         }
                         if let Some(sort_val) = sort_order {
-                            let sort_str = match sort_val {
-                                8 => "highest_rating",
-                                13 => "most_reviewed",
-                                3 => "lowest_price",
-                                _ => "relevance",
-                            };
-                            expected_filters.push(format!("sort: {}", sort_str));
+                            if let Some(sort_type) = SortType::try_from(sort_val).ok() {
+                                expected_filters.push(format!("sort: {}", sort_type.as_str_name()));
+                            }
                         }
 
                         let mut actual_filters: Vec<String> = Vec::new();
@@ -185,8 +184,10 @@ fn test_roundtrip_internal_codec() {
                         if let Some(p) = params.min_price {
                             actual_filters.push(format!("min_price: {}", p));
                         }
-                        if let Some(ref s) = params.sort_order {
-                            actual_filters.push(format!("sort: {}", s));
+                        if let Some(sort_val) = params.sort_order {
+                            if let Some(sort_type) = SortType::try_from(sort_val).ok() {
+                                actual_filters.push(format!("sort: {}", sort_type.as_str_name()));
+                            }
                         }
                         actual_filters.sort();
                         let mut expected_sorted = expected_filters.clone();

@@ -29,7 +29,7 @@ use wreq::redirect::Policy;
 use wreq_util::Emulation;
 
 fn build_search_url(location: &str, ts_param: &str) -> String {
-    let encoded_location = location.replace(' ', "+");
+    let encoded_location = urlencoding::encode(location);
     format!(
         "https://www.google.com/travel/search?q={}&ts={}",
         encoded_location, ts_param
@@ -85,6 +85,14 @@ impl GoogleHotelsClient {
 
         let status = response.status();
         let body = response.text().await.context("Read body")?;
+
+        if !status.is_success() {
+            bail!(
+                "HTTP error {}: {}",
+                status,
+                &body[..body.len().min(500)]
+            );
+        }
 
         let is_consent_page = body.contains("consent.google.com")
             || body.contains("base href=\"https://consent.google.com\"")

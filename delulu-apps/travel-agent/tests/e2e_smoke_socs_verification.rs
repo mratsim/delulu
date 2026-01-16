@@ -3,7 +3,6 @@
 //! Run: cargo test --test e2e_smoke_socs_verification -- --ignored --nocapture
 
 use anyhow::Result;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use delulu_travel_agent::consent_cookie;
 use wreq::redirect::Policy;
 use wreq_util::Emulation;
@@ -57,13 +56,13 @@ async fn test_hotels_socs() -> Result<()> {
     let client = build_wreq_client();
     let header = consent_cookie::generate_cookie_header();
     let resp = client
-        .get("https://www.google.com/travel/search?tokyo")
+        .get("https://www.google.com/travel/search?q=tokyo")
         .header("Cookie", &header)
         .send()
         .await?;
     let txt = resp.text().await?;
     assert!(!is_consent_page(&txt), "Not blocked");
     assert!(has_hotel_content(&txt), "Has hotel content");
-    println!("test_hotels_socs: PASS (not blocked, has flight content)");
+    println!("test_hotels_socs: PASS (not blocked, has hotel content)");
     Ok(())
 }

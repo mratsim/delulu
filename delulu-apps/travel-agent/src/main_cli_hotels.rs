@@ -59,7 +59,7 @@
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use delulu_travel_agent::{GoogleHotelsClient, HotelSearchParams, Amenity};
+use delulu_travel_agent::{Amenity, GoogleHotelsClient, HotelSearchParams};
 use std::println;
 
 #[derive(Parser, Debug)]
@@ -156,13 +156,20 @@ fn parse_amenities(s: &str) -> Vec<Amenity> {
         .collect()
 }
 
-fn parse_stars(s: &str) -> Vec<i32> {
+fn parse_stars(s: &str) -> Result<Vec<i32>> {
     if s.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     s.split(',')
-        .map(|a| a.trim().parse())
-        .filter_map(|r| r.ok())
+        .map(|a| {
+            let v: i32 = a.trim().parse()
+                .map_err(|_| anyhow::anyhow!("Invalid star rating: {}", a.trim()))?;
+            if (1..=5).contains(&v) {
+                Ok(v)
+            } else {
+                Err(anyhow::anyhow!("Star rating out of range (1-5): {}", v))
+            }
+        })
         .collect()
 }
 
@@ -181,7 +188,13 @@ async fn main() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to parse children ages: {}", e))?
         .unwrap_or_default();
 
-    let stars_filter: Vec<i32> = args.stars.as_deref().map(parse_stars).unwrap_or_default();
+    let stars_filter: Vec<i32> = args
+        .stars
+        .as_deref()
+        .map(parse_stars)
+        .transpose()
+        .map_err(|e| anyhow::anyhow!("Failed to parse stars: {}", e))?
+        .unwrap_or_default();
     let amenities_filter: Vec<Amenity> = args
         .amenities
         .as_deref()
@@ -190,9 +203,9 @@ async fn main() -> Result<()> {
 
     let sort_order = match args.sort {
         Some(SortOption::Relevance) => None,
-        Some(SortOption::LowestPrice) => Some(3),
-        Some(SortOption::HighestRating) => Some(8),
-        Some(SortOption::MostReviewed) => Some(13),
+        Some(SortOption::LowestPrice) => Some(delulu_travel_agent::SortType::LowestPrice as i32),
+        Some(SortOption::HighestRating) => Some(delulu_travel_agent::SortType::HighestRating as i32),
+        Some(SortOption::MostReviewed) => Some(delulu_travel_agent::SortType::MostReviewed as i32),
         None => None,
     };
 
@@ -213,9 +226,10 @@ async fn main() -> Result<()> {
     .build()?;
 
     let ts_param = request.generate_ts()?;
+    let encoded_location = urlencoding::encode(&args.location);
     let search_url = format!(
         "https://www.google.com/travel/search?q={}&ts={}",
-        args.location.replace(' ', "+"),
+        encoded_location,
         ts_param
     );
 
