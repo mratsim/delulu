@@ -37,7 +37,10 @@ async fn test_google_hotels_full_flow() -> Result<()> {
         .await
         .is_ok();
 
-    println!("Consent button found: {}, Hotels found: {}", has_consent, has_hotels);
+    println!(
+        "Consent button found: {}, Hotels found: {}",
+        has_consent, has_hotels
+    );
 
     if has_consent {
         println!("BLOCKED by consent wall - clicking accept...");

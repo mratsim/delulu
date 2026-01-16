@@ -162,7 +162,9 @@ fn parse_stars(s: &str) -> Result<Vec<i32>> {
     }
     s.split(',')
         .map(|a| {
-            let v: i32 = a.trim().parse()
+            let v: i32 = a
+                .trim()
+                .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid star rating: {}", a.trim()))?;
             if (1..=5).contains(&v) {
                 Ok(v)
@@ -204,7 +206,9 @@ async fn main() -> Result<()> {
     let sort_order = match args.sort {
         Some(SortOption::Relevance) => None,
         Some(SortOption::LowestPrice) => Some(delulu_travel_agent::SortType::LowestPrice as i32),
-        Some(SortOption::HighestRating) => Some(delulu_travel_agent::SortType::HighestRating as i32),
+        Some(SortOption::HighestRating) => {
+            Some(delulu_travel_agent::SortType::HighestRating as i32)
+        }
         Some(SortOption::MostReviewed) => Some(delulu_travel_agent::SortType::MostReviewed as i32),
         None => None,
     };
@@ -229,8 +233,7 @@ async fn main() -> Result<()> {
     let encoded_location = urlencoding::encode(&args.location);
     let search_url = format!(
         "https://www.google.com/travel/search?q={}&ts={}",
-        encoded_location,
-        ts_param
+        encoded_location, ts_param
     );
 
     let children_count = children_ages.len() as u32;

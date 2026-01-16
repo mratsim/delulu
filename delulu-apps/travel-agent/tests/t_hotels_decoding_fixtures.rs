@@ -171,7 +171,8 @@ fn test_validate_decoder_with_ui() {
 
                 let expected_sort = match case.input.sort_by.to_uppercase().as_str() {
                     "RELEVANCE" => None,
-                    _ => SortType::from_str_name(&case.input.sort_by.to_uppercase()).map(|s| s as i32),
+                    _ => SortType::from_str_name(&case.input.sort_by.to_uppercase())
+                        .map(|s| s as i32),
                 };
 
                 let actual_stars: Vec<i32> = decoded.hotel_stars.clone();

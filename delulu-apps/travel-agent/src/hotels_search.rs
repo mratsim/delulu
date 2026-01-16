@@ -87,11 +87,7 @@ impl GoogleHotelsClient {
         let body = response.text().await.context("Read body")?;
 
         if !status.is_success() {
-            bail!(
-                "HTTP error {}: {}",
-                status,
-                &body[..body.len().min(500)]
-            );
+            bail!("HTTP error {}: {}", status, &body[..body.len().min(500)]);
         }
 
         let is_consent_page = body.contains("consent.google.com")
