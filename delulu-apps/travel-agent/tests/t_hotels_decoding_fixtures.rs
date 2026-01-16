@@ -54,8 +54,8 @@ struct TestVectors {
 fn test_validate_decoder_with_ui() {
     let data = fs::read_to_string("tests/fixtures-google-hotels/ts_vectors.json")
         .expect("Failed to read ts_vectors.json");
-    let test_vectors: TestVectors = serde_json::from_str(&data)
-        .expect("Failed to parse ts_vectors.json");
+    let test_vectors: TestVectors =
+        serde_json::from_str(&data).expect("Failed to parse ts_vectors.json");
 
     println!("\n=== VALIDATION: Decoded values against Google's actual protobuf ===\n");
     println!("Validating:");
@@ -90,13 +90,22 @@ fn test_validate_decoder_with_ui() {
                 };
 
                 if !location_id_matches {
-                    failures.push(format!("location_id: expected '{}', got '{}'", case.input.location_id, decoded.loc_ts_id));
+                    failures.push(format!(
+                        "location_id: expected '{}', got '{}'",
+                        case.input.location_id, decoded.loc_ts_id
+                    ));
                 }
                 if !coordinates_matches {
-                    failures.push(format!("coordinates: expected '{}', got '{}'", case.input.coordinates, decoded.loc_ts_coords));
+                    failures.push(format!(
+                        "coordinates: expected '{}', got '{}'",
+                        case.input.coordinates, decoded.loc_ts_coords
+                    ));
                 }
                 if !display_name_matches {
-                    failures.push(format!("display_name: expected '{}', got '{}'", case.input.display_name, decoded.loc_ts_name));
+                    failures.push(format!(
+                        "display_name: expected '{}', got '{}'",
+                        case.input.display_name, decoded.loc_ts_name
+                    ));
                 }
 
                 let expected_adults = case.input.guests.adults;
@@ -105,42 +114,68 @@ fn test_validate_decoder_with_ui() {
                 let actual_children = decoded.children_ages.len();
 
                 if actual_adults != expected_adults {
-                    failures.push(format!("Adults: expected {}, got {}", expected_adults, actual_adults));
+                    failures.push(format!(
+                        "Adults: expected {}, got {}",
+                        expected_adults, actual_adults
+                    ));
                 }
                 if actual_children != expected_children {
-                    failures.push(format!("Children: expected {}, got {}", expected_children, actual_children));
+                    failures.push(format!(
+                        "Children: expected {}, got {}",
+                        expected_children, actual_children
+                    ));
                 }
 
-                let used_guests_dropdown_matches = decoded.used_guests_dropdown == case.input.used_guests_dropdown as i32;
+                let used_guests_dropdown_matches =
+                    decoded.used_guests_dropdown == case.input.used_guests_dropdown as i32;
                 if !used_guests_dropdown_matches {
-                    failures.push(format!("used_guests_dropdown: expected {}, got {}", case.input.used_guests_dropdown, decoded.used_guests_dropdown));
+                    failures.push(format!(
+                        "used_guests_dropdown: expected {}, got {}",
+                        case.input.used_guests_dropdown, decoded.used_guests_dropdown
+                    ));
                 }
 
                 let date_matches = decoded.checkin_date.contains(&case.input.checkin_date);
                 let currency_matches = decoded.currency == case.input.currency;
 
                 if !date_matches {
-                    failures.push(format!("Date: expected {}, got {}", case.input.checkin_date, decoded.checkin_date));
+                    failures.push(format!(
+                        "Date: expected {}, got {}",
+                        case.input.checkin_date, decoded.checkin_date
+                    ));
                 }
                 if !currency_matches {
-                    failures.push(format!("Currency: expected {}, got {}", case.input.currency, decoded.currency));
+                    failures.push(format!(
+                        "Currency: expected {}, got {}",
+                        case.input.currency, decoded.currency
+                    ));
                 }
 
                 let expected_stars: Vec<i32> = case.input.hotel_stars.clone().unwrap_or_default();
-                let expected_amenities: Vec<i32> = case.input.amenities.as_deref().unwrap_or_default().iter()
-                    .filter_map(|a| delulu_travel_agent::Amenity::from_str_name(&a.to_uppercase()).map(|a| a as i32))
+                let expected_amenities: Vec<i32> = case
+                    .input
+                    .amenities
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|a| {
+                        delulu_travel_agent::Amenity::from_str_name(&a.to_uppercase())
+                            .map(|a| a as i32)
+                    })
                     .collect();
                 let expected_guest_rating = case.input.min_guest_rating;
 
-                let expected_sort = if case.input.sort_by == "unspecified" || case.input.sort_by == "relevance" {
-                    None
-                } else {
-                    Some(case.input.sort_by.clone())
-                };
+                let expected_sort =
+                    if case.input.sort_by == "unspecified" || case.input.sort_by == "relevance" {
+                        None
+                    } else {
+                        Some(case.input.sort_by.clone())
+                    };
 
                 let actual_stars: Vec<i32> = decoded.hotel_stars.clone();
 
-                let actual_amenities: Vec<i32> = decoded.amenities.iter().map(|a| *a as i32).collect();
+                let actual_amenities: Vec<i32> =
+                    decoded.amenities.iter().map(|a| *a as i32).collect();
 
                 let actual_guest_rating = decoded.min_guest_rating;
 
@@ -156,14 +191,20 @@ fn test_validate_decoder_with_ui() {
                     exp_sorted.sort();
                     act_sorted.sort();
                     if exp_sorted != act_sorted {
-                        failures.push(format!("stars: expected {:?}, got {:?}", exp_sorted, act_sorted));
+                        failures.push(format!(
+                            "stars: expected {:?}, got {:?}",
+                            exp_sorted, act_sorted
+                        ));
                         star_mismatch = true;
                     }
                 }
 
                 let mut amenity_mismatch = false;
                 if expected_amenities.is_empty() && !actual_amenities.is_empty() {
-                    failures.push(format!("amenities: expected none, got {:?}", actual_amenities));
+                    failures.push(format!(
+                        "amenities: expected none, got {:?}",
+                        actual_amenities
+                    ));
                     amenity_mismatch = true;
                 } else if !expected_amenities.is_empty() {
                     let mut exp_sorted = expected_amenities.clone();
@@ -171,17 +212,29 @@ fn test_validate_decoder_with_ui() {
                     exp_sorted.sort();
                     act_sorted.sort();
                     if exp_sorted != act_sorted {
-                        failures.push(format!("amenities: expected {:?}, got {:?}", exp_sorted, act_sorted));
+                        failures.push(format!(
+                            "amenities: expected {:?}, got {:?}",
+                            exp_sorted, act_sorted
+                        ));
                         amenity_mismatch = true;
                     }
                 }
 
                 if expected_guest_rating.is_none() && actual_guest_rating.is_some() {
-                    failures.push(format!("guest_rating: expected none, got {:?}", actual_guest_rating));
+                    failures.push(format!(
+                        "guest_rating: expected none, got {:?}",
+                        actual_guest_rating
+                    ));
                 } else if expected_guest_rating.is_some() && actual_guest_rating.is_none() {
-                    failures.push(format!("guest_rating: expected {:?}, got none", expected_guest_rating));
+                    failures.push(format!(
+                        "guest_rating: expected {:?}, got none",
+                        expected_guest_rating
+                    ));
                 } else if expected_guest_rating != actual_guest_rating {
-                    failures.push(format!("guest_rating: expected {:?}, got {:?}", expected_guest_rating, actual_guest_rating));
+                    failures.push(format!(
+                        "guest_rating: expected {:?}, got {:?}",
+                        expected_guest_rating, actual_guest_rating
+                    ));
                 }
 
                 let sort_matches = match (&expected_sort, &actual_sort) {
@@ -191,7 +244,10 @@ fn test_validate_decoder_with_ui() {
                     (Some(_), None) => false,
                 };
                 if !sort_matches {
-                    failures.push(format!("sort: expected {:?}, got {:?}", expected_sort, actual_sort));
+                    failures.push(format!(
+                        "sort: expected {:?}, got {:?}",
+                        expected_sort, actual_sort
+                    ));
                 }
 
                 let expected_max_price = case.input.price_max.map(|p| p as i32);
@@ -201,26 +257,53 @@ fn test_validate_decoder_with_ui() {
                 let actual_min_price = decoded.min_price;
 
                 if expected_max_price.is_none() && actual_max_price.is_some() {
-                    failures.push(format!("max_price: expected none, got {:?}", actual_max_price));
+                    failures.push(format!(
+                        "max_price: expected none, got {:?}",
+                        actual_max_price
+                    ));
                 } else if expected_max_price.is_some() && actual_max_price.is_none() {
-                    failures.push(format!("max_price: expected {:?}, got none", expected_max_price));
+                    failures.push(format!(
+                        "max_price: expected {:?}, got none",
+                        expected_max_price
+                    ));
                 } else if expected_max_price != actual_max_price {
-                    failures.push(format!("max_price: expected {:?}, got {:?}", expected_max_price, actual_max_price));
+                    failures.push(format!(
+                        "max_price: expected {:?}, got {:?}",
+                        expected_max_price, actual_max_price
+                    ));
                 }
 
                 if expected_min_price.is_none() && actual_min_price.is_some() {
-                    failures.push(format!("min_price: expected none, got {:?}", actual_min_price));
+                    failures.push(format!(
+                        "min_price: expected none, got {:?}",
+                        actual_min_price
+                    ));
                 } else if expected_min_price.is_some() && actual_min_price.is_none() {
-                    failures.push(format!("min_price: expected {:?}, got none", expected_min_price));
+                    failures.push(format!(
+                        "min_price: expected {:?}, got none",
+                        expected_min_price
+                    ));
                 } else if expected_min_price != actual_min_price {
-                    failures.push(format!("min_price: expected {:?}, got {:?}", expected_min_price, actual_min_price));
+                    failures.push(format!(
+                        "min_price: expected {:?}, got {:?}",
+                        expected_min_price, actual_min_price
+                    ));
                 }
 
-                let price_matches = expected_max_price == actual_max_price && expected_min_price == actual_min_price;
-                let all_match = location_id_matches && coordinates_matches && display_name_matches
-                    && actual_adults == expected_adults && actual_children == expected_children
-                    && used_guests_dropdown_matches && date_matches && currency_matches && !star_mismatch && !amenity_mismatch
-                    && sort_matches && price_matches;
+                let price_matches = expected_max_price == actual_max_price
+                    && expected_min_price == actual_min_price;
+                let all_match = location_id_matches
+                    && coordinates_matches
+                    && display_name_matches
+                    && actual_adults == expected_adults
+                    && actual_children == expected_children
+                    && used_guests_dropdown_matches
+                    && date_matches
+                    && currency_matches
+                    && !star_mismatch
+                    && !amenity_mismatch
+                    && sort_matches
+                    && price_matches;
 
                 if all_match {
                     println!("✓ {} - {}", case.name, case.description);

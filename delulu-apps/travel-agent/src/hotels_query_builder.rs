@@ -25,7 +25,7 @@ pub mod proto {
 }
 
 use anyhow::{bail, Context, Result};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
 
@@ -160,9 +160,18 @@ impl HotelSearchParams {
             marker: Some(proto::UnknownMessage { flags: 0 }),
         };
 
-        let guest_rating_val = self.min_guest_rating.map(|r| {
-            if r >= 4.5 { 9 } else if r >= 4.0 { 8 } else { 7 }
-        }).unwrap_or(0);
+        let guest_rating_val = self
+            .min_guest_rating
+            .map(|r| {
+                if r >= 4.5 {
+                    9
+                } else if r >= 4.0 {
+                    8
+                } else {
+                    7
+                }
+            })
+            .unwrap_or(0);
 
         let price_data = if self.min_price.is_some() || self.max_price.is_some() {
             Some(proto::PriceData {
@@ -210,7 +219,13 @@ impl HotelSearchParams {
                     currency: self.currency.clone(),
                     amenity: self.amenities.iter().map(|&a| a as i32).collect(),
                     stars: self.hotel_stars.clone(),
-                    sort_type: self.sort_order.as_ref().and_then(|s| proto::SortType::from_str_name(&s.to_uppercase()).map(|st| st as i32)).unwrap_or(0),
+                    sort_type: self
+                        .sort_order
+                        .as_ref()
+                        .and_then(|s| {
+                            proto::SortType::from_str_name(&s.to_uppercase()).map(|st| st as i32)
+                        })
+                        .unwrap_or(0),
                     padding: Some(proto::UnknownMessage { flags: 0 }),
                 }),
                 guest_rating: guest_rating_val,
@@ -220,12 +235,15 @@ impl HotelSearchParams {
         };
 
         let mut bytes = Vec::new();
-        params.encode(&mut bytes).context("Failed to encode protobuf")?;
+        params
+            .encode(&mut bytes)
+            .context("Failed to encode protobuf")?;
         Ok(URL_SAFE_NO_PAD.encode(&bytes))
     }
 
     pub fn from_ts(ts_base64: &str) -> Result<Self> {
-        let ts_bytes = URL_SAFE_NO_PAD.decode(ts_base64)
+        let ts_bytes = URL_SAFE_NO_PAD
+            .decode(ts_base64)
             .map_err(|e| anyhow::anyhow!("Failed to decode base64: {}", e))?;
         let params = proto::TravelSearchParams::decode(ts_bytes.as_slice())
             .context("Failed to decode protobuf")?;
@@ -271,10 +289,16 @@ impl HotelSearchParams {
             if let Some(dates) = &sp.dates {
                 if let Some(range) = &dates.date_range {
                     if let Some(checkin) = &range.checkin {
-                        checkin_date = format!("{:04}-{:02}-{:02}", checkin.year, checkin.month, checkin.day);
+                        checkin_date = format!(
+                            "{:04}-{:02}-{:02}",
+                            checkin.year, checkin.month, checkin.day
+                        );
                     }
                     if let Some(checkout) = &range.checkout {
-                        checkout_date = format!("{:04}-{:02}-{:02}", checkout.year, checkout.month, checkout.day);
+                        checkout_date = format!(
+                            "{:04}-{:02}-{:02}",
+                            checkout.year, checkout.month, checkout.day
+                        );
                     }
                     nights = range.nights;
                 }
@@ -299,7 +323,9 @@ impl HotelSearchParams {
                         }
                     }
                 }
-                for &star in &f.stars { hotel_stars.push(star); }
+                for &star in &f.stars {
+                    hotel_stars.push(star);
+                }
                 if f.sort_type != 0 {
                     if let Some(sort_type) = proto::SortType::try_from(f.sort_type).ok() {
                         sort_order = Some(sort_type.as_str_name().to_lowercase());
@@ -307,12 +333,22 @@ impl HotelSearchParams {
                 }
             }
             if let Some(pd) = &fc.price_data {
-                if let Some(v) = &pd.min_price { if v.value != 0 { min_price = Some(v.value); } }
-                if let Some(v) = &pd.max_price { if v.value != 0 { max_price = Some(v.value); } }
+                if let Some(v) = &pd.min_price {
+                    if v.value != 0 {
+                        min_price = Some(v.value);
+                    }
+                }
+                if let Some(v) = &pd.max_price {
+                    if v.value != 0 {
+                        max_price = Some(v.value);
+                    }
+                }
             }
             if fc.guest_rating != 0 {
                 let rating = fc.guest_rating as f64 / 2.0;
-                if rating > 0.0 { min_guest_rating = Some(rating); }
+                if rating > 0.0 {
+                    min_guest_rating = Some(rating);
+                }
             }
         }
 
@@ -410,7 +446,11 @@ impl HotelSearchParamsBuilder {
             nights: (self.checkout_date - self.checkin_date).num_days() as i32,
             used_guests_dropdown: 0,
             currency: self.currency.unwrap_or_default(),
-            sort_order: self.sort_order.and_then(|s| proto::SortType::try_from(s).ok().map(|st| st.as_str_name().to_lowercase())),
+            sort_order: self.sort_order.and_then(|s| {
+                proto::SortType::try_from(s)
+                    .ok()
+                    .map(|st| st.as_str_name().to_lowercase())
+            }),
             min_guest_rating: self.min_guest_rating,
             hotel_stars: self.hotel_stars,
             amenities: self.amenities,

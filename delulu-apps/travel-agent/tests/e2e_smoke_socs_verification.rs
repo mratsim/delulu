@@ -4,9 +4,9 @@
 
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use delulu_travel_agent::consent_cookie;
 use wreq::redirect::Policy;
 use wreq_util::Emulation;
-use delulu_travel_agent::consent_cookie;
 
 fn build_wreq_client() -> wreq::Client {
     wreq::Client::builder()
@@ -38,7 +38,8 @@ async fn test_flights_socs() -> Result<()> {
     println!("\n=== Flights + SOCS ===");
     let client = build_wreq_client();
     let header = consent_cookie::generate_cookie_header();
-    let resp = client.get("https://www.google.com/travel/flights?q=sfo+to+lax")
+    let resp = client
+        .get("https://www.google.com/travel/flights?q=sfo+to+lax")
         .header("Cookie", &header)
         .send()
         .await?;
@@ -55,7 +56,8 @@ async fn test_hotels_socs() -> Result<()> {
     println!("\n=== Hotels + SOCS ===");
     let client = build_wreq_client();
     let header = consent_cookie::generate_cookie_header();
-    let resp = client.get("https://www.google.com/travel/search?tokyo")
+    let resp = client
+        .get("https://www.google.com/travel/search?tokyo")
         .header("Cookie", &header)
         .send()
         .await?;

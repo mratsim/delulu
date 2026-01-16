@@ -107,7 +107,9 @@ impl GoogleHotelsClient {
 
         tracing::debug!(
             "Response: {} chars, has_hotel_markers={}, status={}",
-            body_chars, has_hotel_marker, status
+            body_chars,
+            has_hotel_marker,
+            status
         );
 
         if !has_hotel_marker && body_chars > 1000 {

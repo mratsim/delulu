@@ -60,7 +60,7 @@
 use anyhow::Result;
 use chrono::Duration;
 use clap::{Parser, ValueEnum};
-use delulu_travel_agent::{GoogleHotelsClient, HotelSearchParams, Amenity};
+use delulu_travel_agent::{Amenity, GoogleHotelsClient, HotelSearchParams};
 use std::println;
 
 #[derive(Parser, Debug)]
@@ -76,7 +76,11 @@ struct Args {
     checkout: String,
     #[arg(short = 'a', long, default_value = "2")]
     adults: u32,
-    #[arg(short = 'c', long, help = "Children ages (comma-separated, e.g., 5,10)")]
+    #[arg(
+        short = 'c',
+        long,
+        help = "Children ages (comma-separated, e.g., 5,10)"
+    )]
     children: Option<String>,
     #[arg(short = 'C', long, default_value = "EUR")]
     currency: String,
@@ -84,7 +88,11 @@ struct Args {
     rating: Option<f64>,
     #[arg(short = 's', long, help = "Star ratings (comma-separated, e.g., 4,5)")]
     stars: Option<String>,
-    #[arg(short = 'm', long, help = "Amenities (comma-separated, e.g., spa,pool,kid-friendly)")]
+    #[arg(
+        short = 'm',
+        long,
+        help = "Amenities (comma-separated, e.g., spa,pool,kid-friendly)"
+    )]
     amenities: Option<String>,
     #[arg(long, help = "Minimum price per night")]
     min_price: Option<f64>,
@@ -122,7 +130,8 @@ impl std::fmt::Display for SortOption {
 }
 
 fn parse_date(s: &str) -> Result<chrono::NaiveDate> {
-    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| anyhow::anyhow!("Invalid date: {}", s))
+    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+        .map_err(|_| anyhow::anyhow!("Invalid date: {}", s))
 }
 
 fn parse_children_ages(s: &str) -> Result<Vec<i32>, std::num::ParseIntError> {
@@ -152,7 +161,10 @@ fn parse_stars(s: &str) -> Vec<i32> {
     if s.is_empty() {
         return Vec::new();
     }
-    s.split(',').map(|a| a.trim().parse()).filter_map(|r| r.ok()).collect()
+    s.split(',')
+        .map(|a| a.trim().parse())
+        .filter_map(|r| r.ok())
+        .collect()
 }
 
 #[tokio::main]
@@ -167,7 +179,8 @@ async fn main() -> Result<()> {
         checkout
     };
 
-    let children_ages = args.children
+    let children_ages = args
+        .children
         .as_ref()
         .map(|s| parse_children_ages(s))
         .transpose()
@@ -175,7 +188,11 @@ async fn main() -> Result<()> {
         .unwrap_or_default();
 
     let stars_filter: Vec<i32> = args.stars.as_deref().map(parse_stars).unwrap_or_default();
-    let amenities_filter: Vec<Amenity> = args.amenities.as_deref().map(parse_amenities).unwrap_or_default();
+    let amenities_filter: Vec<Amenity> = args
+        .amenities
+        .as_deref()
+        .map(parse_amenities)
+        .unwrap_or_default();
 
     let sort_order = match args.sort {
         Some(SortOption::Relevance) => None,
@@ -214,9 +231,19 @@ async fn main() -> Result<()> {
     println!("=======================");
     println!("Location: {}", args.location);
     println!("Dates: {} to {}", checkin, checkout);
-    println!("Guests: {} adults, {} children", args.adults, children_count);
+    println!(
+        "Guests: {} adults, {} children",
+        args.adults, children_count
+    );
     if !children_ages.is_empty() {
-        println!("Children ages: {}", children_ages.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(", "));
+        println!(
+            "Children ages: {}",
+            children_ages
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
     if let Some(r) = args.rating {
         println!("Min rating: {}", r);

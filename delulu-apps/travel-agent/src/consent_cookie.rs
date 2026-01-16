@@ -69,8 +69,16 @@ fn make_length_delimited(field_number: u8, data: &[u8]) -> Vec<u8> {
 ///
 /// Base64-encoded SOCS value (without "SOCS=" prefix)
 fn generate_socs_cookie() -> String {
-    let yesterday = Local::now().date_naive().pred_opt().unwrap_or(Local::now().date_naive());
-    let server_tag = format!("boq_identityfrontenduiserver_{}{:02}{:02}.03_p0en", yesterday.year(), yesterday.month(), yesterday.day());
+    let yesterday = Local::now()
+        .date_naive()
+        .pred_opt()
+        .unwrap_or(Local::now().date_naive());
+    let server_tag = format!(
+        "boq_identityfrontenduiserver_{}{:02}{:02}.03_p0en",
+        yesterday.year(),
+        yesterday.month(),
+        yesterday.day()
+    );
     let tag2 = make_length_delimited(2, server_tag.as_bytes());
     let tag3 = make_length_delimited(3, DEFAULT_BINARY_BLOB);
 

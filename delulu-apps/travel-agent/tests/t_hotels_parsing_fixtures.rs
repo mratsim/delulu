@@ -77,7 +77,10 @@ fn test_parse_paris_budget() {
         assert!(!hotel.name.is_empty(), "Hotel name should not be empty");
     }
 
-    println!("Parsed {} hotels from Paris budget fixture", result.hotels.len());
+    println!(
+        "Parsed {} hotels from Paris budget fixture",
+        result.hotels.len()
+    );
 }
 
 #[test]
@@ -91,7 +94,10 @@ fn test_parse_tokyo_5star() {
         result.hotels.len()
     );
 
-    println!("Parsed {} hotels from Tokyo 5-star fixture", result.hotels.len());
+    println!(
+        "Parsed {} hotels from Tokyo 5-star fixture",
+        result.hotels.len()
+    );
 }
 
 #[test]
@@ -105,7 +111,10 @@ fn test_parse_nyc_families() {
         result.hotels.len()
     );
 
-    println!("Parsed {} hotels from NYC families fixture", result.hotels.len());
+    println!(
+        "Parsed {} hotels from NYC families fixture",
+        result.hotels.len()
+    );
 }
 
 #[test]
@@ -119,5 +128,8 @@ fn test_parse_london_long_stay() {
         result.hotels.len()
     );
 
-    println!("Parsed {} hotels from London long stay fixture", result.hotels.len());
+    println!(
+        "Parsed {} hotels from London long stay fixture",
+        result.hotels.len()
+    );
 }

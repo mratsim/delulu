@@ -73,13 +73,10 @@ impl HotelSearchResult {
                 .next()
                 .or_else(|| card.select(&selectors.rating_aria).next())
                 .and_then(|e| e.text().collect::<String>().trim().parse().ok());
-            let reviews = card
-                .select(&selectors.reviews)
-                .next()
-                .and_then(|e| {
-                    let text = e.text().collect::<String>();
-                    text.trim_matches(|c: char| !c.is_numeric()).parse().ok()
-                });
+            let reviews = card.select(&selectors.reviews).next().and_then(|e| {
+                let text = e.text().collect::<String>();
+                text.trim_matches(|c: char| !c.is_numeric()).parse().ok()
+            });
             let amenities: Vec<String> = card
                 .select(&selectors.amenities)
                 .map(|e| e.text().collect::<String>())

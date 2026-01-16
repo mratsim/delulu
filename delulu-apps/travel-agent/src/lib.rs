@@ -30,7 +30,7 @@ mod hotels_search;
 pub use flights_search::*;
 
 // Re-export hotels_query_builder
-pub use hotels_query_builder::{HotelSearchParams, HotelSearchParamsBuilder, Amenity};
+pub use hotels_query_builder::{Amenity, HotelSearchParams, HotelSearchParamsBuilder};
 
 // Re-export hotels_results_parser
 pub use hotels_results_parser::{Hotel, HotelSearchResult};

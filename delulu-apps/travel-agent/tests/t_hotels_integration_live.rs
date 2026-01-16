@@ -39,7 +39,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{Local, Months, NaiveDate};
-use delulu_travel_agent::{GoogleHotelsClient, HotelSearchParams, Amenity};
+use delulu_travel_agent::{Amenity, GoogleHotelsClient, HotelSearchParams};
 use tokio::time::sleep;
 use wreq::redirect::Policy;
 use wreq_util::Emulation;
@@ -97,7 +97,9 @@ async fn execute_query(
         checkout_date,
         adults,
         Vec::new(),
-    ).build().map_err(|e| anyhow::anyhow!(e))?;
+    )
+    .build()
+    .map_err(|e| anyhow::anyhow!(e))?;
 
     println!("\n🏨 Query: {} ({} adults)", location, adults);
     println!("Dates: {} to {}", checkin, checkout);
@@ -133,13 +135,9 @@ fn test_url_construction_sanity() {
     let checkin = today + Months::new(2);
     let checkout = checkin + chrono::Duration::days(2);
 
-    let params = HotelSearchParams::builder(
-        "Tokyo".to_string(),
-        checkin,
-        checkout,
-        2,
-        Vec::new(),
-    ).build().expect("params should build");
+    let params = HotelSearchParams::builder("Tokyo".to_string(), checkin, checkout, 2, Vec::new())
+        .build()
+        .expect("params should build");
 
     let ts = params.generate_ts().expect("TS encoding should work");
 
@@ -148,10 +146,7 @@ fn test_url_construction_sanity() {
         url.starts_with("https://www.google.com/travel/hotels/tokyo?ths="),
         "URL should start with hotel endpoint"
     );
-    assert!(
-        !ts.is_empty(),
-        "Base64 should not be empty"
-    );
+    assert!(!ts.is_empty(), "Base64 should not be empty");
 
     println!(
         "Constructed URL (first 100 chars): {}",
@@ -169,7 +164,8 @@ fn test_request_validation_errors() {
         today,
         2,
         Vec::new(),
-    ).build();
+    )
+    .build();
 
     let bad_dates = HotelSearchParams::builder(
         "Tokyo".to_string(),
@@ -177,12 +173,10 @@ fn test_request_validation_errors() {
         today + chrono::Duration::days(2),
         2,
         Vec::new(),
-    ).build();
+    )
+    .build();
 
-    assert!(
-        bad_dates.is_err(),
-        "Bad date ordering should fail"
-    );
+    assert!(bad_dates.is_err(), "Bad date ordering should fail");
 
     assert!(
         past_req.is_ok(),
@@ -195,10 +189,30 @@ fn test_guests_validation() {
     let today = Local::now().date_naive();
     let checkout = today + chrono::Duration::days(2);
 
-    assert!(HotelSearchParams::builder("Tokyo".to_string(), today, checkout, 2, Vec::new()).build().is_ok());
-    assert!(HotelSearchParams::builder("Tokyo".to_string(), today, checkout, 1, vec![5]).build().is_ok());
-    assert!(HotelSearchParams::builder("Tokyo".to_string(), today, checkout, 0, Vec::new()).build().is_err());
-    assert!(HotelSearchParams::builder("Tokyo".to_string(), today, checkout, 5, vec![5, 5, 5, 5, 5]).build().is_err());
+    assert!(
+        HotelSearchParams::builder("Tokyo".to_string(), today, checkout, 2, Vec::new())
+            .build()
+            .is_ok()
+    );
+    assert!(
+        HotelSearchParams::builder("Tokyo".to_string(), today, checkout, 1, vec![5])
+            .build()
+            .is_ok()
+    );
+    assert!(
+        HotelSearchParams::builder("Tokyo".to_string(), today, checkout, 0, Vec::new())
+            .build()
+            .is_err()
+    );
+    assert!(HotelSearchParams::builder(
+        "Tokyo".to_string(),
+        today,
+        checkout,
+        5,
+        vec![5, 5, 5, 5, 5]
+    )
+    .build()
+    .is_err());
 }
 
 // ============================================================================
@@ -460,7 +474,11 @@ async fn fetch_single_fixture(
     let url_display = &url[0..url.len().min(100)];
     println!("Fetching '{}': {}", name, url_display);
 
-    let resp = client.get(url).send().await.map_err(|e| anyhow::anyhow!(e))?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
     let text = resp.text().await.map_err(|e| anyhow::anyhow!(e))?;
 
     if text.to_lowercase().contains("consent") {
@@ -487,13 +505,9 @@ async fn fetch_fixtures_standard() {
     let checkin = today + Months::new(2);
     let checkout = checkin + chrono::Duration::days(2);
 
-    let params = HotelSearchParams::builder(
-        "Tokyo".to_string(),
-        checkin,
-        checkout,
-        2,
-        Vec::new(),
-    ).build().expect("params should build");
+    let params = HotelSearchParams::builder("Tokyo".to_string(), checkin, checkout, 2, Vec::new())
+        .build()
+        .expect("params should build");
 
     let ts = params.generate_ts().expect("encode ts");
 
@@ -518,17 +532,12 @@ async fn fetch_fixtures_paris_budget() {
     let checkin = today + Months::new(3);
     let checkout = checkin + chrono::Duration::days(2);
 
-    let params = HotelSearchParams::builder(
-        "Paris".to_string(),
-        checkin,
-        checkout,
-        2,
-        Vec::new(),
-    )
-    .min_guest_rating(3.0)
-    .min_price(Some(50))
-    .max_price(Some(150))
-    .build().expect("params should build");
+    let params = HotelSearchParams::builder("Paris".to_string(), checkin, checkout, 2, Vec::new())
+        .min_guest_rating(3.0)
+        .min_price(Some(50))
+        .max_price(Some(150))
+        .build()
+        .expect("params should build");
 
     let ts = params.generate_ts().expect("encode ts");
 
@@ -553,16 +562,11 @@ async fn fetch_fixtures_tokyo_5star() {
     let checkin = today + Months::new(2);
     let checkout = checkin + chrono::Duration::days(2);
 
-    let params = HotelSearchParams::builder(
-        "Tokyo".to_string(),
-        checkin,
-        checkout,
-        2,
-        Vec::new(),
-    )
-    .hotel_stars(vec![5])
-    .min_guest_rating(8.0)
-    .build().expect("params should build");
+    let params = HotelSearchParams::builder("Tokyo".to_string(), checkin, checkout, 2, Vec::new())
+        .hotel_stars(vec![5])
+        .min_guest_rating(8.0)
+        .build()
+        .expect("params should build");
 
     let ts = params.generate_ts().expect("encode ts");
 
@@ -587,17 +591,13 @@ async fn fetch_fixtures_nyc_families() {
     let checkin = today + Months::new(2);
     let checkout = checkin + chrono::Duration::days(2);
 
-    let params = HotelSearchParams::builder(
-        "New York".to_string(),
-        checkin,
-        checkout,
-        2,
-        vec![5, 8],
-    )
-    .hotel_stars(vec![4, 5])
-    .amenities(vec![Amenity::KidFriendly])
-    .max_price(Some(300))
-    .build().expect("params should build");
+    let params =
+        HotelSearchParams::builder("New York".to_string(), checkin, checkout, 2, vec![5, 8])
+            .hotel_stars(vec![4, 5])
+            .amenities(vec![Amenity::KidFriendly])
+            .max_price(Some(300))
+            .build()
+            .expect("params should build");
 
     let ts = params.generate_ts().expect("encode ts");
 
@@ -622,17 +622,12 @@ async fn fetch_fixtures_london_long_stay() {
     let checkin = today + Months::new(3);
     let checkout = checkin + chrono::Duration::days(7);
 
-    let params = HotelSearchParams::builder(
-        "London".to_string(),
-        checkin,
-        checkout,
-        2,
-        Vec::new(),
-    )
-    .amenities(vec![Amenity::KidFriendly])
-    .min_guest_rating(3.0)
-    .max_price(Some(200))
-    .build().expect("params should build");
+    let params = HotelSearchParams::builder("London".to_string(), checkin, checkout, 2, Vec::new())
+        .amenities(vec![Amenity::KidFriendly])
+        .min_guest_rating(3.0)
+        .max_price(Some(200))
+        .build()
+        .expect("params should build");
 
     let ts = params.generate_ts().expect("encode ts");
 

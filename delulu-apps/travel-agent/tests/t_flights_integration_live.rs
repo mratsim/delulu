@@ -46,7 +46,8 @@ use wreq::redirect::Policy;
 use wreq_util::Emulation;
 
 use delulu_travel_agent::{
-    encode_tfs, parse_flights_response, CabinClass, FlightSearchConfig, PassengerType, Tfs, TripType,
+    encode_tfs, parse_flights_response, CabinClass, FlightSearchConfig, PassengerType, Tfs,
+    TripType,
 };
 
 // Compute dates dynamically to avoid stale tests
