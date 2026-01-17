@@ -116,14 +116,10 @@ impl GoogleHotelsClient {
     }
 
     pub async fn search_hotels(&self, params: &HotelSearchParams) -> Result<HotelSearchResult> {
-        params.validate()?;
-
         let today = chrono::Local::now().date_naive();
         let checkin = chrono::NaiveDate::parse_from_str(&params.checkin_date, "%Y-%m-%d")
             .context("Invalid checkin date")?;
-        if checkin < today {
-            bail!("Check-in cannot be in the past");
-        }
+        anyhow::ensure!(checkin >= today, "Check-in cannot be in the past");
 
         let html = self.fetch_raw(params).await?;
         let result = HotelSearchResult::from_html(&html)?;

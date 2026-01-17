@@ -15,190 +15,112 @@
 //!  You should have received a copy of the GNU Affero General Public License
 //!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! CLI tool for searching Google Flights.
-//!
-//! Usage:
-//!   delulu-flights --from SFO --to LHR --date 2026-04-06
-//!   delulu-flights --from JFK --to LAX --date 2026-05-15 --cabin business --currency EUR
-//!
-
-use std::cmp::max;
-use std::fmt;
+//! CLI for Google Flights search.
 
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
-use clap::{Parser as ClapParser, ValueEnum};
-use serde_json;
+use clap::Parser;
+use delulu_travel_agent::{FlightSearchParams, GoogleFlightsClient, Passenger, Seat, Trip};
+use std::cmp::{max, min};
+use term_size;
 
-use delulu_travel_agent::{
-    CabinClass, FlightSearchConfig, FlightSearchResult, FlightSegment, GoogleFlightsClient,
-    Itinerary, PassengerType, Tfs, TripType,
-};
-
-/// Cabin class options for flights.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
-enum CabinArg {
-    Economy,
-    PremiumEconomy,
-    Business,
-    First,
-}
-
-impl fmt::Display for CabinArg {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CabinArg::Economy => write!(f, "economy"),
-            CabinArg::PremiumEconomy => write!(f, "premium_economy"),
-            CabinArg::Business => write!(f, "business"),
-            CabinArg::First => write!(f, "first"),
-        }
-    }
-}
-
-impl From<CabinArg> for CabinClass {
-    fn from(val: CabinArg) -> Self {
-        match val {
-            CabinArg::Economy => CabinClass::Economy,
-            CabinArg::PremiumEconomy => CabinClass::PremiumEconomy,
-            CabinArg::Business => CabinClass::Business,
-            CabinArg::First => CabinClass::First,
-        }
-    }
-}
-
-/// Trip type options for flights.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
-enum TripArg {
-    #[value(name = "one-way")]
-    OneWay,
-    #[value(name = "round-trip", alias = "roundtrip")]
-    RoundTrip,
-}
-
-impl fmt::Display for TripArg {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TripArg::OneWay => write!(f, "one-way"),
-            TripArg::RoundTrip => write!(f, "round-trip"),
-        }
-    }
-}
-
-impl From<TripArg> for TripType {
-    fn from(val: TripArg) -> Self {
-        match val {
-            TripArg::OneWay => TripType::OneWay,
-            TripArg::RoundTrip => TripType::RoundTrip,
-        }
-    }
-}
-
-#[derive(Clone, Debug, ValueEnum)]
-enum OutputFormat {
-    /// Compact summary (best price, flight count)
-    Summary,
-    /// Detailed table view
-    Table,
-    /// JSON output for scripting
-    Json,
-    /// Minimal single-line output
-    Compact,
-}
-
-impl fmt::Display for OutputFormat {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            OutputFormat::Summary => write!(f, "summary"),
-            OutputFormat::Table => write!(f, "table"),
-            OutputFormat::Json => write!(f, "json"),
-            OutputFormat::Compact => write!(f, "compact"),
-        }
-    }
-}
-
-#[derive(ClapParser, Debug)]
+/// CLI arguments
+#[derive(Parser, Debug)]
 #[command(name = "delulu-flights")]
-#[command(version = "0.1.0")]
-#[command(author = "mratsim")]
-#[command(about = "Search Google Flights from the command line")]
+#[command(author, version, about, long_about = None)]
 struct CliArgs {
-    /// Origin airport code (e.g., SFO, JFK, LHR)
+    /// Origin airport code (e.g., SFO, LAX)
     #[arg(short, long)]
     from: String,
 
-    /// Destination airport code (e.g., LHR, DXB, SIN)
+    /// Destination airport code (e.g., JFK, LHR)
     #[arg(short, long)]
     to: String,
 
-    /// Departure date in YYYY-MM-DD format
-    #[arg(short, long, value_parser = parse_date_arg)]
-    date: NaiveDate,
+    /// Departure date (YYYY-MM-DD or YYYY/MM/DD)
+    #[arg(short, long)]
+    date: String,
 
-    /// Currency for prices (USD, EUR, GBP, etc.)
-    #[arg(long, default_value = "USD")]
-    currency: String,
+    /// Return date for round trips (YYYY-MM-DD or YYYY/MM/DD)
+    #[arg(short = 'R', long)]
+    return_date: Option<String>,
 
-    /// Language for results (en, de, fr, es, etc.)
-    #[arg(long, default_value = "en")]
-    language: String,
+    /// Cabin class: economy, premium_economy, business, first
+    #[arg(short, long, default_value = "economy")]
+    cabin: String,
 
-    /// Cabin class
-    #[arg(long, default_value = "economy")]
-    cabin: CabinArg,
+    /// Number of passengers (adults)
+    #[arg(short, long, default_value = "1")]
+    passengers: u32,
 
-    /// Trip type (one-way or round-trip)
-    #[arg(long, default_value = "round-trip")]
-    trip: TripArg,
+    /// Trip type: roundtrip, oneway
+    #[arg(short, long, default_value = "roundtrip")]
+    trip: String,
 
-    /// Number of adult passengers
-    #[arg(long, default_value = "1")]
-    adults: u32,
-
-    /// Maximum number of concurrent requests
-    #[arg(long, default_value = "4")]
-    max_concurrent: u64,
-
-    /// Output format
-    #[arg(long, default_value = "summary")]
-    format: OutputFormat,
-
-    /// Show debug URL without making request
+    /// Maximum number of stops (0 = nonstop only)
     #[arg(long)]
-    dry_run: bool,
+    max_stops: Option<i32>,
 
-    /// Increase verbosity
-    #[arg(short, long, action = clap::ArgAction::Count)]
-    verbose: u8,
+    /// Preferred airlines (comma-separated, e.g., "AA,DL,UA")
+    #[arg(long)]
+    preferred_airlines: Option<String>,
+
+    /// Verbose output
+    #[arg(short, long, default_value = "false")]
+    verbose: bool,
 }
 
-/// Helper to unwrap or display a fallback
-fn opt_display<T: fmt::Display>(opt: &Option<T>, fallback: &str) -> String {
-    opt.as_ref()
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| fallback.to_string())
-}
-
-/// Helper to unwrap i32 option
-fn opt_i32(opt: &Option<i32>, fallback: i32) -> i32 {
-    opt.unwrap_or(fallback)
-}
-
-/// Parse date from YYYY-MM-DD string.
-fn parse_date_arg(s: &str) -> Result<NaiveDate, chrono::ParseError> {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d")
-}
-
-/// Configure tracing based on verbosity level.
-fn setup_logging(verbose: u8) {
-    let level = match verbose {
-        0 => "warn",
-        1 => "info",
-        2 => "debug",
-        _ => "trace",
+/// Configure logging based on verbosity level
+fn setup_logging(verbose: bool) {
+    let level = if verbose {
+        tracing::Level::DEBUG
+    } else {
+        tracing::Level::INFO
     };
-
-    let level = level.parse().unwrap_or(tracing::Level::INFO);
     tracing_subscriber::fmt().with_max_level(level).init();
+}
+
+/// Parse cabin class string to Seat enum
+fn parse_cabin(s: &str) -> Result<Seat> {
+    match s.to_lowercase().as_str() {
+        "economy" | "e" => Ok(Seat::Economy),
+        "premium_economy" | "premium" | "pe" => Ok(Seat::PremiumEconomy),
+        "business" | "b" => Ok(Seat::Business),
+        "first" | "f" => Ok(Seat::First),
+        _ => anyhow::bail!(
+            "Invalid cabin class: {}. Use: economy, premium_economy, business, first",
+            s
+        ),
+    }
+}
+
+/// Parse trip type string to Trip enum
+fn parse_trip(s: &str) -> Result<Trip> {
+    match s.to_lowercase().as_str() {
+        "roundtrip" | "round" | "rt" => Ok(Trip::RoundTrip),
+        "oneway" | "one" | "ow" => Ok(Trip::OneWay),
+        _ => anyhow::bail!("Invalid trip type: {}. Use: roundtrip, oneway", s),
+    }
+}
+
+/// Parse date string to NaiveDate
+fn parse_date(s: &str) -> Result<NaiveDate> {
+    NaiveDate::parse_from_str(s, "%Y-%m-%d")
+        .or_else(|_| NaiveDate::parse_from_str(s, "%Y/%m/%d"))
+        .context(format!(
+            "Invalid date format: {}. Use YYYY-MM-DD or YYYY/MM/DD",
+            s
+        ))
+}
+
+/// Helper: convert Option<String> to display string
+fn opt_display(opt: &Option<String>, default: &str) -> String {
+    opt.as_deref().unwrap_or(default).to_string()
+}
+
+/// Helper: convert Option<i32> to i32 with default
+fn opt_i32(opt: &Option<i32>, default: i32) -> i32 {
+    opt.unwrap_or(default)
 }
 
 /// Format duration in hours/minutes.
@@ -226,51 +148,65 @@ fn get_terminal_width() -> usize {
     term_size::dimensions().map(|(w, _)| w).unwrap_or(100)
 }
 
-/// Detect suspicious layover claims:
-/// Flags flights claiming "direct/nonstop" but with physically impossible durations.
-fn analyze_route_quality(stops: Option<i32>, duration_minutes: i32) -> (&'static str, bool) {
-    match stops {
-        Some(0) => {
-            // Intercontinental "nonstop" should realistically be 6-18h max
-            // Any claimed nonstop exceeding 18h almost certainly has connections
-            if duration_minutes > 1080 {
-                // 18 hours
-                ("⚠️ SUSPICIOUS", true)
-            } else {
-                ("direct", false)
-            }
-        }
-        Some(1) => ("1 stop", false),
-        Some(n) => {
-            let label = if n == 2 { "2 stops" } else { "multiple" };
-            (label, false)
-        }
-        None => ("unknown", false),
-    }
-}
-
 /// Get first flight segment
 #[allow(clippy::needless_lifetimes)] // Clippy is wrong about lifetimes
-fn first_seg<'a>(itin: &'a Itinerary) -> Option<&'a FlightSegment> {
+fn first_seg<'a>(
+    itin: &'a delulu_travel_agent::Itinerary,
+) -> Option<&'a delulu_travel_agent::FlightSegment> {
     itin.flights.first()
+}
+
+/// Format stops and layovers combined: "2 stops: 5h09@Vancouver, 2h20@Brisbane"
+fn fmt_stops_and_layovers(stops: Option<i32>, layovers: &[delulu_travel_agent::Layover]) -> String {
+    match stops {
+        Some(0) => "direct".to_string(),
+        Some(1) => {
+            if let Some(l) = layovers.first() {
+                let dur = l
+                    .duration_minutes
+                    .map_or("??".to_string(), |m| fmt_duration(m));
+                let name = l.airport_name.as_deref().unwrap_or(&l.airport_code);
+                format!("1 stop: {}@{}", dur, name)
+            } else {
+                "1 stop".to_string()
+            }
+        }
+        Some(n) if n > 1 => {
+            let layover_str = if layovers.is_empty() {
+                String::new()
+            } else {
+                let parts: Vec<String> = layovers
+                    .iter()
+                    .map(|l| {
+                        let dur = l
+                            .duration_minutes
+                            .map_or("??".to_string(), |m| fmt_duration(m));
+                        let name = l.airport_name.as_deref().unwrap_or(&l.airport_code);
+                        format!("{}@{}", dur, name)
+                    })
+                    .collect();
+                format!(": {}", parts.join(", "))
+            };
+            format!("{} stops{}", n, layover_str)
+        }
+        _ => "unknown".to_string(),
+    }
 }
 
 /// Calculate terminal-aware column widths
 fn calc_column_widths(
-    itins: &[Itinerary],
-    show_rank: bool,
-) -> (usize, usize, usize, usize, usize, usize) {
+    itins: &[delulu_travel_agent::Itinerary],
+    _show_rank: bool,
+) -> (usize, usize, usize, usize, usize) {
     let mut max_airline = 7;
-    let mut max_flight = 6;
     let mut max_times = 15;
     let mut max_duration = 10;
-    let mut max_via = 12;
+    let mut max_stops = 25;
     let min_rank = 4;
 
     for itin in itins {
         if let Some(seg) = first_seg(itin) {
             max_airline = max(max_airline, opt_display(&seg.airline, "??").len());
-            max_flight = max(max_flight, opt_display(&seg.flight_number, "????").len());
             max_times = max(
                 max_times,
                 fmt_times(&seg.departure_time, &seg.arrival_time).len(),
@@ -279,206 +215,103 @@ fn calc_column_widths(
                 max_duration,
                 fmt_duration(opt_i32(&itin.duration_minutes, 0)).len(),
             );
-
-            let (via, _) = analyze_route_quality(itin.stops, opt_i32(&itin.duration_minutes, 0));
-            max_via = max(max_via, via.len());
+            let stops_label = fmt_stops_and_layovers(itin.stops, &itin.layovers);
+            max_stops = max(max_stops, stops_label.len());
         }
     }
 
-    let overhead = if show_rank { 10 } else { 0 };
-    let price_space = 12;
-    let total_needs =
-        max_airline + max_flight + max_times + max_duration + max_via + overhead + price_space;
+    let terminal_width = get_terminal_width();
+    let available_width = terminal_width.saturating_sub(25);
+    let total_content = max_airline + max_times + max_duration + max_stops;
 
-    let term_w = get_terminal_width();
+    if total_content > available_width && available_width > 50 {
+        let ratio = available_width as f64 / total_content as f64;
+        max_airline = (max_airline as f64 * ratio).floor() as usize;
+        max_times = (max_times as f64 * ratio).floor() as usize;
+        max_duration = (max_duration as f64 * ratio).floor() as usize;
+        max_stops = (max_stops as f64 * ratio).floor() as usize;
 
-    if total_needs > term_w {
-        let shrink = (term_w as f64) / (total_needs as f64);
-        (
-            min_rank,
-            (max_airline as f64 * shrink).ceil() as usize,
-            (max_flight as f64 * shrink).ceil() as usize,
-            (max_times as f64 * shrink).ceil() as usize,
-            (max_duration as f64 * shrink).ceil() as usize,
-            (max_via as f64 * shrink).ceil() as usize,
-        )
-    } else {
-        (
-            min_rank,
-            max_airline,
-            max_flight,
-            max_times,
-            max_duration,
-            max_via,
-        )
+        max_airline = max(max_airline, 4);
+        max_times = max(max_times, 10);
+        max_duration = max(max_duration, 5);
+        max_stops = max(max_stops, 10);
+    }
+
+    let rank_width = min_rank.max(min(5, min_rank + 2));
+    (rank_width, max_airline, max_times, max_duration, max_stops)
+}
+
+/// Render results to stdout
+fn render_results(result: &delulu_travel_agent::FlightSearchResult, search_url: Option<&str>) {
+    let params = &result.search_params;
+
+    let title_bar = format!(
+        "================================================================================================\n  🛫  {} → {} on {}\n================================================================================================",
+        params.from_airport, params.to_airport, params.depart_date
+    );
+    println!("{}\n", title_bar);
+
+    let best_price = result
+        .itineraries
+        .first()
+        .map(|i| opt_i32(&i.price, 0))
+        .unwrap_or(0);
+
+    println!("💰 Best Price:  ${}", best_price);
+    println!("📊 Total Flights: {}", result.itineraries.len());
+
+    if let Some(url) = search_url {
+        println!("\n🔗 Search URL: {}", url);
+    }
+
+    // Calculate column widths
+    let (rw, aw, tw, dw, sw) = calc_column_widths(&result.itineraries, true);
+
+    println!("\n🏆 Top {} Cheapest:", 5.min(result.itineraries.len()));
+    println!("{}\n", dash_bar());
+
+    // Header with manual padding
+    let h1 = format!("  {:>w$}", "#", w = rw);
+    let h2 = format!("{:<w$}", "AIRLINE", w = aw);
+    let h3 = format!("{:<w$}", "DEP → ARR", w = tw);
+    let h4 = format!("{:<w$}", "DURATION", w = dw);
+    let h5 = format!("{:<w$}", "LAYOVERS", w = sw);
+    println!("{}  {}  {}  {}  {}   PRICE", h1, h2, h3, h4, h5);
+    println!("{}\n", dash_bar());
+
+    // Data rows with individual cell formatting
+    for (i, itin) in result.itineraries.iter().take(5).enumerate() {
+        if let Some(seg) = first_seg(itin) {
+            let stops_label = fmt_stops_and_layovers(itin.stops, &itin.layovers);
+            let is_suspicious =
+                stops_label == "direct" && opt_i32(&itin.duration_minutes, 0) > 1080;
+            let price = opt_i32(&itin.price, 0);
+            let warn = if is_suspicious { " ⚠️" } else { "" };
+
+            let c1 = format!("  {:>w$}", i + 1, w = rw);
+            let c2 = format!("{:<w$}", opt_display(&seg.airline, "??"), w = aw);
+            let c3 = format!(
+                "{:<w$}",
+                fmt_times(&seg.departure_time, &seg.arrival_time),
+                w = tw
+            );
+            let c4 = format!(
+                "{:<w$}",
+                fmt_duration(opt_i32(&itin.duration_minutes, 0)),
+                w = dw
+            );
+            let c5 = format!("{:<w$}", stops_label, w = sw);
+
+            println!(
+                "{}  {}  {}  {}  {}   ${}{}",
+                c1, c2, c3, c4, c5, price, warn
+            );
+        }
     }
 }
 
-/// Main printing function
-
-fn print_results(
-    result: FlightSearchResult,
-    config: &FlightSearchConfig,
-    format: OutputFormat,
-    search_url: Option<&str>,
-) {
-    match format {
-        OutputFormat::Json => {
-            #[derive(serde::Serialize)]
-            struct JsonOutput<'a> {
-                count: usize,
-                generated_at: &'a str,
-                search_url: Option<&'a str>,
-            }
-
-            let output = JsonOutput {
-                count: result.itineraries.len(),
-                generated_at: &result.generated_at,
-                search_url,
-            };
-
-            println!("{}", serde_json::to_string_pretty(&output).unwrap());
-        }
-
-        OutputFormat::Summary | OutputFormat::Compact => {
-            let term_w = get_terminal_width();
-            let title_sep_len = 40usize.max(term_w.saturating_sub(4));
-            let title_bar = "=".repeat(title_sep_len);
-            let dash_bar = "-".repeat(title_sep_len);
-
-            println!("\n{}", title_bar);
-            println!(
-                "  🛫  {} → {} on {}",
-                config.from_airport,
-                config.to_airport,
-                config.depart_date.format("%Y-%m-%d")
-            );
-            println!("{}\n", title_bar);
-
-            let best_price = result
-                .itineraries
-                .first()
-                .map(|i| opt_i32(&i.price, 0))
-                .unwrap_or(0);
-
-            println!("💰 Best Price:  ${}", best_price);
-            println!("📊 Total Flights: {}", result.itineraries.len());
-            println!("⏱ Generated: {}", result.generated_at);
-
-            if let Some(url) = search_url {
-                println!("\n🔗 Search URL: {}", url);
-            }
-
-            // Calculate column widths
-            let (rw, aw, fw, tw, dw, vw) = calc_column_widths(&result.itineraries, true);
-
-            println!("\n🏆 Top {} Cheapest:", 5.min(result.itineraries.len()));
-            println!("{}\n", dash_bar);
-
-            // Header with manual padding
-            let h1 = format!("  {:>w$}", "#", w = rw);
-            let h2 = format!("{:<w$}", "AIRLINE", w = aw);
-            let h3 = format!("{:<w$}", "FLIGHT", w = fw);
-            let h4 = format!("{:<w$}", "DEP → ARR", w = tw);
-            let h5 = format!("{:<w$}", "DURATION", w = dw);
-            let h6 = format!("{:<w$}", "STATUS", w = vw);
-            println!("{}  {}  {}  {}  {}  {}   PRICE", h1, h2, h3, h4, h5, h6);
-            println!("{}\n", dash_bar);
-
-            // Data rows with individual cell formatting
-            for (i, itin) in result.itineraries.iter().take(5).enumerate() {
-                if let Some(seg) = first_seg(itin) {
-                    let (via_label, is_suspicious) =
-                        analyze_route_quality(itin.stops, opt_i32(&itin.duration_minutes, 0));
-                    let price = opt_i32(&itin.price, 0);
-                    let warn = if is_suspicious { " ⚠️" } else { "" };
-
-                    let c1 = format!("  {:>w$}", i + 1, w = rw);
-                    let c2 = format!("{:<w$}", opt_display(&seg.airline, "??"), w = aw);
-                    let c3 = format!("{:<w$}", opt_display(&seg.flight_number, "????"), w = fw);
-                    let c4 = format!(
-                        "{:<w$}",
-                        fmt_times(&seg.departure_time, &seg.arrival_time),
-                        w = tw
-                    );
-                    let c5 = format!(
-                        "{:<w$}",
-                        fmt_duration(opt_i32(&itin.duration_minutes, 0)),
-                        w = dw
-                    );
-                    let c6 = format!("{:<w$}", via_label, w = vw);
-
-                    println!(
-                        "{}  {}  {}  {}  {}  {}   ${}{}",
-                        c1, c2, c3, c4, c5, c6, price, warn
-                    );
-                }
-            }
-
-            println!("\n⚠️ = Highly unlikely to be truly direct (verify with URL)");
-        }
-
-        OutputFormat::Table => {
-            let (_, aw, fw, tw, dw, vw) = calc_column_widths(&result.itineraries, false);
-
-            if let Some(url) = search_url {
-                println!("\n🔗 Verification URL:\n   {}\n", url);
-            }
-
-            println!("\n FULL FLIGHTS TABLE");
-
-            // Header with proper column widths
-            let h_airline = format!("{:<w$}", "AIRLINE", w = aw);
-            let h_flight = format!("{:<w$}", "FLIGHT", w = fw);
-            let h_times = format!("{:<w$}", "DEP → ARR", w = tw);
-            let h_dur = format!("{:<w$}", "DURATION", w = dw);
-            let h_via = format!("{:<w$}", "ROUTES", w = vw);
-            let header_row = format!(
-                "  {}  {}  {}  {}  {}   PRICE",
-                h_airline, h_flight, h_times, h_dur, h_via
-            );
-            let sep_len = header_row.len();
-            let sep = "-".repeat(sep_len);
-            println!("{}", sep);
-            println!("{}", header_row);
-            println!("{}\n", sep);
-
-            // All rows with correct column widths (matching header)
-            for itin in &result.itineraries {
-                if let Some(seg) = first_seg(itin) {
-                    let (via_label, is_suspicious) =
-                        analyze_route_quality(itin.stops, opt_i32(&itin.duration_minutes, 0));
-                    let price = opt_i32(&itin.price, 0);
-                    let warn = if is_suspicious { "⚠️" } else { "" };
-
-                    let cell_airline = format!("  {:<w$}", opt_display(&seg.airline, "??"), w = aw);
-                    let cell_flight =
-                        format!("{:<w$}", opt_display(&seg.flight_number, "????"), w = fw);
-                    let cell_times = format!(
-                        "{:<w$}",
-                        fmt_times(&seg.departure_time, &seg.arrival_time),
-                        w = tw
-                    );
-                    let cell_dur = format!(
-                        "{:<w$}",
-                        fmt_duration(opt_i32(&itin.duration_minutes, 0)),
-                        w = dw
-                    );
-                    let cell_via = format!("{:<w$}", format!("{}{}", via_label, warn), w = vw);
-
-                    println!(
-                        "{}  {}  {}  {}  {}   ${}",
-                        cell_airline, cell_flight, cell_times, cell_dur, cell_via, price
-                    );
-                }
-            }
-
-            println!("\n{}", sep);
-            if let Some(url) = search_url {
-                println!("\n🖥 Open URL for live updates: {}", url);
-            }
-        }
-    }
+fn dash_bar() -> String {
+    "------------------------------------------------------------------------------------------------".to_string()
 }
 
 #[tokio::main]
@@ -486,56 +319,65 @@ async fn main() -> Result<()> {
     let args = CliArgs::parse();
     setup_logging(args.verbose);
 
-    let from = args.from;
-    let to = args.to;
-    let depart_date = args.date;
+    tracing::info!("Starting delulu-flights CLI");
+    tracing::info!("Args: {:?}", args);
 
-    let flight_config = FlightSearchConfig {
-        from_airport: from.to_uppercase(),
-        to_airport: to.to_uppercase(),
+    // Parse and validate inputs
+    let cabin = parse_cabin(&args.cabin)?;
+    let trip = parse_trip(&args.trip)?;
+    let depart_date = parse_date(&args.date)?;
+    let return_date = args.return_date.map(|d| parse_date(&d)).transpose()?;
+
+    tracing::info!(
+        "Parsed request: {} -> {} on {:?} ({:?}, {:?})",
+        args.from,
+        args.to,
         depart_date,
-        cabin_class: args.cabin.into(),
-        passengers: vec![(PassengerType::Adult, args.adults)],
-        trip_type: args.trip.into(),
-        max_stops: None,
-        preferred_airlines: None,
-    };
+        cabin,
+        trip
+    );
 
-    // Dry run: just show URL
-    if args.dry_run {
-        let tfs = Tfs::from_config(&flight_config, &args.language, &args.currency)?;
-        println!("Dry run - Google Flights URL:\n");
-        println!("{}", tfs.get_url());
-        return Ok(());
+    // Build search params
+    let passengers = vec![(Passenger::Adult, args.passengers)];
+    let mut builder = FlightSearchParams::builder(
+        args.from.to_uppercase(),
+        args.to.to_uppercase(),
+        depart_date,
+    )
+    .cabin_class(cabin)
+    .passengers(passengers)
+    .trip_type(trip);
+
+    if let Some(rd) = return_date {
+        builder = builder.return_date(rd);
     }
 
-    // Generate URL for display
-    let tfs = Tfs::from_config(&flight_config, &args.language, &args.currency)?;
-    let search_url_owned = tfs.get_url();
+    let params = builder
+        .build()
+        .context("Failed to build search parameters")?;
 
-    let client = GoogleFlightsClient::new(
-        args.language.clone(),
-        args.currency.clone(),
-        args.max_concurrent,
-    )
-    .context("Create client")?;
+    let search_url = params.get_search_url();
+    tracing::debug!("Generated search URL ({} chars)", search_url.len());
 
-    tracing::info!("Fetching flights...");
+    // Create client and execute search
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let result = client
+        .search_flights(&params)
+        .await
+        .context("Search failed")?;
 
-    let result = match client.search(&flight_config).await {
-        Ok(r) => r,
-        Err(e) => {
-            println!("\n🔗 Search URL used: {}", search_url_owned);
-            anyhow::bail!("Search failed: {:?}", e);
-        }
-    };
-
-    print_results(
-        result,
-        &flight_config,
-        args.format,
-        Some(search_url_owned.as_str()),
+    tracing::info!(
+        "Search completed: {} itineraries found, best price: ${}",
+        result.itineraries.len(),
+        result
+            .itineraries
+            .first()
+            .and_then(|i| i.price)
+            .unwrap_or(0)
     );
+
+    // Render results
+    render_results(&result, Some(&search_url));
 
     Ok(())
 }

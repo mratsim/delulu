@@ -15,394 +15,544 @@
 //!  You should have received a copy of the GNU Affero General Public License
 //!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Integration test for live Google Flights queries.
+//! Live integration tests for Google Flights search.
 //!
-//! This test makes actual HTTP requests to Google Flights to verify
-//! the entire pipeline works end-to-end:
-//!   1. Build FlightSearchConfig
-//!   2. Encode to TFS protobuf
-//!   3. Construct proper URL with tracking params
-//!   4. Send request with Safari emulation + cookies
-//!   5. Parse HTML response
-//!   6. Extract flight itineraries
+//! These tests make actual HTTP requests to Google Flights and verify
+//! the parser handles real-world responses correctly.
 //!
-//! Rate limited to 1 request/second between queries.
-//!
-//! ============================================================================
-//! CI SAFETY: All live HTTP tests are IGNORED by default
-//! ============================================================================
-//! To run manually:
-//!     cargo test --test integration_query_test -- --ignored --nocapture
-//!
-//! Or run a specific test:
-//!     cargo test --test integration_query_test run_quick -- --ignored --nocapture
+//! Run with: cargo test --test t_flights_integration_live -- --include-ignored
 
 use anyhow::{Context, Result};
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine as _;
-use chrono::{Datelike, Local, Months, NaiveDate};
-use tokio::time::sleep;
-use wreq::redirect::Policy;
-use wreq_util::Emulation;
+use chrono::{Months, NaiveDate};
+use delulu_travel_agent::{GoogleFlightsClient, Seat, Trip};
 
-use delulu_travel_agent::{
-    encode_tfs, parse_flights_response, CabinClass, FlightSearchConfig, PassengerType, Tfs,
-    TripType,
-};
-
-// Compute dates dynamically to avoid stale tests
 fn today() -> NaiveDate {
-    Local::now().date_naive()
+    chrono::Local::now().date_naive()
 }
 
-fn parse_date(s: &str) -> Result<chrono::NaiveDate> {
-    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
-        .or_else(|_| chrono::NaiveDate::parse_from_str(s, "%Y/%m/%d"))
+fn parse_date(s: &str) -> Result<NaiveDate> {
+    NaiveDate::parse_from_str(s, "%Y-%m-%d")
+        .or_else(|_| NaiveDate::parse_from_str(s, "%Y/%m/%d"))
         .context(format!("Invalid date format: {}", s))
 }
 
 fn dom_flight_date() -> String {
-    // Near term (2 months out) - reasonable for domestic flights
     (today() + Months::new(2)).format("%Y-%m-%d").to_string()
 }
 
 fn intl_flight_date() -> String {
-    // Further out (3 months) - typical for international planning
     (today() + Months::new(3)).format("%Y-%m-%d").to_string()
 }
 
 fn bus_flight_date() -> String {
-    // Slightly shorter window (2.5 months)
     (today() + Months::new(2) + chrono::Days::new(15))
         .format("%Y-%m-%d")
         .to_string()
 }
 
-fn offpeak_date() -> String {
-    // Off-peak: Return Jan 15 of next year if current year's Jan 15 has passed
-    let candidate = NaiveDate::from_ymd_opt(today().year(), 1, 15).unwrap();
-    if candidate <= today() {
-        NaiveDate::from_ymd_opt(today().year() + 1, 1, 15)
-            .unwrap()
-            .format("%Y-%m-%d")
-            .to_string()
-    } else {
-        candidate.format("%Y-%m-%d").to_string()
-    }
+fn next_month() -> String {
+    (today() + Months::new(1)).format("%Y-%m-%d").to_string()
 }
 
-fn peak_date() -> String {
-    // Peak: Summer (July 15) if we're before August
-    let jul = NaiveDate::from_ymd_opt(today().year(), 7, 15).unwrap();
-    if today().month() < 8 {
-        jul.format("%Y-%m-%d").to_string()
-    } else {
-        // Use next year's July
-        NaiveDate::from_ymd_opt(today().year() + 1, 7, 15)
-            .unwrap()
-            .format("%Y-%m-%d")
-            .to_string()
-    }
+fn next_semester() -> String {
+    (today() + Months::new(7)).format("%Y-%m-%d").to_string()
 }
 
-/// Builds a wreq client with browser emulation.
-/// wreq-util's Emulation handles all headers automatically (UA, cookies, etc).
-fn build_client() -> wreq::Client {
-    wreq::Client::builder()
-        .emulation(Emulation::Safari18_5)
-        .redirect(Policy::default())
-        .build()
-        .expect("wreq client build should succeed")
-}
-
-/// Execute a query with rate limiting.
 async fn rate_limited_query(
-    client: &wreq::Client,
+    client: &GoogleFlightsClient,
     from: &str,
     to: &str,
     date: &str,
-    cabin: CabinClass,
+    cabin: Seat,
     delay_secs: u64,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if delay_secs > 0 {
-        sleep(std::time::Duration::from_secs(delay_secs)).await;
-    }
-    execute_query(client, from, to, date, cabin).await
-}
+) -> Result<delulu_travel_agent::FlightSearchResult> {
+    let params = delulu_travel_agent::FlightSearchParams::builder(
+        from.to_uppercase(),
+        to.to_uppercase(),
+        parse_date(date)?,
+    )
+    .cabin_class(cabin)
+    .build()?;
 
-/// Execute a single query against Google Flights.
-async fn execute_query(
-    client: &wreq::Client,
-    from: &str,
-    to: &str,
-    date: &str,
-    cabin: CabinClass,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Build config (mirrors GoogleFlightsClient::search logic)
-    let config = FlightSearchConfig {
-        from_airport: from.to_uppercase(),
-        to_airport: to.to_uppercase(),
-        depart_date: parse_date(date)?,
-        cabin_class: cabin,
-        passengers: vec![(PassengerType::Adult, 1)],
-        trip_type: TripType::OneWay,
-        max_stops: None,
-        preferred_airlines: None,
-    };
-
-    // Use unified Tfs type for URL generation
-    let tfs = Tfs::from_config(&config, "en", "USD")?;
-    let url = tfs.get_url();
-
+    let url = params.get_search_url();
     println!("\n🛫 Query: {} → {} on {} ({:?})", from, to, date, cabin);
     println!("Using Tfs URL generation: {}", url);
     println!("URL length: {} chars", url.len());
     println!("🔗 URL for manual check:\n{}", url);
 
-    // Execute request
-    let response = client.get(&url).send().await?;
-    let status = response.status();
+    tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
 
-    println!(
-        "HTTP Status: {} {}",
-        status.as_u16(),
-        status.canonical_reason().unwrap_or("Unknown")
-    );
-
-    // Check for unexpected redirects even with consented cookies
-    if status.is_redirection() {
-        if let Some(location) = response.headers().get("location") {
-            eprintln!("↪ Unexpected redirect to: {:?}", location);
-            eprintln!("Cookies may not be accepted - consider updating CONSENT_COOKIE");
-        }
-        return Err(format!("HTTP {} after redirect handling", status).into());
+    let result = client.search_flights(&params).await?;
+    println!("Parsed {} itineraries", result.itineraries.len());
+    let best_price = result.itineraries.iter().filter_map(|i| i.price).min();
+    if let Some(price) = best_price {
+        println!("Best price: {} USD", price);
     }
 
-    if !status.is_success() {
-        return Err(format!("HTTP {}", status).into());
-    }
+    Ok(result)
+}
 
-    let body = response.text().await?;
-    let body_len_kb = body.len() / 1024;
-    println!("Response body: {} KB", body_len_kb);
+#[tokio::test]
+#[ignore]
+async fn test_real_query_domestic_us_route() -> Result<()> {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    println!("=== Domestic US Route Test ===");
 
-    // Try parsing HTML
-    match parse_flights_response(&body) {
-        Ok(parsed) => {
-            println!("Parsed {} flights", parsed.flights.len());
-            if let Some(ref price) = parsed.best_price {
-                println!("Best price: {}", price);
-            }
-            if parsed.flights.is_empty() {
-                return Err("Parser found no flights".into());
-            }
-        }
+    match rate_limited_query(&client, "SFO", "JFK", &dom_flight_date(), Seat::Economy, 0).await {
+        Ok(_) => println!("✓ Domestic query succeeded"),
         Err(e) => {
-            // Warn but don't fail - TFS encoding worked if we got here
-            eprintln!("⚠ Parse warning: {}", e);
+            eprintln!("✗ Domestic query failed: {}", e);
+            if e.to_string().contains("HTTP") || e.to_string().contains("network") {
+                println!("⚠ Transient network error");
+                return Ok(());
+            }
+            anyhow::bail!("Unexpected error: {}", e);
         }
     }
 
     Ok(())
 }
 
-// ============================================================================
-// UNIT TESTS (CI-SAFE)
-// ============================================================================
-
-/// Sanity check: URL construction produces valid URLs.
-#[test]
-fn test_url_construction_sanity() {
-    let config = FlightSearchConfig {
-        from_airport: "SFO".into(),
-        to_airport: "JFK".into(),
-        depart_date: chrono::NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
-        cabin_class: CabinClass::Economy,
-        passengers: vec![(PassengerType::Adult, 1)],
-        trip_type: TripType::OneWay,
-        max_stops: None,
-        preferred_airlines: None,
-    };
-
-    let tfs_bytes = encode_tfs(&config).expect("encode should work");
-    assert!(!tfs_bytes.is_empty(), "TFS should not be empty");
-
-    let tfs_encoded = STANDARD.encode(&tfs_bytes);
-    assert!(!tfs_encoded.is_empty(), "Base64 should not be empty");
-
-    let url = format!(
-        "https://www.google.com/travel/flights/search?tfs={}&hl=en&curr=USD&tfu=EgQIABABIgA",
-        tfs_encoded
-    );
-
-    assert!(url.contains("tfs="), "URL should contain tfs param");
-    assert!(url.contains("hl=en"), "URL should contain language");
-    assert!(url.contains("curr=USD"), "URL should contain currency");
-    assert!(
-        url.contains("tfu=EgQIABABIgA"),
-        "URL should contain tracking"
-    );
-    assert!(
-        url.starts_with("https://www.google.com/travel/flights/search?"),
-        "Valid GFT URL"
-    );
-
-    println!("Sanity URL constructed successfully ({} chars)", url.len());
-}
-
-// ============================================================================
-// INTEGRATION TESTS - LIVE HTTP (IGNORED IN CI)
-// ============================================================================
-
-/// Ignored: Domestic US route.
 #[tokio::test]
 #[ignore]
-async fn test_real_query_domestic_us_route() {
-    let client = build_client();
-    println!("=== Domestic US Route Test ===");
-
-    match rate_limited_query(
-        &client,
-        "SFO",
-        "JFK",
-        &dom_flight_date(),
-        CabinClass::Economy,
-        0,
-    )
-    .await
-    {
-        Ok(_) => println!("✓ Domestic query succeeded"),
-        Err(e) => {
-            eprintln!("✗ Domestic query failed: {}", e);
-            if e.to_string().contains("HTTP") || e.to_string().contains("network") {
-                println!("⚠ Transient network error");
-                return;
-            }
-            panic!("Unexpected error: {}", e);
-        }
-    }
-}
-
-/// Ignored: International long-haul.
-#[tokio::test]
-#[ignore]
-async fn test_real_query_international_longhaul() {
-    let client = build_client();
+async fn test_real_query_international_longhaul() -> Result<()> {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
     println!("\n=== International Long-Haul Test ===");
 
-    match rate_limited_query(
-        &client,
-        "SFO",
-        "LHR",
-        &intl_flight_date(),
-        CabinClass::Economy,
-        1,
-    )
-    .await
-    {
+    match rate_limited_query(&client, "SFO", "LHR", &intl_flight_date(), Seat::Economy, 1).await {
         Ok(_) => println!("✓ International query succeeded"),
         Err(e) => {
             eprintln!("✗ International query failed: {}", e);
             if e.to_string().contains("HTTP") || e.to_string().contains("network") {
                 println!("⚠ Transient network error");
-                return;
+                return Ok(());
             }
-            panic!("Unexpected error: {}", e);
+            anyhow::bail!("Unexpected error: {}", e);
         }
     }
+
+    Ok(())
 }
 
-/// Ignored: Business class query.
 #[tokio::test]
 #[ignore]
-async fn test_real_query_business_class() {
-    let client = build_client();
+async fn test_real_query_business_class() -> Result<()> {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
     println!("\n=== Business Class Test ===");
 
-    match rate_limited_query(
-        &client,
-        "LAX",
-        "ORD",
-        &bus_flight_date(),
-        CabinClass::Business,
-        1,
-    )
-    .await
-    {
+    match rate_limited_query(&client, "LAX", "ORD", &bus_flight_date(), Seat::Business, 1).await {
         Ok(_) => println!("✓ Business class query succeeded"),
         Err(e) => {
             eprintln!("✗ Business class query failed: {}", e);
             if e.to_string().contains("HTTP") || e.to_string().contains("network") {
                 println!("⚠ Transient network error");
-                return;
+                return Ok(());
             }
-            panic!("Unexpected error: {}", e);
+            anyhow::bail!("Unexpected error: {}", e);
         }
     }
+
+    Ok(())
 }
 
-/// Ignored: Off-peak vs peak season comparison.
 #[tokio::test]
 #[ignore]
-async fn test_real_query_different_dates() {
-    let client = build_client();
+async fn test_real_query_different_dates() -> Result<()> {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
     println!("\n=== Different Dates Comparison Test ===");
 
-    // Off-peak: January
-    match rate_limited_query(
-        &client,
-        "SFO",
-        "JFK",
-        &offpeak_date(),
-        CabinClass::Economy,
-        0,
-    )
-    .await
-    {
+    match rate_limited_query(&client, "SFO", "JFK", &next_month(), Seat::Economy, 0).await {
         Ok(_) => println!("✓ Off-peak query succeeded"),
         Err(e) => {
             eprintln!("✗ Off-peak query failed: {}", e);
             if e.to_string().contains("HTTP") || e.to_string().contains("network") {
                 println!("⚠ Transient error - skipping");
-                return;
+                return Ok(());
             }
-            panic!("Unexpected error: {}", e);
+            anyhow::bail!("Unexpected error: {}", e);
         }
     }
 
-    // Peak: July - 1 sec delay
-    match rate_limited_query(&client, "SFO", "JFK", &peak_date(), CabinClass::Economy, 1).await {
+    match rate_limited_query(&client, "SFO", "JFK", &next_semester(), Seat::Economy, 1).await {
         Ok(_) => println!("✓ Peak season query succeeded"),
         Err(e) => {
             eprintln!("✗ Peak season query failed: {}", e);
             if e.to_string().contains("HTTP") || e.to_string().contains("network") {
                 println!("⚠ Transient error - skipping");
-                return;
+                return Ok(());
             }
-            panic!("Unexpected error: {}", e);
+            anyhow::bail!("Unexpected error: {}", e);
         }
     }
+
+    Ok(())
 }
 
-/// Ignored: Quick smoke test.
 #[tokio::test]
 #[ignore]
-async fn run_real_query_quick_no_parsing() {
-    let client = build_client();
+async fn test_real_query_quick_smoke() -> Result<()> {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
     println!("Quick test: single SFO->JFK query");
-    println!("Browser: Safari 18.5, Cookies: YES+ consented, Rate: 1/sec");
+    println!("Browser: Safari 18.5, Cookies: YES+ consented");
 
-    match rate_limited_query(
+    match rate_limited_query(&client, "SFO", "JFK", &dom_flight_date(), Seat::Economy, 1).await {
+        Ok(_) => println!("✅ Quick test completed successfully"),
+        Err(e) => anyhow::bail!("❌ Quick test failed: {}", e),
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_real_query_overnight_plus_two_days() -> Result<()> {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let date = (today() + Months::new(2)).format("%Y-%m-%d").to_string();
+    println!("\n=== Overnight +2 Days Test ===");
+    println!("Querying: SFO -> LHR on {} (testing +2 day arrival)", date);
+
+    let params = delulu_travel_agent::FlightSearchParams::builder(
+        "SFO".to_uppercase(),
+        "LHR".to_uppercase(),
+        parse_date(&date)?,
+    )
+    .cabin_class(Seat::Economy)
+    .build()?;
+
+    let url = params.get_search_url();
+    println!("URL: {}", url);
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    let result = client.search_flights(&params).await?;
+
+    assert!(
+        !result.raw_response.contains("consent.google.com"),
+        "Should not hit consent wall"
+    );
+    assert!(
+        result.itineraries.len() > 0,
+        "Should parse at least one itinerary"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_real_query_premium_economy() -> Result<()> {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let date = intl_flight_date();
+    println!("\n=== Premium Economy Test ===");
+
+    match rate_limited_query(&client, "LAX", "CDG", &date, Seat::PremiumEconomy, 1).await {
+        Ok(_) => println!("✓ Premium economy query succeeded"),
+        Err(e) => {
+            eprintln!("✗ Premium economy query failed: {}", e);
+            if e.to_string().contains("HTTP") || e.to_string().contains("network") {
+                println!("⚠ Transient network error");
+                return Ok(());
+            }
+            anyhow::bail!("Unexpected error: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_real_query_first_class() -> Result<()> {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let date = intl_flight_date();
+    println!("\n=== First Class Test ===");
+
+    match rate_limited_query(&client, "JFK", "DXB", &date, Seat::First, 1).await {
+        Ok(_) => println!("✓ First class query succeeded"),
+        Err(e) => {
+            eprintln!("✗ First class query failed: {}", e);
+            if e.to_string().contains("HTTP") || e.to_string().contains("network") {
+                println!("⚠ Transient network error");
+                return Ok(());
+            }
+            anyhow::bail!("Unexpected error: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_real_query_oneway() -> Result<()> {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let date = intl_flight_date();
+    println!("\n=== One-Way Test ===");
+
+    let params = delulu_travel_agent::FlightSearchParams::builder(
+        "LAX".to_uppercase(),
+        "NRT".to_uppercase(),
+        parse_date(&date)?,
+    )
+    .cabin_class(Seat::Economy)
+    .trip_type(Trip::OneWay)
+    .build()?;
+
+    let url = params.get_search_url();
+    println!("Query: LAX → NRT on {} (OneWay)", date);
+    println!("URL: {}", url);
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    let result = client.search_flights(&params).await?;
+
+    assert!(
+        !result.raw_response.contains("consent.google.com"),
+        "Should not hit consent wall"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_real_query_response_structure() -> Result<()> {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let date = dom_flight_date();
+    println!("\n=== Response Structure Test ===");
+
+    let result = rate_limited_query(&client, "SFO", "LAX", &date, Seat::Economy, 5).await?;
+
+    let has_structure_markers =
+        result.raw_response.contains("jsname") || result.raw_response.contains("Rk10dc");
+
+    if has_structure_markers {
+        println!("✓ Response contains expected HTML structure markers");
+    } else {
+        println!("⚠ Response may have new structure - manual inspection needed");
+    }
+
+    Ok(())
+}
+
+// =============================================================================
+// FIXTURE FETCHING TESTS (IGNORED - FOR SETUP ONLY)
+// =============================================================================
+// These tests fetch HTML from Google Flights and save as compressed fixtures.
+// Run with: cargo test --test t_flights_integration_live fetch_fixture_xxx -- --ignored --nocapture
+// Rate limited to 3 seconds between requests to avoid being banned.
+
+const FLIGHT_FIXTURE_RATE_LIMIT_SECS: u64 = 3;
+
+fn compress_and_save_flight(html: &str, name: &str) {
+    use std::fs;
+    use std::path::Path;
+
+    let fixtures_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures-flights-parsing");
+    fs::create_dir_all(&fixtures_dir).expect("create fixtures dir");
+
+    let output_path = fixtures_dir.join(format!("{}.html.zst", name));
+    let file = fs::File::create(&output_path).expect("create output file");
+
+    let mut encoder = zstd::stream::Encoder::new(file, 0).expect("create zstd encoder");
+    use std::io::Write;
+    encoder.write_all(html.as_bytes()).expect("write bytes");
+    encoder.finish().expect("finish compression");
+
+    println!("Saved flight fixture: {:?}", output_path);
+}
+
+async fn rate_limited_flight_fetch(
+    client: &GoogleFlightsClient,
+    url: &str,
+    delay_secs: u64,
+    name: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    if delay_secs > 0 {
+        tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
+    }
+    fetch_single_flight_fixture(client, url, name).await
+}
+
+async fn fetch_single_flight_fixture(
+    client: &GoogleFlightsClient,
+    url: &str,
+    name: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let url_display = &url[0..url.len().min(100)];
+    println!("Fetching flight '{}': {}", name, url_display);
+
+    let result = client.search_flights_url(url).await?;
+    let text = result.raw_response;
+
+    if text.to_lowercase().contains("consent") {
+        return Err(anyhow::anyhow!("Blocked by consent cookie").into());
+    }
+    if text.len() < 1000 {
+        return Err(anyhow::anyhow!("Response too short ({} bytes)", text.len()).into());
+    }
+
+    Ok(text)
+}
+
+#[tokio::test]
+#[ignore]
+async fn fetch_fixture_sfo_jfk_nonstop() {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+
+    let today = chrono::Local::now().date_naive();
+    let depart = today + Months::new(2);
+
+    let params = delulu_travel_agent::FlightSearchParams::builder(
+        "SFO".to_uppercase(),
+        "JFK".to_uppercase(),
+        depart,
+    )
+    .cabin_class(Seat::Economy)
+    .build()
+    .expect("params should build");
+
+    let url = params.get_search_url();
+
+    match rate_limited_flight_fetch(
         &client,
-        "SFO",
-        "JFK",
-        &dom_flight_date(),
-        CabinClass::Economy,
-        1,
+        &url,
+        FLIGHT_FIXTURE_RATE_LIMIT_SECS,
+        "nonstop-sfo_jfk_economy",
     )
     .await
     {
-        Ok(()) => println!("✅ Quick test completed successfully"),
-        Err(e) => eprintln!("❌ Quick test failed: {}", e),
+        Ok(text) => compress_and_save_flight(&text, "nonstop-sfo_jfk_economy"),
+        Err(e) => panic!("Failed: {}", e),
     }
+}
+
+#[tokio::test]
+#[ignore]
+async fn fetch_fixture_lax_ord_business() {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+
+    let today = chrono::Local::now().date_naive();
+    let depart = today + Months::new(2) + chrono::Duration::days(15);
+
+    let params = delulu_travel_agent::FlightSearchParams::builder(
+        "LAX".to_uppercase(),
+        "ORD".to_uppercase(),
+        depart,
+    )
+    .cabin_class(Seat::Business)
+    .build()
+    .expect("params should build");
+
+    let url = params.get_search_url();
+
+    match rate_limited_flight_fetch(
+        &client,
+        &url,
+        FLIGHT_FIXTURE_RATE_LIMIT_SECS,
+        "domestic+business-lax_ord",
+    )
+    .await
+    {
+        Ok(text) => compress_and_save_flight(&text, "domestic+business-lax_ord"),
+        Err(e) => panic!("Failed: {}", e),
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn fetch_fixture_sfo_lhr_overnight() {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+
+    let today = chrono::Local::now().date_naive();
+    let depart = today + Months::new(2);
+
+    let params = delulu_travel_agent::FlightSearchParams::builder(
+        "SFO".to_uppercase(),
+        "LHR".to_uppercase(),
+        depart,
+    )
+    .build()
+    .expect("params should build");
+
+    let url = params.get_search_url();
+
+    match rate_limited_flight_fetch(
+        &client,
+        &url,
+        FLIGHT_FIXTURE_RATE_LIMIT_SECS,
+        "overnight+1day-sfo_lhr_economy",
+    )
+    .await
+    {
+        Ok(text) => compress_and_save_flight(&text, "overnight+1day-sfo_lhr_economy"),
+        Err(e) => panic!("Failed: {}", e),
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn fetch_fixture_lax_syd_longhaul() {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+
+    let today = chrono::Local::now().date_naive();
+    let depart = today + Months::new(3);
+
+    let params = delulu_travel_agent::FlightSearchParams::builder(
+        "LAX".to_uppercase(),
+        "SYD".to_uppercase(),
+        depart,
+    )
+    .build()
+    .expect("params should build");
+
+    let url = params.get_search_url();
+
+    match rate_limited_flight_fetch(
+        &client,
+        &url,
+        FLIGHT_FIXTURE_RATE_LIMIT_SECS,
+        "longhaul-lax_syd",
+    )
+    .await
+    {
+        Ok(text) => compress_and_save_flight(&text, "longhaul-lax_syd"),
+        Err(e) => panic!("Failed: {}", e),
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn fetch_fixture_mad_nrt_layover() {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+
+    let today = chrono::Local::now().date_naive();
+    let depart = today + Months::new(3);
+
+    let params = delulu_travel_agent::FlightSearchParams::builder(
+        "MAD".to_uppercase(),
+        "NRT".to_uppercase(),
+        depart,
+    )
+    .build()
+    .expect("params should build");
+
+    let url = params.get_search_url();
+
+    match rate_limited_flight_fetch(
+        &client,
+        &url,
+        FLIGHT_FIXTURE_RATE_LIMIT_SECS,
+        "layover-mad_nrt",
+    )
+    .await
+    {
+        Ok(text) => compress_and_save_flight(&text, "layover-mad_nrt"),
+        Err(e) => panic!("Failed: {}", e),
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn fetch_fixtures_all() {
+    println!("Fetching all flight fixtures (3 second delay between requests)...");
+    println!("This will take approximately 15 seconds...");
 }

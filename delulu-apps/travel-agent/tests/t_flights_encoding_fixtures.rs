@@ -25,12 +25,11 @@
 
 use std::path::Path;
 
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine as _;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::NaiveDate;
 use serde::Deserialize;
 
-use delulu_travel_agent::{encode_tfs, CabinClass, FlightSearchConfig, PassengerType, TripType};
+use delulu_travel_agent::{FlightSearchParams, Passenger, Seat, Trip};
 
 /// Test vector case from JSON file.
 #[derive(Deserialize, Debug)]
@@ -47,8 +46,8 @@ struct VectorsFile {
     cases: Vec<TestCase>,
 }
 
-/// Parse input JSON into FlightSearchConfig.
-fn config_from_json(json: &serde_json::Value) -> Result<FlightSearchConfig, String> {
+/// Parse input JSON into FlightSearchParams.
+fn params_from_json(json: &serde_json::Value) -> Result<FlightSearchParams, String> {
     let obj = json.as_object().ok_or("input must be an object")?;
 
     let from = obj
@@ -78,56 +77,48 @@ fn config_from_json(json: &serde_json::Value) -> Result<FlightSearchConfig, Stri
         .ok_or_else(|| format!("invalid date: {}", date_str))?;
 
     let cabin = match obj.get("cabin_class").and_then(|v| v.as_str()) {
-        Some("economy") => CabinClass::Economy,
-        Some("premium-economy") => CabinClass::PremiumEconomy,
-        Some("business") => CabinClass::Business,
-        Some("first") => CabinClass::First,
+        Some("economy") => Seat::Economy,
+        Some("premium-economy") => Seat::PremiumEconomy,
+        Some("business") => Seat::Business,
+        Some("first") => Seat::First,
         Some(s) => return Err(format!("unknown cabin_class: {}", s)),
         None => return Err("missing cabin_class".into()),
     };
 
     let trip = match obj.get("trip_type").and_then(|v| v.as_str()) {
-        Some("one-way") => TripType::OneWay,
-        Some("round-trip") => TripType::RoundTrip,
-        Some("multi-city") => TripType::MultiCity,
+        Some("one-way") => Trip::OneWay,
+        Some("round-trip") => Trip::RoundTrip,
+        Some("multi-city") => Trip::MultiCity,
         Some(s) => return Err(format!("unknown trip_type: {}", s)),
         None => return Err("missing trip_type".into()),
     };
 
-    let passengers_obj = obj
-        .get("passengers")
-        .and_then(|v| v.as_object())
-        .ok_or("missing passengers object")?;
-
+    let passengers_obj = obj.get("passengers").and_then(|v| v.as_object());
     let adults = passengers_obj
-        .get("adults")
-        .and_then(|v| v.as_u64())
-        .ok_or("missing adults")? as u32;
+        .and_then(|v| v.get("adults").and_then(|v| v.as_u64()))
+        .unwrap_or(0) as u32;
     let children = passengers_obj
-        .get("children")
-        .and_then(|v| v.as_u64())
+        .and_then(|v| v.get("children").and_then(|v| v.as_u64()))
         .unwrap_or(0) as u32;
     let infants_in_seat = passengers_obj
-        .get("infants_in_seat")
-        .and_then(|v| v.as_u64())
+        .and_then(|v| v.get("infants_in_seat").and_then(|v| v.as_u64()))
         .unwrap_or(0) as u32;
     let infants_on_lap = passengers_obj
-        .get("infants_on_lap")
-        .and_then(|v| v.as_u64())
+        .and_then(|v| v.get("infants_on_lap").and_then(|v| v.as_u64()))
         .unwrap_or(0) as u32;
 
     let mut passengers = Vec::new();
     if adults > 0 {
-        passengers.push((PassengerType::Adult, adults));
+        passengers.push((Passenger::Adult, adults));
     }
     if children > 0 {
-        passengers.push((PassengerType::Child, children));
+        passengers.push((Passenger::Child, children));
     }
     if infants_in_seat > 0 {
-        passengers.push((PassengerType::InfantInSeat, infants_in_seat));
+        passengers.push((Passenger::InfantInSeat, infants_in_seat));
     }
     if infants_on_lap > 0 {
-        passengers.push((PassengerType::InfantOnLap, infants_on_lap));
+        passengers.push((Passenger::InfantOnLap, infants_on_lap));
     }
 
     let max_stops = obj
@@ -135,16 +126,15 @@ fn config_from_json(json: &serde_json::Value) -> Result<FlightSearchConfig, Stri
         .and_then(|v| v.as_i64())
         .map(|v| v as i32);
 
-    Ok(FlightSearchConfig {
-        from_airport: from,
-        to_airport: to,
-        depart_date: date,
-        cabin_class: cabin,
-        passengers,
-        trip_type: trip,
-        max_stops,
-        preferred_airlines: None,
-    })
+    let builder = FlightSearchParams::builder(from, to, date)
+        .cabin_class(cabin)
+        .passengers(passengers)
+        .trip_type(trip);
+    let params = builder
+        .max_stops(max_stops)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(params)
 }
 
 /// Decode base64 string.
@@ -175,7 +165,7 @@ fn test_encoding_vectors() {
     for (i, case) in vectors.cases.iter().enumerate() {
         println!("[{:2}/{:2}] {}", i + 1, vectors.cases.len(), case.name);
 
-        let config = match config_from_json(&case.input) {
+        let params = match params_from_json(&case.input) {
             Ok(c) => c,
             Err(e) => {
                 println!("  ✗ PARSE ERROR: {}", e);
@@ -184,7 +174,7 @@ fn test_encoding_vectors() {
             }
         };
 
-        let rust_out = match encode_tfs(&config) {
+        let rust_out: String = match params.generate_tfs() {
             Ok(b) => b,
             Err(e) => {
                 println!("  ✗ ENCODE ERROR: {:?}", e);
@@ -199,24 +189,20 @@ fn test_encoding_vectors() {
             continue;
         }
 
-        if rust_out[0] != 0x1a {
-            println!("  ✗ BAD START: expected 0x1a, got {:02x}", rust_out[0]);
-            failed += 1;
-            continue;
-        }
-
         match decode_b64(&case.expected_tfs) {
-            Ok(expected) if rust_out == expected => {
-                println!("  ✓ BYTE-EXACT MATCH ({} bytes)", rust_out.len());
-                passed += 1;
-            }
             Ok(expected) => {
-                println!(
-                    "  ✗ SIZE MISMATCH: Rust {} vs Expected {}",
-                    rust_out.len(),
-                    expected.len()
-                );
-                failed += 1;
+                let expected_b64 = STANDARD.encode(&expected);
+                if rust_out == expected_b64 {
+                    println!("  ✓ BYTE-EXACT MATCH ({} bytes)", rust_out.len());
+                    passed += 1;
+                } else {
+                    println!(
+                        "  ✗ SIZE MISMATCH: Rust {} vs Expected {}",
+                        rust_out.len(),
+                        expected_b64.len()
+                    );
+                    failed += 1;
+                }
             }
             Err(e) => {
                 println!("  ✗ REFERENCE UNREADABLE: {}", e);
@@ -226,10 +212,9 @@ fn test_encoding_vectors() {
     }
 
     println!("\n{}", "=".repeat(70));
-    println!("SUMMARY: {} passed, {} failed", passed, failed);
+    println!("RESULTS: {} passed, {} failed", passed, failed);
 
     if failed > 0 {
-        panic!("{} tests had errors", failed);
+        panic!("{} tests failed", failed);
     }
-    println!("All fixture tests passed!");
 }

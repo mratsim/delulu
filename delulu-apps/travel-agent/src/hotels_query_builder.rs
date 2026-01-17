@@ -24,14 +24,14 @@ pub mod proto {
     include!("proto/google_travel_hotels.rs");
 }
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
 
 pub use proto::{Amenity, SortType};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct HotelSearchParams {
     pub version: i32,
     pub adults: u32,
@@ -58,56 +58,44 @@ impl HotelSearchParams {
         &self.loc_q_search
     }
 
-    pub fn validate(&self) -> Result<()> {
+    fn validate(&self) -> Result<()> {
         let total_guests = self.adults + self.children_ages.len() as u32;
-        if self.adults < 1 {
-            bail!("At least one adult is required");
-        }
-        if total_guests > 6 {
-            bail!("Maximum 6 guests allowed");
-        }
-
-        for &age in &self.children_ages {
-            if !(1..=17).contains(&age) {
-                bail!("Children ages must be between 1 and 17 (ages 0-1 are encoded as 1)");
-            }
-        }
-
-        // To keep this module side-effect free.
-        // The check-in date is checked to be in the past just before submitting a query.
+        ensure!(self.adults >= 1, "At least one adult is required");
+        ensure!(total_guests <= 6, "Maximum 6 guests allowed");
+        ensure!(
+            self.children_ages
+                .iter()
+                .all(|&age| (1..=17).contains(&age)),
+            "Children ages must be between 1 and 17 (ages 0-1 are encoded as 1)"
+        );
 
         let checkin = NaiveDate::parse_from_str(&self.checkin_date, "%Y-%m-%d")
             .context("Invalid checkin date")?;
         let checkout = NaiveDate::parse_from_str(&self.checkout_date, "%Y-%m-%d")
             .context("Invalid checkout date")?;
 
-        if checkout <= checkin {
-            bail!("Checkout must be after check-in");
-        }
-        if checkout - checkin > chrono::Duration::days(30) {
-            bail!("Stay must be 30 nights or fewer");
-        }
+        ensure!(checkout > checkin, "Checkout must be after check-in");
+        ensure!(
+            checkout - checkin <= chrono::Duration::days(30),
+            "Stay must be 30 nights or fewer"
+        );
         if let Some(p) = self.max_price {
-            if p <= 0 {
-                bail!("Price must be positive");
-            }
+            ensure!(p > 0, "Price must be positive");
         }
         if let Some(p) = self.min_price {
-            if p <= 0 {
-                bail!("Price must be positive");
-            }
+            ensure!(p > 0, "Price must be positive");
         }
         if let (Some(min), Some(max)) = (self.min_price, self.max_price) {
-            if min > max {
-                bail!("Minimum price cannot be greater than maximum price");
-            }
+            ensure!(
+                min <= max,
+                "Minimum price cannot be greater than maximum price"
+            );
         }
 
-        for &star in &self.hotel_stars {
-            if !(2..=5).contains(&star) {
-                bail!("Star rating must be between 2 and 5");
-            }
-        }
+        ensure!(
+            self.hotel_stars.iter().all(|&star| (2..=5).contains(&star)),
+            "Star rating must be between 2 and 5"
+        );
         Ok(())
     }
 

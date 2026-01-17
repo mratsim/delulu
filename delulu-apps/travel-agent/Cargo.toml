@@ -9,7 +9,7 @@ description = "CLI tools and MCP server for travel services"
 wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
 wreq-util = "3.0.0-rc.9"
 scraper = "0.17"
-regex = { version = "1.10", default-features = false }
+regex = { version = "1.10", default-features = false, features = ["unicode-perl", "unicode-case"] }
 delulu-query-queues = { path = "../../delulu-internals/query-queues" }
 tokio = { version = "1", features = ["rt", "macros"] }
 anyhow = "1.0"

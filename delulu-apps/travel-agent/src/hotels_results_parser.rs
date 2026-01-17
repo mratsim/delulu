@@ -24,7 +24,7 @@ use anyhow::Result;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hotel {
     pub name: String,
     pub price: String,
@@ -38,7 +38,7 @@ pub struct Hotel {
     pub address: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HotelSearchResult {
     pub hotels: Vec<Hotel>,
     pub lowest_price: Option<String>,
@@ -122,9 +122,7 @@ impl HotelSearchResult {
             current_price: None,
         };
 
-        if !result.is_valid() {
-            anyhow::bail!("No valid hotel results found");
-        }
+        anyhow::ensure!(result.is_valid(), "No valid hotel results found");
         Ok(result)
     }
 

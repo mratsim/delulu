@@ -17,7 +17,7 @@ async fn setup_driver() -> Result<WebDriver> {
 #[tokio::test]
 #[ignore]
 async fn test_google_hotels_full_flow() -> Result<()> {
-    let mut driver = setup_driver().await?;
+    let driver = setup_driver().await?;
 
     driver.goto("about:blank").await?;
     println!("SUCCESS: Connected and navigated");

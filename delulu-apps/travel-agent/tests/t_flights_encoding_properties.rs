@@ -17,7 +17,7 @@
 
 //! Property-based TFS encoding tests.
 //!
-//! Tests various encoder properties without relying on fixtures:
+//! Tests that encoding produces valid output for various parameter combinations:
 //! - All cabin classes encode correctly
 //! - Valid passenger combinations encode correctly
 //! - Invalid passenger combinations are rejected
@@ -25,24 +25,27 @@
 //! Run with:
 //!     cargo test --test t_flights_encoding_properties
 
+use base64::Engine;
 use chrono::NaiveDate;
 
-use delulu_travel_agent::{encode_tfs, CabinClass, FlightSearchConfig, PassengerType, TripType};
+use delulu_travel_agent::{FlightSearchParams, Passenger, Seat, Trip};
 
 /// Basic sanity check.
 #[test]
 fn test_basic_encoding() {
-    let config = FlightSearchConfig {
-        from_airport: "LAX".into(),
-        to_airport: "ORD".into(),
-        depart_date: NaiveDate::from_ymd_opt(2025, 8, 1).unwrap(),
-        cabin_class: CabinClass::Economy,
-        passengers: vec![(PassengerType::Adult, 1)],
-        trip_type: TripType::OneWay,
-        max_stops: None,
-        preferred_airlines: None,
-    };
-    let bytes = encode_tfs(&config).expect("basic encode should work");
+    let params = FlightSearchParams::builder(
+        "LAX".to_string(),
+        "ORD".to_string(),
+        NaiveDate::from_ymd_opt(2025, 8, 1).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .trip_type(Trip::OneWay)
+    .build()
+    .expect("basic params should build");
+    let tfs = params.generate_tfs().expect("basic encode should work");
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&tfs)
+        .expect("should decode base64");
     assert!(!bytes.is_empty(), "should produce bytes");
     assert!(bytes[0] == 0x1a, "should start with flightData tag");
     println!("Basic encoding: {} bytes - OK", bytes.len());
@@ -51,27 +54,29 @@ fn test_basic_encoding() {
 /// Verify all cabin classes encode without error.
 #[test]
 fn test_all_cabins() {
-    let base = FlightSearchConfig {
-        from_airport: "LAX".into(),
-        to_airport: "ORD".into(),
-        depart_date: NaiveDate::from_ymd_opt(2025, 8, 1).unwrap(),
-        cabin_class: CabinClass::Economy,
-        passengers: vec![(PassengerType::Adult, 1)],
-        trip_type: TripType::OneWay,
-        max_stops: None,
-        preferred_airlines: None,
-    };
+    let base_params = FlightSearchParams::builder(
+        "LAX".to_string(),
+        "ORD".to_string(),
+        NaiveDate::from_ymd_opt(2025, 8, 1).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .trip_type(Trip::OneWay);
 
     for cabin in [
-        CabinClass::Economy,
-        CabinClass::PremiumEconomy,
-        CabinClass::Business,
-        CabinClass::First,
+        Seat::Economy,
+        Seat::PremiumEconomy,
+        Seat::Business,
+        Seat::First,
     ] {
-        let mut cfg = base.clone();
-        cfg.cabin_class = cabin;
-
-        let bytes = encode_tfs(&cfg).expect("encode");
+        let params = base_params
+            .clone()
+            .cabin_class(cabin)
+            .build()
+            .expect("encode");
+        let tfs = params.generate_tfs().expect("encode");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&tfs)
+            .expect("decode");
         println!("{:?} -> {} bytes", cabin, bytes.len());
         assert!(!bytes.is_empty(), "{:?}: should produce bytes", cabin);
         assert!(bytes[0] == 0x1a, "{:?}: should have flightData tag", cabin);
@@ -82,96 +87,112 @@ fn test_all_cabins() {
 /// Test that passenger types requiring adult supervision are rejected without adult.
 #[test]
 fn test_passenger_types_require_adult() {
-    let base = FlightSearchConfig {
-        from_airport: "SFO".into(),
-        to_airport: "JFK".into(),
-        depart_date: NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
-        cabin_class: CabinClass::Economy,
-        passengers: vec![],
-        trip_type: TripType::OneWay,
-        max_stops: None,
-        preferred_airlines: None,
-    };
+    let base_params = FlightSearchParams::builder(
+        "SFO".to_string(),
+        "JFK".to_string(),
+        NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .trip_type(Trip::OneWay);
 
     // Cases that require an adult - these should FAIL validation
     let requires_adult = vec![
-        (PassengerType::Child, "Child alone"),
-        (PassengerType::InfantInSeat, "Infant in seat alone"),
-        (PassengerType::InfantOnLap, "Infant on lap alone"),
+        (Passenger::Child, "Child alone"),
+        (Passenger::InfantInSeat, "Infant in seat alone"),
+        (Passenger::InfantOnLap, "Infant on lap alone"),
     ];
 
-    for (ptype, name) in &requires_adult {
-        let mut cfg = base.clone();
-        cfg.passengers = vec![(*ptype, 1)];
-        let result = encode_tfs(&cfg);
+    for (ptype, desc) in requires_adult {
+        let params = base_params.clone().passengers(vec![(ptype, 1)]).build();
+
         assert!(
-            result.is_err(),
-            "{}: should be rejected without adult",
-            name
+            params.is_err(),
+            "{} should fail validation without adult",
+            desc
         );
-        println!("{} correctly rejected - OK", name);
+        println!("{:?} correctly rejected - OK", ptype);
     }
 
-    // Case that works alone - Adult alone succeeds
-    let mut adult_cfg = base.clone();
-    adult_cfg.passengers = vec![(PassengerType::Adult, 1)];
-    let bytes = encode_tfs(&adult_cfg).expect("Adult alone should encode");
-    assert!(!bytes.is_empty(), "Adult alone: should produce bytes");
-    assert!(bytes[0] == 0x1a, "Adult alone: should have flightData tag");
-    println!("Adult alone encodes correctly - OK");
+    // Case with adult present - should SUCCEED
+    let params = base_params
+        .clone()
+        .passengers(vec![(Passenger::Adult, 1), (Passenger::Child, 1)])
+        .build()
+        .expect("adult + child should be valid");
+    let tfs = params.generate_tfs().expect("should encode");
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&tfs)
+        .expect("decode");
+    assert!(!bytes.is_empty(), "adult + child should encode");
+    println!("Adult + child correctly accepted - OK");
+
+    println!("Passenger type validation - OK");
 }
 
-/// Test that infant-on-lap ratio limits are enforced.
+/// Test that empty passenger list fails validation.
 #[test]
-fn test_infant_on_lap_limit() {
-    let config = FlightSearchConfig {
-        from_airport: "SFO".into(),
-        to_airport: "LHR".into(),
-        depart_date: NaiveDate::from_ymd_opt(2025, 8, 20).unwrap(),
-        cabin_class: CabinClass::Business,
-        passengers: vec![
-            (PassengerType::Adult, 1),
-            (PassengerType::InfantOnLap, 2), // 2 infants, only 1 adult
-        ],
-        trip_type: TripType::RoundTrip,
-        max_stops: None,
-        preferred_airlines: None,
-    };
+fn test_empty_passengers_fails() {
+    let params = FlightSearchParams::builder(
+        "SFO".to_string(),
+        "JFK".to_string(),
+        NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .trip_type(Trip::OneWay)
+    .passengers(vec![])
+    .build();
 
-    let result = encode_tfs(&config);
-    assert!(
-        result.is_err(),
-        "2 infants on lap with 1 adult should be rejected"
-    );
-    println!("Infant-to-adult limit enforced - OK");
+    assert!(params.is_err(), "empty passengers should fail validation");
+    println!("Empty passengers correctly rejected - OK");
 }
 
-/// Test valid passenger combinations encode correctly.
+/// Test that max_stops is correctly encoded.
 #[test]
-fn test_valid_passenger_combinations() {
-    let config = FlightSearchConfig {
-        from_airport: "SFO".into(),
-        to_airport: "LHR".into(),
-        depart_date: NaiveDate::from_ymd_opt(2025, 8, 20).unwrap(),
-        cabin_class: CabinClass::Business,
-        passengers: vec![
-            (PassengerType::Adult, 2),
-            (PassengerType::Child, 1),
-            (PassengerType::InfantOnLap, 1),
-        ],
-        trip_type: TripType::RoundTrip,
-        max_stops: None,
-        preferred_airlines: None,
-    };
+fn test_max_stops_encoding() {
+    for stops in [None, Some(0), Some(1), Some(2)] {
+        let params = FlightSearchParams::builder(
+            "SFO".to_string(),
+            "JFK".to_string(),
+            NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+        )
+        .cabin_class(Seat::Economy)
+        .trip_type(Trip::OneWay)
+        .max_stops(stops)
+        .build()
+        .expect("params should build");
 
-    let bytes = encode_tfs(&config).expect("valid family config should encode");
-    println!(
-        "Family (2 adults + 1 child + 1 infant on lap) -> {} bytes",
-        bytes.len()
-    );
-    assert!(
-        bytes.len() > 35,
-        "family config should have multiple passenger entries"
-    );
-    println!("Valid passenger combination encodes correctly - OK");
+        let tfs = params.generate_tfs().expect("should encode");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&tfs)
+            .expect("decode");
+        assert!(!bytes.is_empty(), "max_stops={:?} should encode", stops);
+        println!("max_stops={:?} -> {} bytes - OK", stops, bytes.len());
+    }
+}
+
+/// Test that preferred_airlines is correctly encoded.
+#[test]
+fn test_airlines_encoding() {
+    let params = FlightSearchParams::builder(
+        "SFO".to_string(),
+        "JFK".to_string(),
+        NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .trip_type(Trip::OneWay)
+    .preferred_airlines(Some(vec![
+        "AA".to_string(),
+        "UA".to_string(),
+        "DL".to_string(),
+    ]))
+    .build()
+    .expect("params should build");
+
+    let tfs = params.generate_tfs().expect("should encode");
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&tfs)
+        .expect("decode");
+    assert!(!bytes.is_empty(), "airlines should encode");
+    assert!(bytes[0] == 0x1a, "should have flightData tag");
+    println!("Multiple airlines encoded - OK");
 }

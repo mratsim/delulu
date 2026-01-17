@@ -1,0 +1,10 @@
+fn main() {
+    println!("cargo:rerun-if-changed=src/proto/google_travel_flights.proto");
+    println!("cargo:rerun-if-changed=src/proto/google_travel_hotels.proto");
+
+    prost_build::compile_protos(
+        &["src/proto/google_travel_flights.proto", "src/proto/google_travel_hotels.proto"],
+        &["."],
+    )
+    .unwrap();
+}

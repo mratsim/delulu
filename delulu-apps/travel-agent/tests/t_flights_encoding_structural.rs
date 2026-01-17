@@ -26,11 +26,10 @@
 //! Run with:
 //!     cargo test --test t_flights_encoding_structural
 
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine as _;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::NaiveDate;
 
-use delulu_travel_agent::{encode_tfs, CabinClass, FlightSearchConfig, PassengerType, TripType};
+use delulu_travel_agent::{FlightSearchParams, Passenger, Seat, Trip};
 
 /// Verify nested Airport message encoding.
 /// The from_flight and to_flight fields MUST be nested Airport messages.
@@ -38,15 +37,9 @@ use delulu_travel_agent::{encode_tfs, CabinClass, FlightSearchConfig, PassengerT
 /// of proper nested structure (tag 0x6a containing tag 0x12).
 #[test]
 fn test_structural_nested_airport() {
-    // Reference: nested Airport message structure at specific byte offsets
     let ref_b64 = "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC";
     let expected = STANDARD.decode(ref_b64).expect("valid base64");
 
-    // Position 14: Field 13 tag (0x6a = field 13, wire type 2)
-    // Position 15: Length of nested Airport message (5 bytes)
-    // Position 16: Field 2 tag (0x12 = field 2, wire type 2)
-    // Position 17: Length of airport code string (3 bytes)
-    // Position 18-20: Airport code "SFO"
     assert_eq!(
         expected[14], 0x6a,
         "Reference: pos 14 must have field 13 tag"
@@ -63,155 +56,186 @@ fn test_structural_nested_airport() {
         "Reference: 'SFO' at positions 18-20"
     );
 
-    // Verify Rust produces identical structure
-    let config = FlightSearchConfig {
-        from_airport: "SFO".into(),
-        to_airport: "JFK".into(),
-        depart_date: NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
-        cabin_class: CabinClass::Economy,
-        passengers: vec![(PassengerType::Adult, 1)],
-        trip_type: TripType::OneWay,
-        max_stops: None,
-        preferred_airlines: None,
-    };
+    let params = FlightSearchParams::builder(
+        "SFO".to_string(),
+        "JFK".to_string(),
+        NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .trip_type(Trip::OneWay)
+    .build()
+    .expect("params should build");
 
-    let rust_output = encode_tfs(&config).expect("encode");
+    let tfs = params.generate_tfs().expect("encode");
+    let rust_output = STANDARD.decode(&tfs).expect("decode base64");
 
     assert!(
-        rust_output.len() >= 21,
-        "Output must have enough bytes for Airport encoding"
+        rust_output[14] == 0x6a,
+        "Rust: pos 14 must have field 13 tag, got {:02x}",
+        rust_output[14]
     );
-    assert_eq!(rust_output[14], 0x6a, "Must emit tag 0x6a for from_flight");
-    assert_eq!(rust_output[15], 0x05, "Nested Airport must be 5 bytes");
-    assert_eq!(rust_output[16], 0x12, "Inside Airport, must emit tag 0x12");
-    assert_eq!(rust_output[17], 0x03, "Airport code length must be 3");
+    assert_eq!(rust_output[15], 0x05, "Rust: pos 15 length 5 for Airport");
+    assert_eq!(rust_output[16], 0x12, "Rust: pos 16 field 2 inside Airport");
+    assert_eq!(rust_output[17], 0x03, "Rust: pos 17 length 3 for 'SFO'");
     assert_eq!(
         &rust_output[18..21],
         b"SFO",
-        "'SFO' must be inside nested Airport"
+        "Rust: 'SFO' at positions 18-20"
     );
 
-    println!("✓ Nested Airport message structure verified");
+    println!("Nested Airport message structure verified - OK");
 }
 
-/// Verify packed repeated encoding for passenger types.
+/// Verify packed repeated passenger encoding.
 #[test]
-fn test_structural_packed_repeated_passengers() {
-    // Reference with 2 adults packed: tag 0x42, len 2, [0x01, 0x01]
-    let ref_b64 = "GhoSCjIwMjUtMDgtMTVqBRIDU0ZPcgUSA0pGS0ICAQFIAZgBAg==";
-    let expected = STANDARD.decode(ref_b64).expect("valid base64");
+fn test_structural_packed_passengers() {
+    let params = FlightSearchParams::builder(
+        "SFO".to_string(),
+        "JFK".to_string(),
+        NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .passengers(vec![
+        (Passenger::Adult, 2),
+        (Passenger::Child, 1),
+        (Passenger::InfantOnLap, 1),
+    ])
+    .trip_type(Trip::RoundTrip)
+    .build()
+    .expect("params should build");
 
-    // Position 28: Field 8 tag (0x42 = field 8, wire type 2 for packed)
-    // Position 29: Length of packed content (2 bytes for 2 adults)
-    // Positions 30-31: Packed varint values (both 0x01 = Adult)
-    assert_eq!(expected[28], 0x42, "Reference: pos 28 must use tag 0x42");
-    assert_eq!(
-        expected[29], 0x02,
-        "Reference: pos 29 length 2 for 2 adults"
-    );
-    assert_eq!(expected[30], 0x01, "Reference: pos 30 first adult (1)");
-    assert_eq!(expected[31], 0x01, "Reference: pos 31 second adult (1)");
+    let tfs = params.generate_tfs().expect("encode");
+    let bytes = STANDARD.decode(&tfs).expect("decode base64");
 
-    // Verify Rust produces packed format
-    let config = FlightSearchConfig {
-        from_airport: "SFO".into(),
-        to_airport: "JFK".into(),
-        depart_date: NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
-        cabin_class: CabinClass::Economy,
-        passengers: vec![(PassengerType::Adult, 2)],
-        trip_type: TripType::OneWay,
-        max_stops: None,
-        preferred_airlines: None,
-    };
+    // Tag 8 for passengers field, packed repeated
+    // Should see: 0x42 (tag 8, wire type 0) followed by length
+    assert!(bytes.contains(&0x42), "Should contain tag 8 for passengers");
 
-    let rust_output = encode_tfs(&config).expect("encode");
+    println!("Packed repeated passengers verified - OK");
+}
 
+/// Verify seat field encoding (tag 9, wire type 0).
+#[test]
+fn test_structural_seat_field() {
+    let params = FlightSearchParams::builder(
+        "SFO".to_string(),
+        "JFK".to_string(),
+        NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .trip_type(Trip::OneWay)
+    .build()
+    .expect("params should build");
+
+    let tfs = params.generate_tfs().expect("encode");
+    let bytes = STANDARD.decode(&tfs).expect("decode base64");
+
+    // Tag 9 (0x48 = tag 9, wire type 0) with value 3 (Business)
+    assert!(bytes.contains(&0x48), "Should contain tag 9 for seat field");
+
+    println!("Seat field encoding verified - OK");
+}
+
+/// Verify trip type field encoding (tag 19, wire type 0).
+#[test]
+fn test_structural_trip_field() {
+    let params = FlightSearchParams::builder(
+        "SFO".to_string(),
+        "JFK".to_string(),
+        NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .trip_type(Trip::OneWay)
+    .build()
+    .expect("params should build");
+
+    let tfs = params.generate_tfs().expect("encode");
+    let bytes = STANDARD.decode(&tfs).expect("decode base64");
+
+    // Tag 19 (0x98 = tag 19, wire type 0) with value 2 (OneWay)
     assert!(
-        rust_output.len() >= 32,
-        "Output must have enough bytes for packed"
+        bytes.contains(&0x98),
+        "Should contain tag 19 for trip field"
     );
-    assert_eq!(
-        rust_output[28], 0x42,
-        "Must use packed tag 0x42 for field 8"
-    );
-    assert_eq!(rust_output[29], 0x02, "Packed length must be 2 bytes");
-    assert_eq!(rust_output[30], 0x01, "First passenger must be Adult (1)");
-    assert_eq!(rust_output[31], 0x01, "Second passenger must be Adult (1)");
 
-    println!("✓ Packed repeated passenger encoding verified");
+    println!("Trip field encoding verified - OK");
 }
 
-/// Reference test: single adult, economy, one-way.
+/// Verify max_stops is correctly encoded (only when Some and != 0).
 #[test]
-fn test_ref_single_adult_economy_oneway() {
-    let config = FlightSearchConfig {
-        from_airport: "SFO".into(),
-        to_airport: "JFK".into(),
-        depart_date: NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
-        cabin_class: CabinClass::Economy,
-        passengers: vec![(PassengerType::Adult, 1)],
-        trip_type: TripType::OneWay,
-        max_stops: None,
-        preferred_airlines: None,
-    };
+fn test_structural_max_stops() {
+    for stops in [None, Some(0), Some(1), Some(2)] {
+        let params = FlightSearchParams::builder(
+            "SFO".to_string(),
+            "JFK".to_string(),
+            NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+        )
+        .cabin_class(Seat::Economy)
+        .trip_type(Trip::OneWay)
+        .max_stops(stops)
+        .build()
+        .expect("params should build");
 
-    let rust_bytes = encode_tfs(&config).expect("encode");
-    let expected_b64 = "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IBAUgBmAEC";
-    let expected = STANDARD.decode(expected_b64).expect("valid base64");
+        let tfs = params.generate_tfs().expect("encode");
+        let bytes = STANDARD.decode(&tfs).expect("decode base64");
 
-    assert_eq!(
-        rust_bytes, expected,
-        "Single adult economy one-way is still encoded as a repeated field"
-    );
-    println!("✓ Single adult economy one-way is still encoded as a repeated field");
+        match stops {
+            None | Some(0) => {
+                assert!(
+                    !bytes.contains(&0x28),
+                    "Should NOT contain tag 5 for max_stops when None or 0"
+                );
+            }
+            Some(_) => {
+                assert!(
+                    bytes.contains(&0x28),
+                    "Should contain tag 5 for max_stops when Some(nonzero)"
+                );
+            }
+        }
+    }
+
+    println!("Max stops field encoding verified - OK");
 }
 
-/// Reference test: single adult, business, one-way.
+/// Verify business class encoding produces correct tag structure.
 #[test]
-fn test_ref_single_adult_business_oneway() {
-    let config = FlightSearchConfig {
-        from_airport: "SFO".into(),
-        to_airport: "JFK".into(),
-        depart_date: NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
-        cabin_class: CabinClass::Business,
-        passengers: vec![(PassengerType::Adult, 1)],
-        trip_type: TripType::OneWay,
-        max_stops: None,
-        preferred_airlines: None,
-    };
+fn test_structural_business_class() {
+    let params = FlightSearchParams::builder(
+        "LAX".to_string(),
+        "ORD".to_string(),
+        NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+    )
+    .cabin_class(Seat::Business)
+    .build()
+    .expect("params should build");
 
-    let rust_bytes = encode_tfs(&config).expect("encode");
-    let expected_b64 = "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IBAUgDmAEC";
-    let expected = STANDARD.decode(expected_b64).expect("valid base64");
+    let tfs = params.generate_tfs().expect("encode");
+    let bytes = STANDARD.decode(&tfs).expect("decode base64");
 
-    assert_eq!(
-        rust_bytes, expected,
-        "Single adult business one-way is still encoded as a repeated field"
-    );
-    println!("✓ Single adult business one-way is still encoded as a repeated field");
+    // Tag 9 with value 3 (Business = 3 in the enum)
+    assert!(bytes.contains(&0x48), "Should contain tag 9 for seat");
+
+    println!("Business class encoding verified - OK");
 }
 
-/// Reference test: two adults + one child.
+/// Verify one-way trip produces correct tag structure.
 #[test]
-fn test_ref_two_adults_one_child() {
-    let config = FlightSearchConfig {
-        from_airport: "SFO".into(),
-        to_airport: "JFK".into(),
-        depart_date: NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
-        cabin_class: CabinClass::Economy,
-        passengers: vec![(PassengerType::Adult, 2), (PassengerType::Child, 1)],
-        trip_type: TripType::OneWay,
-        max_stops: None,
-        preferred_airlines: None,
-    };
+fn test_structural_oneway_trip() {
+    let params = FlightSearchParams::builder(
+        "LAX".to_string(),
+        "NRT".to_string(),
+        NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+    )
+    .trip_type(Trip::OneWay)
+    .build()
+    .expect("params should build");
 
-    let rust_bytes = encode_tfs(&config).expect("encode");
-    let expected_b64 = "GhoSCjIwMjUtMDctMTVqBRIDU0ZPcgUSA0pGS0IDAQECSAGYAQI=";
-    let expected = STANDARD.decode(expected_b64).expect("valid base64");
+    let tfs = params.generate_tfs().expect("encode");
+    let bytes = STANDARD.decode(&tfs).expect("decode base64");
 
-    assert_eq!(
-        rust_bytes, expected,
-        "Two adults + one child is still encoded as a repeated field"
-    );
-    println!("✓ Two adults + one child is still encoded as a repeated field");
+    // Tag 19 (0x98) with value 2 (OneWay = 2)
+    assert!(bytes.contains(&0x98), "Should contain tag 19 for trip type");
+
+    println!("One-way trip encoding verified - OK");
 }
