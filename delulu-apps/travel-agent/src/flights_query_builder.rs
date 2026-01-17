@@ -45,7 +45,7 @@ pub struct FlightSearchParams {
 }
 
 impl FlightSearchParams {
-    fn validate(&self) -> Result<()> {
+    pub fn validate(&self) -> Result<()> {
         ensure!(!self.from_airport.is_empty(), "Origin airport is required");
         ensure!(
             !self.to_airport.is_empty(),
@@ -74,8 +74,24 @@ impl FlightSearchParams {
             adults
         );
 
-        let _checkin = NaiveDate::parse_from_str(&self.depart_date, "%Y-%m-%d")
-            .context("Invalid depart date")?;
+        let depart_date = NaiveDate::parse_from_str(&self.depart_date, "%Y-%m-%d")
+            .context("Invalid depart date format")?;
+
+        if let Some(return_date_str) = &self.return_date {
+            let return_date = NaiveDate::parse_from_str(return_date_str, "%Y-%m-%d")
+                .context("Invalid return date format")?;
+
+            if self.trip_type == Trip::RoundTrip {
+                ensure!(
+                    return_date >= depart_date,
+                    "Return date must be on or after departure date"
+                );
+            }
+        }
+
+        // TODO: Validate depart_date >= today and return_date >= today
+        // These require time context - pass current date as parameter or
+        // validate in effectful module (e.g., flight_search::search_flights)
 
         Ok(())
     }

@@ -243,7 +243,7 @@ fn calc_column_widths(
         max_stops = max(max_stops, 10);
     }
 
-    let rank_width = min_rank.max(min(5, min_rank + 2));
+    let rank_width = 5; // Fixed width for rank column (`#1-`#5)
     (rank_width, max_airline, max_times, max_duration, max_stops)
 }
 

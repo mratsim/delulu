@@ -115,6 +115,8 @@ impl GoogleFlightsClient {
     }
 
     pub async fn search_flights(&self, params: &FlightSearchParams) -> Result<FlightSearchResult> {
+        params.validate().context("Invalid search parameters")?;
+
         let url = params.get_search_url();
         tracing::info!("🔗 Search URL:\n{}", url);
 
@@ -122,6 +124,12 @@ impl GoogleFlightsClient {
         let depart_date = chrono::NaiveDate::parse_from_str(&params.depart_date, "%Y-%m-%d")
             .context("Invalid depart date")?;
         anyhow::ensure!(depart_date >= today, "Departure date cannot be in the past");
+
+        if let Some(return_date_str) = &params.return_date {
+            let return_date = chrono::NaiveDate::parse_from_str(return_date_str, "%Y-%m-%d")
+                .context("Invalid return date")?;
+            anyhow::ensure!(return_date >= today, "Return date cannot be in the past");
+        }
 
         let html = self.fetch_raw(params).await?;
 
