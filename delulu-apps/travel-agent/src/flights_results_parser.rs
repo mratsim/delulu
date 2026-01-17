@@ -139,7 +139,8 @@ impl FlightSelectors {
 static DURATION_H_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\d+)\s*h").unwrap());
 static DURATION_M_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\d+)\s*m").unwrap());
 static LAYOVER_ARIA_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(\d+)\s*h(?:r\s*(?:(\d+)\s*m(?:in)?)?)?.*?in\s+([A-Za-zÀ-ÿ'\s-][A-Za-zÀ-ÿ'\s-]*)").unwrap()
+    Regex::new(r"(\d+)\s*h(?:r\s*(?:(\d+)\s*m(?:in)?)?)?.*?in\s+([A-Za-zÀ-ÿ'\s-][A-Za-zÀ-ÿ'\s-]*)")
+        .unwrap()
 });
 
 fn parse_flights_response(html: &str) -> Result<Vec<Flight>> {
