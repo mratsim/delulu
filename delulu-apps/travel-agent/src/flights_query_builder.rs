@@ -262,7 +262,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_generate_tfs_roundtrip() {
+    fn test_generate_tfs_oneway() {
         let params = FlightSearchParams::builder(
             "SFO".to_string(),
             "JFK".to_string(),
@@ -287,6 +287,7 @@ mod tests {
         .cabin_class(Seat::Business)
         .passengers(vec![(Passenger::Adult, 2)])
         .trip_type(Trip::RoundTrip)
+        .return_date(NaiveDate::from_ymd_opt(2025, 8, 8).unwrap())
         .preferred_airlines(Some(vec!["AF".to_string(), "DL".to_string()]))
         .max_stops(Some(1))
         .build()
@@ -295,6 +296,24 @@ mod tests {
         let url = params.get_search_url();
         assert!(url.contains("tfs="));
         assert!(url.contains("https://www.google.com/travel/flights/search"));
+    }
+
+    #[test]
+    fn test_generate_tfs_roundtrip() {
+        let params = FlightSearchParams::builder(
+            "SFO".to_string(),
+            "JFK".to_string(),
+            NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+        )
+        .cabin_class(Seat::Economy)
+        .passengers(vec![(Passenger::Adult, 1)])
+        .trip_type(Trip::RoundTrip)
+        .return_date(NaiveDate::from_ymd_opt(2025, 7, 22).unwrap())
+        .build()
+        .unwrap();
+
+        let tfs = params.generate_tfs().unwrap();
+        assert!(!tfs.is_empty());
     }
 
     #[test]

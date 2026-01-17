@@ -22,6 +22,7 @@
 use crate::consent_cookie::generate_cookie_header;
 use crate::flights_query_builder::FlightSearchParams;
 use crate::flights_results_parser::FlightSearchResult;
+use crate::Trip;
 use anyhow::{anyhow, bail, Context, Result};
 use delulu_query_queues::QueryQueue;
 use std::sync::Arc;
@@ -116,6 +117,12 @@ impl GoogleFlightsClient {
 
     pub async fn search_flights(&self, params: &FlightSearchParams) -> Result<FlightSearchResult> {
         params.validate().context("Invalid search parameters")?;
+
+        if params.trip_type == Trip::RoundTrip && params.return_date.is_none() {
+            tracing::warn!(
+                "RoundTrip selected but no return_date provided - performing one-way search"
+            );
+        }
 
         let url = params.get_search_url();
         tracing::info!("🔗 Search URL:\n{}", url);
