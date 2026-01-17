@@ -13,7 +13,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -32,7 +31,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -54,7 +52,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "",
         "coordinates": "",
         "used_guests_dropdown": true
@@ -76,7 +73,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "",
         "coordinates": "",
         "used_guests_dropdown": true
@@ -98,7 +94,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0jd4j",
         "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
         "used_guests_dropdown": true
@@ -120,7 +115,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0jd4j",
         "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
         "min_guest_rating": 4.0,
@@ -143,7 +137,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0jd4j",
         "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
         "min_guest_rating": 4.5,
@@ -189,7 +182,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0jd4j",
         "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
         "min_guest_rating": 4.5,
@@ -216,7 +208,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0275wy",
         "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
         "price_max": 100,
@@ -238,7 +229,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0jd4j",
         "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
         "min_guest_rating": 4.5,
@@ -265,7 +255,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0jd4j",
         "coordinates": "0x47e66fc4f8007851:0x5aa1a787f38f64f6",
         "min_guest_rating": 4.5,
@@ -292,7 +281,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0qk79",
         "coordinates": "0x47e63e038e4ccf5b:0x42be0982f5ba62c",
         "used_guests_dropdown": true
@@ -311,7 +299,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/04nz96",
         "coordinates": "",
         "price_max": 150,
@@ -331,7 +318,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0275wy",
         "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
         "price_max": 99,
@@ -351,7 +337,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0275wy",
         "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
         "price_min": 99,
@@ -371,7 +356,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0275wy",
         "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
         "price_max": 101,
@@ -391,7 +375,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0275wy",
         "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
         "price_min": 101,
@@ -411,7 +394,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/0275wy",
         "coordinates": "0x47e672a39beac54d:0x40b82c3688b3740",
         "price_min": 99,
@@ -432,7 +414,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/04jpl",
         "coordinates": "0x47d8a00baf21de75:0x52963a5addd52a99",
         "used_guests_dropdown": true
@@ -451,7 +432,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/04jpl",
         "coordinates": "0x47d8a00baf21de75:0x52963a5addd52a99",
         "used_guests_dropdown": true
@@ -470,7 +450,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/04jpl",
         "coordinates": "0x47d8a00baf21de75:0x52963a5addd52a99",
         "used_guests_dropdown": true
@@ -489,7 +468,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -508,7 +486,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -527,7 +504,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -546,7 +522,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -565,7 +540,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -584,7 +558,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -603,7 +576,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -622,7 +594,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -641,7 +612,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -660,7 +630,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -679,7 +648,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -698,7 +666,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -717,7 +684,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -736,7 +702,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": true
@@ -755,7 +720,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": true
@@ -774,7 +738,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": true
@@ -793,7 +756,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": true
@@ -816,7 +778,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": true
@@ -839,7 +800,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": true
@@ -858,7 +818,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": false
@@ -877,7 +836,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "used_guests_dropdown": true
@@ -896,7 +854,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "price_min": 100,
@@ -917,7 +874,6 @@
           "children_with_ages": []
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/07dfk",
         "coordinates": "",
         "price_min": 140,
@@ -942,7 +898,6 @@
           ]
         },
         "currency": "",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "",
         "used_guests_dropdown": true
@@ -965,7 +920,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "min_guest_rating": 3.5,
@@ -989,7 +943,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "min_guest_rating": 4.0,
@@ -1013,7 +966,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "min_guest_rating": 4.5,
@@ -1037,7 +989,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "hotel_stars": [
@@ -1063,7 +1014,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "hotel_stars": [
@@ -1089,7 +1039,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "hotel_stars": [
@@ -1115,7 +1064,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "hotel_stars": [
@@ -1141,7 +1089,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "hotel_stars": [
@@ -1169,7 +1116,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "hotel_stars": [
@@ -1196,7 +1142,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "hotel_stars": [
@@ -1331,7 +1276,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "amenities": [
@@ -1357,7 +1301,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "amenities": [
@@ -1383,7 +1326,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "amenities": [
@@ -1409,7 +1351,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "amenities": [
@@ -1435,7 +1376,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "amenities": [
@@ -1461,7 +1401,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "amenities": [
@@ -1488,7 +1427,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "amenities": [
@@ -1516,7 +1454,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "amenities": [
@@ -1542,7 +1479,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "price_max": 250,
@@ -1566,7 +1502,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "price_min": 100,
@@ -1591,7 +1526,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "price_min": 190,
@@ -1616,7 +1550,6 @@
           ]
         },
         "currency": "EUR",
-        "sort_by": "unspecified",
         "location_id": "/m/02cl1",
         "coordinates": "0x876b80aa231f17cf:0x118ef4f8278a36d6",
         "price_min": 285,

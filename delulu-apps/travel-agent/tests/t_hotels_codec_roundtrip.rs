@@ -27,7 +27,7 @@ struct TestVectorInput {
     hotel_stars: Option<Vec<i32>>,
     price_min: Option<f64>,
     price_max: Option<f64>,
-    sort_by: String,
+    sort_by: Option<String>,
     location_id: String,
     coordinates: String,
     #[allow(dead_code)]
@@ -76,11 +76,11 @@ fn test_roundtrip_internal_codec() {
             .as_deref()
             .unwrap_or_default()
             .iter()
-            .filter_map(|a| delulu_travel_agent::Amenity::from_str_name(&a.to_uppercase()))
+            .filter_map(|a| delulu_travel_agent::Amenity::from_str_name(a))
             .collect();
-        let sort_order = match case.input.sort_by.to_uppercase().as_str() {
-            "RELEVANCE" => None,
-            _ => SortType::from_str_name(&case.input.sort_by.to_uppercase()).map(|s| s as i32),
+        let sort_order = match case.input.sort_by.as_deref() {
+            Some("relevance") | None => None,
+            Some(s) => SortType::from_str_name(s),
         };
         let min_price = case.input.price_min.map(|p| p as i32);
         let max_price = case.input.price_max.map(|p| p as i32);
@@ -150,7 +150,7 @@ fn test_roundtrip_internal_codec() {
                         if let Some(ref amenity_names) = case.input.amenities {
                             for name in amenity_names {
                                 if let Some(amenity) = delulu_travel_agent::Amenity::from_str_name(
-                                    &name.to_uppercase(),
+                                    name,
                                 ) {
                                     expected_filters.push(format!("amenity: {}", amenity as i32));
                                 }

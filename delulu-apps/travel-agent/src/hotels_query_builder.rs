@@ -90,6 +90,17 @@ impl Amenity {
             _ => None,
         }
     }
+
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Amenity::IndoorPool => "indoor_pool",
+            Amenity::OutdoorPool => "outdoor_pool",
+            Amenity::Pool => "pool",
+            Amenity::Spa => "spa",
+            Amenity::KidFriendly => "kid_friendly",
+            Amenity::AirConditioned => "air_conditioned",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -136,6 +147,14 @@ impl SortType {
             "highest_rating" | "highest" | "rating" => Some(SortType::HighestRating),
             "most_reviewed" | "reviewed" | "reviews" => Some(SortType::MostReviewed),
             _ => None,
+        }
+    }
+
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            SortType::LowestPrice => "lowest_price",
+            SortType::HighestRating => "highest_rating",
+            SortType::MostReviewed => "most_reviewed",
         }
     }
 }
