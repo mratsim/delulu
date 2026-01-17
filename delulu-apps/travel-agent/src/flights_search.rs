@@ -54,7 +54,7 @@ impl GoogleFlightsClient {
 }
 
 impl GoogleFlightsClient {
-    async fn fetch_raw(&self, request: &FlightSearchParams) -> Result<String> {
+    pub async fn fetch_raw(&self, request: &FlightSearchParams) -> Result<String> {
         let cookie_header = generate_cookie_header();
         let client_inner = Arc::clone(&self.client);
         let url = request.get_search_url();
@@ -121,69 +121,42 @@ impl GoogleFlightsClient {
         anyhow::ensure!(depart_date >= today, "Departure date cannot be in the past");
 
         let html = self.fetch_raw(params).await?;
-        let result = FlightSearchResult::from_html(&html, params.clone())?;
-        tracing::debug!("Parsed {} itineraries", result.itineraries.len());
-        Ok(result)
-    }
 
-    pub async fn search_flights_url(&self, url: &str) -> Result<FlightSearchResult> {
-        let cookie_header = generate_cookie_header();
-        let client_inner = Arc::clone(&self.client);
-        let url = url.to_string();
-        let cookie = cookie_header.clone();
+        match FlightSearchResult::from_html(&html, params.clone()) {
+            Ok(result) => {
+                tracing::debug!("Parsed {} itineraries", result.itineraries.len());
+                Ok(result)
+            }
+            Err(e) => {
+                let preview = html.chars().take(2000).collect::<String>();
+                tracing::error!("Parse failed: {:?}", e);
 
-        let response = self
-            .query_queue
-            .with_retry(move || {
-                let http_client = client_inner.clone();
-                let url = url.clone();
-                let cookie = cookie.clone();
-                async move {
-                    tracing::trace!("Fetching Google Flights URL: {}", url);
-                    let resp = http_client
-                        .get(&url)
-                        .header("Cookie", &cookie)
-                        .send()
-                        .await?;
-                    Ok(resp)
+                let has_flight_cards = html.contains("pIav2d") || html.contains("JMc5Xc");
+                let has_loading = html.contains("Loading results") || html.contains("jsshadow");
+                let has_consent = html.contains("consent.google.com") || html.contains("ppConfig");
+
+                if has_consent {
+                    tracing::error!("Consent wall detected - cookies not accepted");
+                } else if !has_flight_cards && has_loading {
+                    tracing::error!("Detected loading spinner without flight data.");
+                    tracing::error!("This often happens for sparse routes (small airports) or when Google loads results via JavaScript.");
+                    tracing::error!(
+                        "For YYD (Smithers), CDG (Paris), etc., Google may require JS rendering."
+                    );
+                } else if !has_flight_cards {
+                    tracing::error!("No flight data in response. This may indicate:");
+                    tracing::error!("  - SOCS cookie expired or invalid");
+                    tracing::error!("  - Bot detection triggered");
+                    tracing::error!("  - Rate limiting applied");
+                    tracing::error!("  - Route has no available flights");
+                } else {
+                    tracing::error!("Flight HTML detected but parser failed to extract. Parser may need updating.");
                 }
-            })
-            .await
-            .map_err(|e| anyhow!("Request failed: {:?}", e))?;
 
-        let status = response.status();
-        tracing::debug!(
-            "HTTP Status: {} {}",
-            status.as_u16(),
-            status.canonical_reason().unwrap_or("Unknown")
-        );
-
-        let body = response.text().await.context("Read body")?;
-        let body_len_kb = body.len() / 1024;
-        tracing::debug!("Response body: {} KB", body_len_kb);
-
-        if !status.is_success() {
-            let body_preview = body.chars().take(500).collect::<String>();
-            bail!("HTTP error {}: {}", status, body_preview);
+                tracing::error!("HTML preview (first 2000 chars):\n{}", preview);
+                Err(e).context("Parse failed - see HTML preview above")
+            }
         }
-
-        let is_consent_page = body.contains("consent.google.com")
-            || body.contains("base href=\"https://consent.google.com\"")
-            || body.contains("ppConfig");
-
-        if is_consent_page {
-            bail!("Consent wall detected - cookies not accepted");
-        }
-
-        let params = FlightSearchParams::builder(
-            "FROM".into(),
-            "TO".into(),
-            chrono::Local::now().date_naive(),
-        )
-        .build()
-        .unwrap();
-        let result = FlightSearchResult::from_html(&body, params)?;
-        Ok(result)
     }
 }
 

@@ -20,7 +20,9 @@
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::Parser;
-use delulu_travel_agent::{FlightSearchParams, GoogleFlightsClient, Passenger, Seat, Trip};
+use delulu_travel_agent::{
+    FlightSearchParams, FlightSearchResult, GoogleFlightsClient, Passenger, Seat, Trip,
+};
 use std::cmp::{max, min};
 use term_size;
 
@@ -68,6 +70,10 @@ struct CliArgs {
     /// Verbose output
     #[arg(short, long, default_value = "false")]
     verbose: bool,
+
+    /// Save raw HTML response to file for debugging
+    #[arg(long)]
+    save_html: bool,
 }
 
 /// Configure logging based on verbosity level
@@ -165,7 +171,7 @@ fn fmt_stops_and_layovers(stops: Option<i32>, layovers: &[delulu_travel_agent::L
                 let dur = l
                     .duration_minutes
                     .map_or("??".to_string(), |m| fmt_duration(m));
-                let name = l.airport_name.as_deref().unwrap_or(&l.airport_code);
+                let name = l.airport_city.as_deref().unwrap_or("Unknown");
                 format!("1 stop: {}@{}", dur, name)
             } else {
                 "1 stop".to_string()
@@ -181,7 +187,7 @@ fn fmt_stops_and_layovers(stops: Option<i32>, layovers: &[delulu_travel_agent::L
                         let dur = l
                             .duration_minutes
                             .map_or("??".to_string(), |m| fmt_duration(m));
-                        let name = l.airport_name.as_deref().unwrap_or(&l.airport_code);
+                        let name = l.airport_city.as_deref().unwrap_or("Unknown");
                         format!("{}@{}", dur, name)
                     })
                     .collect();
@@ -361,10 +367,20 @@ async fn main() -> Result<()> {
 
     // Create client and execute search
     let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
-    let result = client
-        .search_flights(&params)
-        .await
-        .context("Search failed")?;
+
+    let result = if args.save_html {
+        let html = client.fetch_raw(&params).await.context("Fetch failed")?;
+        let filename = format!("debug_{}_{}.html", args.from, args.to);
+        std::fs::write(&filename, &html).context("Failed to write HTML file")?;
+        tracing::info!("Saved HTML to {}", filename);
+
+        FlightSearchResult::from_html(&html, params.clone()).context("Parse failed")?
+    } else {
+        client
+            .search_flights(&params)
+            .await
+            .context("Search failed")?
+    };
 
     tracing::info!(
         "Search completed: {} itineraries found, best price: ${}",

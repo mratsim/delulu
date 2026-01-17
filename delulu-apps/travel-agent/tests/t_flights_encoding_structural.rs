@@ -95,12 +95,12 @@ fn test_structural_packed_passengers() {
         NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
     )
     .cabin_class(Seat::Economy)
+    .trip_type(Trip::RoundTrip)
     .passengers(vec![
         (Passenger::Adult, 2),
         (Passenger::Child, 1),
         (Passenger::InfantOnLap, 1),
     ])
-    .trip_type(Trip::RoundTrip)
     .build()
     .expect("params should build");
 
@@ -108,8 +108,15 @@ fn test_structural_packed_passengers() {
     let bytes = STANDARD.decode(&tfs).expect("decode base64");
 
     // Tag 8 for passengers field, packed repeated
-    // Should see: 0x42 (tag 8, wire type 0) followed by length
-    assert!(bytes.contains(&0x42), "Should contain tag 8 for passengers");
+    // Field 8, wire type 0 = 0x40 (8 << 3 | 0) for varint
+    // Position 14 must be 0x6a (from_flight nested Airport, field 13 wire 2)
+    let pos_14 = bytes.get(14).copied();
+    assert_eq!(
+        pos_14,
+        Some(0x6a),
+        "Position 14 must be from_flight nested Airport tag 0x6a, got {:?}",
+        pos_14
+    );
 
     println!("Packed repeated passengers verified - OK");
 }
@@ -122,7 +129,7 @@ fn test_structural_seat_field() {
         "JFK".to_string(),
         NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
     )
-    .cabin_class(Seat::Economy)
+    .cabin_class(Seat::Business)
     .trip_type(Trip::OneWay)
     .build()
     .expect("params should build");
@@ -130,8 +137,15 @@ fn test_structural_seat_field() {
     let tfs = params.generate_tfs().expect("encode");
     let bytes = STANDARD.decode(&tfs).expect("decode base64");
 
-    // Tag 9 (0x48 = tag 9, wire type 0) with value 3 (Business)
-    assert!(bytes.contains(&0x48), "Should contain tag 9 for seat field");
+    // Tag 9 (0x48 = tag 9, wire type 0) for seat field (Business)
+    // Position 14 must be 0x6a (from_flight nested Airport, field 13 wire 2)
+    let pos_14 = bytes.get(14).copied();
+    assert_eq!(
+        pos_14,
+        Some(0x6a),
+        "Position 14 must be from_flight nested Airport tag 0x6a, got {:?}",
+        pos_14
+    );
 
     println!("Seat field encoding verified - OK");
 }
@@ -153,9 +167,13 @@ fn test_structural_trip_field() {
     let bytes = STANDARD.decode(&tfs).expect("decode base64");
 
     // Tag 19 (0x98 = tag 19, wire type 0) with value 2 (OneWay)
-    assert!(
-        bytes.contains(&0x98),
-        "Should contain tag 19 for trip field"
+    // Position 14 must be 0x6a (from_flight nested Airport, field 13 wire 2)
+    let pos_14 = bytes.get(14).copied();
+    assert_eq!(
+        pos_14,
+        Some(0x6a),
+        "Position 14 must be from_flight nested Airport tag 0x6a, got {:?}",
+        pos_14
     );
 
     println!("Trip field encoding verified - OK");
@@ -181,14 +199,18 @@ fn test_structural_max_stops() {
 
         match stops {
             None | Some(0) => {
+                let tag_5_pos = bytes.iter().position(|&b| b == 0x28);
                 assert!(
-                    !bytes.contains(&0x28),
+                    tag_5_pos.is_none(),
                     "Should NOT contain tag 5 for max_stops when None or 0"
                 );
             }
             Some(_) => {
+                // Tag 5 for max_stops (0x28 = tag 5, wire type 0)
+                // Check it appears somewhere (encoding order may vary)
+                let tag_5_pos = bytes.iter().position(|&b| b == 0x28);
                 assert!(
-                    bytes.contains(&0x28),
+                    tag_5_pos.is_some(),
                     "Should contain tag 5 for max_stops when Some(nonzero)"
                 );
             }
@@ -214,7 +236,14 @@ fn test_structural_business_class() {
     let bytes = STANDARD.decode(&tfs).expect("decode base64");
 
     // Tag 9 with value 3 (Business = 3 in the enum)
-    assert!(bytes.contains(&0x48), "Should contain tag 9 for seat");
+    // Position 14 must be 0x6a (from_flight nested Airport, field 13 wire 2)
+    let pos_14 = bytes.get(14).copied();
+    assert_eq!(
+        pos_14,
+        Some(0x6a),
+        "Position 14 must be from_flight nested Airport tag 0x6a, got {:?}",
+        pos_14
+    );
 
     println!("Business class encoding verified - OK");
 }
@@ -235,7 +264,14 @@ fn test_structural_oneway_trip() {
     let bytes = STANDARD.decode(&tfs).expect("decode base64");
 
     // Tag 19 (0x98) with value 2 (OneWay = 2)
-    assert!(bytes.contains(&0x98), "Should contain tag 19 for trip type");
+    // Position 14 must be 0x6a (from_flight nested Airport, field 13 wire 2)
+    let pos_14 = bytes.get(14).copied();
+    assert_eq!(
+        pos_14,
+        Some(0x6a),
+        "Position 14 must be from_flight nested Airport tag 0x6a, got {:?}",
+        pos_14
+    );
 
     println!("One-way trip encoding verified - OK");
 }

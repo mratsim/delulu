@@ -35,6 +35,10 @@ struct FixtureTestCase {
     has_prices: bool,
     /// Description of what this fixture covers
     description: &'static str,
+    /// Origin airport code for this fixture (for test params)
+    from_airport: &'static str,
+    /// Destination airport code for this fixture (for test params)
+    to_airport: &'static str,
 }
 
 /// Test cases covering different HTML structure variations.
@@ -45,30 +49,48 @@ const FIXTURE_TESTS: &[FixtureTestCase] = &[
         min_itineraries: 5,
         has_prices: true,
         description: "Domestic US business class - short haul, typical domestic layout",
+        from_airport: "LAX",
+        to_airport: "ORD",
     },
     FixtureTestCase {
         name: "nonstop-sfo_jfk_economy",
         min_itineraries: 5,
         has_prices: true,
         description: "Transcontinental economy with nonstop options visible",
+        from_airport: "SFO",
+        to_airport: "JFK",
     },
     FixtureTestCase {
         name: "overnight+1day-sfo_lhr_economy",
         min_itineraries: 5,
         has_prices: true,
         description: "International long-haul with +1 day arrival markers",
+        from_airport: "SFO",
+        to_airport: "LHR",
     },
     FixtureTestCase {
         name: "layover-mad_nrt",
         min_itineraries: 5,
         has_prices: true,
         description: "Europe to Asia with multiple layovers (1-2 stops)",
+        from_airport: "MAD",
+        to_airport: "NRT",
     },
     FixtureTestCase {
         name: "longhaul-lax_syd",
         min_itineraries: 3,
         has_prices: true,
         description: "Trans-Pacific ultra-long-haul routes",
+        from_airport: "LAX",
+        to_airport: "SYD",
+    },
+    FixtureTestCase {
+        name: "layover-yyz_cdg",
+        min_itineraries: 5,
+        has_prices: true,
+        description: "Toronto to Paris with potential Montréal layover",
+        from_airport: "YYZ",
+        to_airport: "CDG",
     },
 ];
 
@@ -111,8 +133,8 @@ fn test_parser_fixtures() {
 
         let html = load_fixture(case.name);
         let params = FlightSearchParams::builder(
-            "SFO".into(),
-            "JFK".into(),
+            case.from_airport.into(),
+            case.to_airport.into(),
             chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
         )
         .cabin_class(Seat::Economy)
@@ -305,7 +327,11 @@ fn test_layover_doha_parsing() {
     let doha_layovers: Vec<_> = result
         .itineraries
         .iter()
-        .filter(|i| i.layovers.iter().any(|l| l.airport_code.contains("Doha")))
+        .filter(|i| {
+            i.layovers
+                .iter()
+                .any(|l| l.airport_city.as_ref().is_some_and(|n| n.contains("Doha")))
+        })
         .collect();
 
     println!(
@@ -321,11 +347,12 @@ fn test_layover_doha_parsing() {
         let doha = itinerary
             .layovers
             .iter()
-            .find(|l| l.airport_code.contains("Doha"))
+            .find(|l| l.airport_city.as_ref().is_some_and(|n| n.contains("Doha")))
             .unwrap();
         println!(
             "Doha layover: {} - duration: {:?} min",
-            doha.airport_code, doha.duration_minutes
+            doha.airport_city.as_deref().unwrap_or("Unknown"),
+            doha.duration_minutes
         );
         assert!(
             doha.duration_minutes.is_some() && doha.duration_minutes.unwrap() > 0,
@@ -363,4 +390,64 @@ fn test_longhaul_lax_syd() {
         long_duration
     );
     assert!(long_duration > 0, "Should have very long flights");
+}
+
+#[test]
+fn test_layover_yyz_cdg() {
+    let html = load_fixture("layover-yyz_cdg");
+    let params = FlightSearchParams::builder(
+        "YYZ".into(),
+        "CDG".into(),
+        chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .build()
+    .unwrap();
+    let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
+
+    assert!(
+        result.itineraries.len() >= 3,
+        "Should have multi-leg options"
+    );
+
+    let multi_stop = result
+        .itineraries
+        .iter()
+        .filter(|i| i.stops.map(|s| s > 1).unwrap_or(false))
+        .count();
+
+    println!(
+        "Found {} multi-stop itineraries via Canada/Europe",
+        multi_stop
+    );
+    assert!(multi_stop > 0, "Should have some 2+ stop options");
+
+    let montreal_layovers: Vec<_> = result
+        .itineraries
+        .iter()
+        .filter(|i| {
+            i.layovers
+                .iter()
+                .any(|l| l.airport_city.as_ref().is_some_and(|n| n.contains("Montr")))
+        })
+        .collect();
+
+    println!(
+        "Found {} itineraries with Montréal layover",
+        montreal_layovers.len()
+    );
+    if !montreal_layovers.is_empty() {
+        for itinerary in &montreal_layovers {
+            let montreal = itinerary
+                .layovers
+                .iter()
+                .find(|l| l.airport_city.as_ref().is_some_and(|n| n.contains("Montr")))
+                .unwrap();
+            println!(
+                "Montréal layover: {} - duration: {:?} min",
+                montreal.airport_city.as_deref().unwrap_or("Unknown"),
+                montreal.duration_minutes
+            );
+        }
+    }
 }

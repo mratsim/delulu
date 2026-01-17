@@ -61,8 +61,8 @@ impl FlightSearchResult {
 
 #[derive(Debug, Clone)]
 pub struct Layover {
-    pub airport_code: String,
-    pub airport_name: Option<String>,
+    pub _airport_code: Option<String>,
+    pub airport_city: Option<String>,
     pub duration_minutes: Option<i32>,
 }
 
@@ -139,7 +139,7 @@ impl FlightSelectors {
 static DURATION_H_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\d+)\s*h").unwrap());
 static DURATION_M_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\d+)\s*m").unwrap());
 static LAYOVER_ARIA_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(\d+)\s*hr\s*(?:(\d+)\s*min)?[^.]*?in\s+([A-Za-z][A-Za-z\s]*)").unwrap()
+    Regex::new(r"(\d+)\s*hr\s*(?:(\d+)\s*min)?[^.]*?in\s+([A-Za-zÀ-ÿ'\s][A-Za-zÀ-ÿ'\s-]*)").unwrap()
 });
 
 fn parse_flights_response(html: &str) -> Result<Vec<Flight>> {
@@ -238,8 +238,8 @@ fn parse_layovers_from_card(
                     .unwrap_or_default();
 
                 layovers.push(Layover {
-                    airport_code: city_name.clone(),
-                    airport_name: Some(city_name),
+                    _airport_code: None,
+                    airport_city: Some(city_name),
                     duration_minutes: Some(parse_duration(&duration_str)),
                 });
             }
@@ -379,16 +379,22 @@ mod tests {
 
             let duration_str = format!("{}h {}m", hours, mins);
             layovers.push(Layover {
-                airport_code: city_name.clone(),
-                airport_name: Some(city_name),
+                _airport_code: None,
+                airport_city: Some(city_name),
                 duration_minutes: Some(parse_duration(&duration_str)),
             });
         }
         eprintln!("Total layovers: {}", layovers.len());
         assert_eq!(layovers.len(), 2);
-        assert_eq!(layovers[0].airport_code, "Los Angeles");
+        assert_eq!(
+            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
+            Some("Los Angeles")
+        );
         assert_eq!(layovers[0].duration_minutes, Some(689)); // 11h 29m
-        assert_eq!(layovers[1].airport_code, "Nadi");
+        assert_eq!(
+            layovers[1].airport_city.as_ref().map(|s| s.as_str()),
+            Some("Nadi")
+        );
         assert_eq!(layovers[1].duration_minutes, Some(180)); // 3h
     }
 
@@ -407,13 +413,105 @@ mod tests {
                 .unwrap_or_default();
 
             layovers.push(Layover {
-                airport_code: city_name.clone(),
-                airport_name: Some(city_name),
+                _airport_code: None,
+                airport_city: Some(city_name),
                 duration_minutes: Some(parse_duration(&duration_str)),
             });
         }
         assert_eq!(layovers.len(), 1);
-        assert_eq!(layovers[0].airport_code, "Los Angeles");
+        assert_eq!(
+            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
+            Some("Los Angeles")
+        );
         assert_eq!(layovers[0].duration_minutes, Some(547)); // 9h 7m
+    }
+
+    #[test]
+    fn test_layover_parsing_dash_city_name() {
+        let aria_label = "Layover (1 of 1) is a 2 hr layover at Ben Gurion Airport in Tel-Aviv.";
+        let mut layovers = Vec::new();
+
+        for cap in LAYOVER_ARIA_RE.captures_iter(aria_label) {
+            let hours = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+            let mins = cap.get(2).map(|m| m.as_str()).unwrap_or("0");
+            let duration_str = format!("{}h {}m", hours, mins);
+            let city_name = cap
+                .get(3)
+                .map(|m| m.as_str().to_string().trim().to_string())
+                .unwrap_or_default();
+
+            layovers.push(Layover {
+                _airport_code: None,
+                airport_city: Some(city_name),
+                duration_minutes: Some(parse_duration(&duration_str)),
+            });
+        }
+        assert_eq!(layovers.len(), 1);
+        assert_eq!(
+            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
+            Some("Tel-Aviv")
+        );
+        assert_eq!(layovers[0].duration_minutes, Some(120)); // 2h
+    }
+
+    #[test]
+    fn test_layover_parsing_accented_city_name() {
+        let aria_label = "Layover (1 of 1) is a 1 hr 30 min layover at Montréal-Pierre Elliott Trudeau International Airport in Montréal.";
+        let mut layovers = Vec::new();
+
+        for cap in LAYOVER_ARIA_RE.captures_iter(aria_label) {
+            let hours = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+            let mins = cap.get(2).map(|m| m.as_str()).unwrap_or("0");
+            let duration_str = format!("{}h {}m", hours, mins);
+            let city_name = cap
+                .get(3)
+                .map(|m| m.as_str().to_string().trim().to_string())
+                .unwrap_or_default();
+
+            layovers.push(Layover {
+                _airport_code: None,
+                airport_city: Some(city_name),
+                duration_minutes: Some(parse_duration(&duration_str)),
+            });
+        }
+        assert_eq!(layovers.len(), 1);
+        assert_eq!(
+            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
+            Some("Montréal")
+        );
+        assert_eq!(layovers[0].duration_minutes, Some(90)); // 1h 30m
+    }
+
+    #[test]
+    fn test_layover_parsing_multiple_special_chars() {
+        let aria_label = "Layover (1 of 2) is a 4 hr layover at Charles de Gaulle Airport in Paris. Layover (2 of 2) is a 2 hr layover at Ben Gurion Airport in Tel-Aviv.";
+        let mut layovers = Vec::new();
+
+        for cap in LAYOVER_ARIA_RE.captures_iter(aria_label) {
+            let hours = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+            let mins = cap.get(2).map(|m| m.as_str()).unwrap_or("0");
+            let duration_str = format!("{}h {}m", hours, mins);
+            let city_name = cap
+                .get(3)
+                .map(|m| m.as_str().to_string().trim().to_string())
+                .unwrap_or_default();
+
+            layovers.push(Layover {
+                _airport_code: None,
+                airport_city: Some(city_name),
+                duration_minutes: Some(parse_duration(&duration_str)),
+            });
+        }
+        assert_eq!(layovers.len(), 2);
+        assert_eq!(
+            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
+            Some("Paris")
+        );
+        assert_eq!(layovers[0].duration_minutes, Some(240)); // 4h
+        assert_eq!(
+            layovers[1].airport_city.as_ref().map(|s| s.as_str()),
+            Some("Tel-Aviv")
+        );
+        assert_eq!(layovers[1].duration_minutes, Some(120)); // 2h
     }
 }

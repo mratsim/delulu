@@ -24,7 +24,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};
-use delulu_travel_agent::{GoogleFlightsClient, Seat, Trip};
+use delulu_travel_agent::{FlightSearchParams, GoogleFlightsClient, Seat, Trip};
 
 fn today() -> NaiveDate {
     chrono::Local::now().date_naive()
@@ -230,7 +230,7 @@ async fn test_real_query_overnight_plus_two_days() -> Result<()> {
         "Should not hit consent wall"
     );
     assert!(
-        result.itineraries.len() > 0,
+        !result.itineraries.is_empty(),
         "Should parse at least one itinerary"
     );
 
@@ -362,32 +362,48 @@ fn compress_and_save_flight(html: &str, name: &str) {
 
 async fn rate_limited_flight_fetch(
     client: &GoogleFlightsClient,
-    url: &str,
+    params: &FlightSearchParams,
     delay_secs: u64,
     name: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     if delay_secs > 0 {
         tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
     }
-    fetch_single_flight_fixture(client, url, name).await
+    fetch_single_flight_fixture(client, params, name).await
 }
 
 async fn fetch_single_flight_fixture(
     client: &GoogleFlightsClient,
-    url: &str,
+    params: &FlightSearchParams,
     name: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
+    let url = params.get_search_url();
     let url_display = &url[0..url.len().min(100)];
     println!("Fetching flight '{}': {}", name, url_display);
 
-    let result = client.search_flights_url(url).await?;
+    let result = client.search_flights(params).await?;
     let text = result.raw_response;
+
+    println!(
+        "Response size: {} bytes, itineraries: {}",
+        text.len(),
+        result.itineraries.len()
+    );
 
     if text.to_lowercase().contains("consent") {
         return Err(anyhow::anyhow!("Blocked by consent cookie").into());
     }
     if text.len() < 1000 {
-        return Err(anyhow::anyhow!("Response too short ({} bytes)", text.len()).into());
+        let preview = text.chars().take(500).collect::<String>();
+        return Err(
+            anyhow::anyhow!("Response too short ({} bytes): {}", text.len(), preview).into(),
+        );
+    }
+
+    if result.itineraries.is_empty() {
+        let preview = text.chars().take(1000).collect::<String>();
+        eprintln!("No flights parsed. Body preview:\n{}", preview);
+        return Err(anyhow::anyhow!("No flights parsed from response").into());
     }
 
     Ok(text)
@@ -410,11 +426,9 @@ async fn fetch_fixture_sfo_jfk_nonstop() {
     .build()
     .expect("params should build");
 
-    let url = params.get_search_url();
-
     match rate_limited_flight_fetch(
         &client,
-        &url,
+        &params,
         FLIGHT_FIXTURE_RATE_LIMIT_SECS,
         "nonstop-sfo_jfk_economy",
     )
@@ -442,11 +456,9 @@ async fn fetch_fixture_lax_ord_business() {
     .build()
     .expect("params should build");
 
-    let url = params.get_search_url();
-
     match rate_limited_flight_fetch(
         &client,
-        &url,
+        &params,
         FLIGHT_FIXTURE_RATE_LIMIT_SECS,
         "domestic+business-lax_ord",
     )
@@ -473,11 +485,9 @@ async fn fetch_fixture_sfo_lhr_overnight() {
     .build()
     .expect("params should build");
 
-    let url = params.get_search_url();
-
     match rate_limited_flight_fetch(
         &client,
-        &url,
+        &params,
         FLIGHT_FIXTURE_RATE_LIMIT_SECS,
         "overnight+1day-sfo_lhr_economy",
     )
@@ -504,11 +514,9 @@ async fn fetch_fixture_lax_syd_longhaul() {
     .build()
     .expect("params should build");
 
-    let url = params.get_search_url();
-
     match rate_limited_flight_fetch(
         &client,
-        &url,
+        &params,
         FLIGHT_FIXTURE_RATE_LIMIT_SECS,
         "longhaul-lax_syd",
     )
@@ -535,11 +543,9 @@ async fn fetch_fixture_mad_nrt_layover() {
     .build()
     .expect("params should build");
 
-    let url = params.get_search_url();
-
     match rate_limited_flight_fetch(
         &client,
-        &url,
+        &params,
         FLIGHT_FIXTURE_RATE_LIMIT_SECS,
         "layover-mad_nrt",
     )
@@ -552,7 +558,30 @@ async fn fetch_fixture_mad_nrt_layover() {
 
 #[tokio::test]
 #[ignore]
-async fn fetch_fixtures_all() {
-    println!("Fetching all flight fixtures (3 second delay between requests)...");
-    println!("This will take approximately 15 seconds...");
+async fn fetch_fixture_yyz_cdg_layover() {
+    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+
+    let today = chrono::Local::now().date_naive();
+    let depart = today + Months::new(2);
+
+    let params = delulu_travel_agent::FlightSearchParams::builder(
+        "YYZ".to_uppercase(),
+        "CDG".to_uppercase(),
+        depart,
+    )
+    .cabin_class(Seat::Economy)
+    .build()
+    .expect("params should build");
+
+    match rate_limited_flight_fetch(
+        &client,
+        &params,
+        FLIGHT_FIXTURE_RATE_LIMIT_SECS,
+        "layover-yyz_cdg",
+    )
+    .await
+    {
+        Ok(text) => compress_and_save_flight(&text, "layover-yyz_cdg"),
+        Err(e) => panic!("Failed: {}", e),
+    }
 }
