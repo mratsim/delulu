@@ -28,19 +28,144 @@ use anyhow::{ensure, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
+use serde::{Deserialize, Serialize};
 
-pub use proto::{Airport, FlightData, Info, Passenger, Seat, Trip};
+use proto::{Airport as AirportProto, FlightData, Info, Passenger as PassengerProto, Seat as SeatProto, Trip as TripProto};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[repr(i32)]
+#[serde(rename_all = "snake_case")]
+pub enum Seat {
+    Unknown = SeatProto::UnknownSeat as i32,
+    Economy = SeatProto::Economy as i32,
+    PremiumEconomy = SeatProto::PremiumEconomy as i32,
+    Business = SeatProto::Business as i32,
+    First = SeatProto::First as i32,
+}
+
+impl From<Seat> for SeatProto {
+    fn from(s: Seat) -> SeatProto {
+        match s {
+            Seat::Unknown => SeatProto::UnknownSeat,
+            Seat::Economy => SeatProto::Economy,
+            Seat::PremiumEconomy => SeatProto::PremiumEconomy,
+            Seat::Business => SeatProto::Business,
+            Seat::First => SeatProto::First,
+        }
+    }
+}
+
+impl From<Seat> for i32 {
+    fn from(s: Seat) -> i32 {
+        s as i32
+    }
+}
+
+impl TryFrom<i32> for Seat {
+    type Error = ();
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        match v {
+            v if v == Seat::Unknown as i32 => Ok(Seat::Unknown),
+            v if v == Seat::Economy as i32 => Ok(Seat::Economy),
+            v if v == Seat::PremiumEconomy as i32 => Ok(Seat::PremiumEconomy),
+            v if v == Seat::Business as i32 => Ok(Seat::Business),
+            v if v == Seat::First as i32 => Ok(Seat::First),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[repr(i32)]
+#[serde(rename_all = "snake_case")]
+pub enum Trip {
+    RoundTrip = TripProto::RoundTrip as i32,
+    OneWay = TripProto::OneWay as i32,
+    MultiCity = TripProto::MultiCity as i32,
+}
+
+impl From<Trip> for TripProto {
+    fn from(t: Trip) -> TripProto {
+        match t {
+            Trip::RoundTrip => TripProto::RoundTrip,
+            Trip::OneWay => TripProto::OneWay,
+            Trip::MultiCity => TripProto::MultiCity,
+        }
+    }
+}
+
+impl From<Trip> for i32 {
+    fn from(t: Trip) -> i32 {
+        t as i32
+    }
+}
+
+impl TryFrom<i32> for Trip {
+    type Error = ();
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        match v {
+            v if v == Trip::RoundTrip as i32 => Ok(Trip::RoundTrip),
+            v if v == Trip::OneWay as i32 => Ok(Trip::OneWay),
+            v if v == Trip::MultiCity as i32 => Ok(Trip::MultiCity),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[repr(i32)]
+#[serde(rename_all = "snake_case")]
+pub enum Passenger {
+    Adult = PassengerProto::Adult as i32,
+    Child = PassengerProto::Child as i32,
+    InfantOnLap = PassengerProto::InfantOnLap as i32,
+    InfantInSeat = PassengerProto::InfantInSeat as i32,
+}
+
+impl From<Passenger> for PassengerProto {
+    fn from(p: Passenger) -> PassengerProto {
+        match p {
+            Passenger::Adult => PassengerProto::Adult,
+            Passenger::Child => PassengerProto::Child,
+            Passenger::InfantOnLap => PassengerProto::InfantOnLap,
+            Passenger::InfantInSeat => PassengerProto::InfantInSeat,
+        }
+    }
+}
+
+impl From<Passenger> for i32 {
+    fn from(p: Passenger) -> i32 {
+        p as i32
+    }
+}
+
+impl TryFrom<i32> for Passenger {
+    type Error = ();
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        match v {
+            v if v == Passenger::Adult as i32 => Ok(Passenger::Adult),
+            v if v == Passenger::Child as i32 => Ok(Passenger::Child),
+            v if v == Passenger::InfantOnLap as i32 => Ok(Passenger::InfantOnLap),
+            v if v == Passenger::InfantInSeat as i32 => Ok(Passenger::InfantInSeat),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct FlightSearchParams {
     pub from_airport: String,
     pub to_airport: String,
     pub depart_date: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_date: Option<String>,
     pub cabin_class: Seat,
     pub passengers: Vec<(Passenger, u32)>,
     pub trip_type: Trip,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_stops: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_airlines: Option<Vec<String>>,
 }
 
@@ -89,10 +214,6 @@ impl FlightSearchParams {
             }
         }
 
-        // TODO: Validate depart_date >= today and return_date >= today
-        // These require time context - pass current date as parameter or
-        // validate in effectful module (e.g., flight_search::search_flights)
-
         Ok(())
     }
 
@@ -125,10 +246,10 @@ impl FlightSearchParams {
             ),
             max_stops: self.max_stops.filter(|&v| v != 0),
             airlines: self.preferred_airlines.clone().unwrap_or_default(),
-            from_flight: Some(Airport {
+            from_flight: Some(AirportProto {
                 airport: self.from_airport.clone(),
             }),
-            to_flight: Some(Airport {
+            to_flight: Some(AirportProto {
                 airport: self.to_airport.clone(),
             }),
         };
@@ -139,10 +260,10 @@ impl FlightSearchParams {
                     date: format!("{:04}-{:02}-{:02}", ret.year(), ret.month(), ret.day()),
                     max_stops: self.max_stops.filter(|&v| v != 0),
                     airlines: self.preferred_airlines.clone().unwrap_or_default(),
-                    from_flight: Some(Airport {
+                    from_flight: Some(AirportProto {
                         airport: self.to_airport.clone(),
                     }),
-                    to_flight: Some(Airport {
+                    to_flight: Some(AirportProto {
                         airport: self.from_airport.clone(),
                     }),
                 };
@@ -262,14 +383,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_generate_tfs_oneway() {
+    fn test_get_search_url() {
         let params = FlightSearchParams::builder(
             "SFO".to_string(),
             "JFK".to_string(),
-            NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+            NaiveDate::from_ymd_opt(2025, 6, 15).unwrap(),
         )
-        .cabin_class(Seat::Economy)
         .passengers(vec![(Passenger::Adult, 1)])
+        .cabin_class(Seat::Economy)
+        .build()
+        .unwrap();
+
+        let url = params.get_search_url();
+        assert!(url.starts_with("https://www.google.com/travel/flights/search?tfs="));
+    }
+
+    #[test]
+    fn test_generate_tfs_oneway() {
+        let params = FlightSearchParams::builder(
+            "LAX".to_string(),
+            "ORD".to_string(),
+            NaiveDate::from_ymd_opt(2025, 7, 20).unwrap(),
+        )
+        .passengers(vec![(Passenger::Adult, 2)])
+        .cabin_class(Seat::Business)
         .build()
         .unwrap();
 
@@ -278,37 +415,16 @@ mod tests {
     }
 
     #[test]
-    fn test_get_search_url() {
-        let params = FlightSearchParams::builder(
-            "LAX".to_string(),
-            "CDG".to_string(),
-            NaiveDate::from_ymd_opt(2025, 8, 1).unwrap(),
-        )
-        .cabin_class(Seat::Business)
-        .passengers(vec![(Passenger::Adult, 2)])
-        .trip_type(Trip::RoundTrip)
-        .return_date(NaiveDate::from_ymd_opt(2025, 8, 8).unwrap())
-        .preferred_airlines(Some(vec!["AF".to_string(), "DL".to_string()]))
-        .max_stops(Some(1))
-        .build()
-        .unwrap();
-
-        let url = params.get_search_url();
-        assert!(url.contains("tfs="));
-        assert!(url.contains("https://www.google.com/travel/flights/search"));
-    }
-
-    #[test]
     fn test_generate_tfs_roundtrip() {
         let params = FlightSearchParams::builder(
-            "SFO".to_string(),
-            "JFK".to_string(),
-            NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+            "LAX".to_string(),
+            "ORD".to_string(),
+            NaiveDate::from_ymd_opt(2025, 7, 20).unwrap(),
         )
+        .return_date(NaiveDate::from_ymd_opt(2025, 7, 25).unwrap())
+        .passengers(vec![(Passenger::Adult, 1), (Passenger::Child, 1)])
         .cabin_class(Seat::Economy)
-        .passengers(vec![(Passenger::Adult, 1)])
         .trip_type(Trip::RoundTrip)
-        .return_date(NaiveDate::from_ymd_opt(2025, 7, 22).unwrap())
         .build()
         .unwrap();
 
@@ -318,27 +434,24 @@ mod tests {
 
     #[test]
     fn test_passenger_validation() {
-        let ok_params = FlightSearchParams::builder(
-            "SFO".to_string(),
-            "JFK".to_string(),
-            NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
+        let params = FlightSearchParams::builder(
+            "LAX".to_string(),
+            "ORD".to_string(),
+            NaiveDate::from_ymd_opt(2025, 7, 20).unwrap(),
         )
-        .cabin_class(Seat::Economy)
-        .passengers(vec![(Passenger::Adult, 1), (Passenger::Child, 1)])
-        .trip_type(Trip::OneWay)
-        .build()
-        .unwrap();
-        assert!(ok_params.validate().is_ok());
-
-        let bad_result = FlightSearchParams::builder(
-            "SFO".to_string(),
-            "JFK".to_string(),
-            NaiveDate::from_ymd_opt(2025, 7, 15).unwrap(),
-        )
-        .cabin_class(Seat::Economy)
-        .passengers(vec![(Passenger::Adult, 0), (Passenger::Child, 1)])
-        .trip_type(Trip::OneWay)
+        .passengers(vec![])
         .build();
-        assert!(bad_result.is_err(), "Building with 0 adults should fail");
+
+        assert!(params.is_err());
+
+        let params = FlightSearchParams::builder(
+            "LAX".to_string(),
+            "ORD".to_string(),
+            NaiveDate::from_ymd_opt(2025, 7, 20).unwrap(),
+        )
+        .passengers(vec![(Passenger::Adult, 0), (Passenger::Child, 1)])
+        .build();
+
+        assert!(params.is_err());
     }
 }

@@ -59,7 +59,7 @@
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use delulu_travel_agent::{Amenity, GoogleHotelsClient, HotelSearchParams};
+use delulu_travel_agent::{Amenity, GoogleHotelsClient, HotelSearchParams, SortType};
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-hotels")]
@@ -215,11 +215,11 @@ async fn main() -> Result<()> {
 
     let sort_order = match args.sort {
         Some(SortOption::Relevance) => None,
-        Some(SortOption::LowestPrice) => Some(delulu_travel_agent::SortType::LowestPrice as i32),
+        Some(SortOption::LowestPrice) => Some(delulu_travel_agent::SortType::LowestPrice),
         Some(SortOption::HighestRating) => {
-            Some(delulu_travel_agent::SortType::HighestRating as i32)
+            Some(delulu_travel_agent::SortType::HighestRating)
         }
-        Some(SortOption::MostReviewed) => Some(delulu_travel_agent::SortType::MostReviewed as i32),
+        Some(SortOption::MostReviewed) => Some(delulu_travel_agent::SortType::MostReviewed),
         None => None,
     };
 

@@ -28,10 +28,120 @@ use anyhow::{bail, ensure, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
+use serde::{Deserialize, Serialize};
 
-pub use proto::{Amenity, SortType};
+use proto::{Amenity as AmenityProto, SortType as SortTypeProto};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[repr(i32)]
+#[serde(rename_all = "snake_case")]
+pub enum Amenity {
+    IndoorPool = AmenityProto::IndoorPool as i32,
+    OutdoorPool = AmenityProto::OutdoorPool as i32,
+    Pool = AmenityProto::Pool as i32,
+    Spa = AmenityProto::Spa as i32,
+    KidFriendly = AmenityProto::KidFriendly as i32,
+    AirConditioned = AmenityProto::AirConditioned as i32,
+}
+
+impl From<Amenity> for AmenityProto {
+    fn from(a: Amenity) -> AmenityProto {
+        match a {
+            Amenity::IndoorPool => AmenityProto::IndoorPool,
+            Amenity::OutdoorPool => AmenityProto::OutdoorPool,
+            Amenity::Pool => AmenityProto::Pool,
+            Amenity::Spa => AmenityProto::Spa,
+            Amenity::KidFriendly => AmenityProto::KidFriendly,
+            Amenity::AirConditioned => AmenityProto::AirConditioned,
+        }
+    }
+}
+
+impl From<Amenity> for i32 {
+    fn from(a: Amenity) -> i32 {
+        a as i32
+    }
+}
+
+impl TryFrom<i32> for Amenity {
+    type Error = ();
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        match v {
+            v if v == Amenity::IndoorPool as i32 => Ok(Amenity::IndoorPool),
+            v if v == Amenity::OutdoorPool as i32 => Ok(Amenity::OutdoorPool),
+            v if v == Amenity::Pool as i32 => Ok(Amenity::Pool),
+            v if v == Amenity::Spa as i32 => Ok(Amenity::Spa),
+            v if v == Amenity::KidFriendly as i32 => Ok(Amenity::KidFriendly),
+            v if v == Amenity::AirConditioned as i32 => Ok(Amenity::AirConditioned),
+            _ => Err(()),
+        }
+    }
+}
+
+impl Amenity {
+    pub fn from_str_name(s: &str) -> Option<Self> {
+        match s {
+            "indoor_pool" | "indoorpool" | "indoor" => Some(Amenity::IndoorPool),
+            "outdoor_pool" | "outdoorpool" | "outdoor" => Some(Amenity::OutdoorPool),
+            "pool" => Some(Amenity::Pool),
+            "spa" => Some(Amenity::Spa),
+            "kid_friendly" | "kidfriendly" | "kid" => Some(Amenity::KidFriendly),
+            "air_conditioned" | "airconditioned" | "ac" => Some(Amenity::AirConditioned),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[repr(i32)]
+#[serde(rename_all = "snake_case")]
+pub enum SortType {
+    LowestPrice = SortTypeProto::LowestPrice as i32,
+    HighestRating = SortTypeProto::HighestRating as i32,
+    MostReviewed = SortTypeProto::MostReviewed as i32,
+}
+
+impl From<SortType> for SortTypeProto {
+    fn from(s: SortType) -> SortTypeProto {
+        match s {
+            SortType::LowestPrice => SortTypeProto::LowestPrice,
+            SortType::HighestRating => SortTypeProto::HighestRating,
+            SortType::MostReviewed => SortTypeProto::MostReviewed,
+        }
+    }
+}
+
+impl From<SortType> for i32 {
+    fn from(s: SortType) -> i32 {
+        s as i32
+    }
+}
+
+impl TryFrom<i32> for SortType {
+    type Error = ();
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        match v {
+            v if v == SortType::LowestPrice as i32 => Ok(SortType::LowestPrice),
+            v if v == SortType::HighestRating as i32 => Ok(SortType::HighestRating),
+            v if v == SortType::MostReviewed as i32 => Ok(SortType::MostReviewed),
+            _ => Err(()),
+        }
+    }
+}
+
+impl SortType {
+    pub fn from_str_name(s: &str) -> Option<Self> {
+        match s {
+            "lowest_price" | "lowest" | "price" => Some(SortType::LowestPrice),
+            "highest_rating" | "highest" | "rating" => Some(SortType::HighestRating),
+            "most_reviewed" | "reviewed" | "reviews" => Some(SortType::MostReviewed),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct HotelSearchParams {
     pub version: i32,
     pub adults: u32,
@@ -45,11 +155,16 @@ pub struct HotelSearchParams {
     pub nights: i32,
     pub used_guests_dropdown: i32,
     pub currency: String,
-    pub sort_order: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_order: Option<SortType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_guest_rating: Option<f64>,
     pub hotel_stars: Vec<i32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub amenities: Vec<Amenity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_price: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_price: Option<i32>,
 }
 
@@ -208,7 +323,7 @@ impl HotelSearchParams {
                     currency: self.currency.clone(),
                     amenity: self.amenities.iter().map(|&a| a as i32).collect(),
                     stars: self.hotel_stars.clone(),
-                    sort_type: self.sort_order.unwrap_or(0),
+                    sort_type: self.sort_order.map(|s| s as i32).unwrap_or(0),
                     padding: Some(proto::UnknownMessage { flags: 0 }),
                 }),
                 guest_rating: guest_rating_val,
@@ -310,7 +425,7 @@ impl HotelSearchParams {
                 currency = f.currency.clone();
                 for &amenity in &f.amenity {
                     if amenity != 0 {
-                        if let Some(a) = Amenity::try_from(amenity).ok() {
+                        if let Ok(a) = Amenity::try_from(amenity) {
                             amenities.push(a);
                         }
                     }
@@ -319,7 +434,9 @@ impl HotelSearchParams {
                     hotel_stars.push(star);
                 }
                 if f.sort_type != 0 {
-                    sort_order = Some(f.sort_type);
+                    if let Ok(s) = SortType::try_from(f.sort_type) {
+                        sort_order = Some(s);
+                    }
                 }
             }
             if let Some(pd) = &fc.price_data {
@@ -378,7 +495,7 @@ pub struct HotelSearchParamsBuilder {
     amenities: Vec<Amenity>,
     min_price: Option<i32>,
     max_price: Option<i32>,
-    sort_order: Option<i32>,
+    sort_order: Option<SortType>,
 }
 
 impl HotelSearchParamsBuilder {
@@ -412,17 +529,12 @@ impl HotelSearchParamsBuilder {
         self
     }
 
-    pub fn sort_order(mut self, sort: Option<i32>) -> Self {
+    pub fn sort_order(mut self, sort: Option<SortType>) -> Self {
         self.sort_order = sort;
         self
     }
 
     pub fn build(self) -> Result<HotelSearchParams> {
-        if let Some(sort) = self.sort_order {
-            if proto::SortType::try_from(sort).is_err() {
-                bail!("Invalid sort_order value: {}", sort);
-            }
-        }
         let params = HotelSearchParams {
             version: 1,
             adults: self.adults,

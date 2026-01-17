@@ -24,7 +24,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};
-use delulu_travel_agent::{FlightSearchParams, GoogleFlightsClient, Seat, Trip};
+use delulu_travel_agent::{FlightSearchParams, GoogleFlightsClient, Passenger, Seat, Trip};
 
 fn today() -> NaiveDate {
     chrono::Local::now().date_naive()

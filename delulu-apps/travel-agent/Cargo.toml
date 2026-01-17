@@ -1,9 +1,24 @@
 [package]
 name = "delulu-travel-agent"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "AGPL-3.0"
 description = "CLI tools and MCP server for travel services"
+
+[features]
+default = ["cli"]
+cli = ["dep:clap"]
+mcp = [
+    "dep:rmcp",
+    "dep:schemars",
+    "dep:thiserror",
+    "dep:axum",
+    "dep:tower",
+    "dep:tokio-util",
+    "dep:http",
+    "tracing-subscriber/env-filter",
+    "tokio/signal",
+]
 
 [dependencies]
 wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
@@ -11,19 +26,27 @@ wreq-util = "3.0.0-rc.9"
 scraper = "0.17"
 regex = { version = "1.10", default-features = false, features = ["unicode-perl", "unicode-case"] }
 delulu-query-queues = { path = "../../delulu-internals/query-queues" }
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "fs"] }
 anyhow = "1.0"
 chrono = { version = "0.4.20", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive"], optional = true }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 once_cell = "1.20"
 prost = "0.13"
+serde_repr = "0.1"
 term_size = "0.3"
 urlencoding = "2"
+schemars = { version = "1.0", features = ["derive"], optional = true }
+thiserror = { version = "1.0", optional = true }
+axum = { version = "0.7", optional = true }
+tower = { version = "0.4", optional = true }
+tokio-util = { version = "0.7", optional = true }
+http = { version = "1.0", optional = true }
+rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
 
 [build-dependencies]
 prost-build = "0.13"
@@ -40,7 +63,14 @@ description = "Travel search services for flights and hotels"
 [[bin]]
 name = "delulu-flights"
 path = "src/main_cli_flights.rs"
+required-features = ["cli"]
 
 [[bin]]
 name = "delulu-hotels"
 path = "src/main_cli_hotels.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "travel-mcp"
+path = "src/main_mcp.rs"
+required-features = ["mcp"]

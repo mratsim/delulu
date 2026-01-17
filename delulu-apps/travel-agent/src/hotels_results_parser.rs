@@ -25,6 +25,7 @@ use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct Hotel {
     pub name: String,
     pub price: String,
@@ -39,6 +40,7 @@ pub struct Hotel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct HotelSearchResult {
     pub hotels: Vec<Hotel>,
     pub lowest_price: Option<String>,
