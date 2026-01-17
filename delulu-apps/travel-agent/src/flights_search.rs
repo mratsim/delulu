@@ -162,11 +162,3 @@ impl GoogleFlightsClient {
         }
     }
 }
-
-impl Default for GoogleFlightsClient {
-    fn default() -> Self {
-        Self::new("en".into(), "USD".into()).expect(
-            "GoogleFlightsClient::default() requires wreq client to initialize successfully",
-        )
-    }
-}

@@ -317,7 +317,7 @@ fn render_results(result: &delulu_travel_agent::FlightSearchResult, search_url: 
 }
 
 fn dash_bar() -> String {
-    "------------------------------------------------------------------------------------------------".to_string()
+    "-".repeat(get_terminal_width().min(100))
 }
 
 #[tokio::main]
