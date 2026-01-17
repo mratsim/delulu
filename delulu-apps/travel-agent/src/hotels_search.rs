@@ -25,6 +25,7 @@ use crate::hotels_results_parser::HotelSearchResult;
 use anyhow::{anyhow, bail, Context, Result};
 use delulu_query_queues::QueryQueue;
 use std::sync::Arc;
+use std::time::Duration;
 use wreq::redirect::Policy;
 use wreq_util::Emulation;
 
@@ -39,6 +40,8 @@ impl GoogleHotelsClient {
         let client = wreq::Client::builder()
             .emulation(Emulation::Safari18_5)
             .redirect(Policy::default())
+            .timeout(Duration::from_secs(5))
+            .connect_timeout(Duration::from_secs(5))
             .build()
             .context("Failed to build HTTP client")?;
         let query_queue = QueryQueue::with_max_concurrent(max_concurrent);

@@ -273,7 +273,7 @@ fn render_results(result: &delulu_travel_agent::FlightSearchResult, search_url: 
     // Calculate column widths
     let (rw, aw, tw, dw, sw) = calc_column_widths(&result.itineraries, true);
 
-    println!("\n🏆 Top {} Cheapest:", 5.min(result.itineraries.len()));
+    println!("\n🏆 Top {} Results:", 5.min(result.itineraries.len()));
     println!("{}\n", dash_bar());
 
     // Header with manual padding

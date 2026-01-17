@@ -139,7 +139,7 @@ impl FlightSelectors {
 static DURATION_H_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\d+)\s*h").unwrap());
 static DURATION_M_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\d+)\s*m").unwrap());
 static LAYOVER_ARIA_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(\d+)\s*hr\s*(?:(\d+)\s*min)?[^.]*?in\s+([A-Za-zÀ-ÿ'\s][A-Za-zÀ-ÿ'\s-]*)").unwrap()
+    Regex::new(r"(\d+)\s*h(?:r\s*(?:(\d+)\s*m(?:in)?)?)?.*?in\s+([A-Za-zÀ-ÿ'\s-][A-Za-zÀ-ÿ'\s-]*)").unwrap()
 });
 
 fn parse_flights_response(html: &str) -> Result<Vec<Flight>> {
@@ -513,5 +513,33 @@ mod tests {
             Some("Tel-Aviv")
         );
         assert_eq!(layovers[1].duration_minutes, Some(120)); // 2h
+    }
+
+    #[test]
+    fn test_layover_parsing_with_period_in_name() {
+        let aria_label = "Layover (1 of 1) is a 2h layover at John F. Kennedy International Airport in New York.";
+        let mut layovers = Vec::new();
+
+        for cap in LAYOVER_ARIA_RE.captures_iter(aria_label) {
+            let hours = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+            let mins = cap.get(2).map(|m| m.as_str()).unwrap_or("0");
+            let duration_str = format!("{}h {}m", hours, mins);
+            let city_name = cap
+                .get(3)
+                .map(|m| m.as_str().to_string().trim().to_string())
+                .unwrap_or_default();
+
+            layovers.push(Layover {
+                _airport_code: None,
+                airport_city: Some(city_name),
+                duration_minutes: Some(parse_duration(&duration_str)),
+            });
+        }
+        assert_eq!(layovers.len(), 1);
+        assert_eq!(
+            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
+            Some("New York")
+        );
+        assert_eq!(layovers[0].duration_minutes, Some(120)); // 2h
     }
 }
