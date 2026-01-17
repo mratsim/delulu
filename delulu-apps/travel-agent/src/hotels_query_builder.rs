@@ -28,11 +28,12 @@ use anyhow::{bail, ensure, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use proto::{Amenity as AmenityProto, SortType as SortTypeProto};
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum Amenity {
@@ -103,7 +104,7 @@ impl Amenity {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum SortType {
@@ -159,7 +160,7 @@ impl SortType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct HotelSearchParams {
     pub version: i32,

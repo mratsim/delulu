@@ -6,7 +6,7 @@ license = "AGPL-3.0"
 description = "CLI tools and MCP server for travel services"
 
 [features]
-default = ["cli"]
+default = ["cli", "mcp"]
 cli = ["dep:clap"]
 mcp = [
     "dep:rmcp",
@@ -18,7 +18,8 @@ mcp = [
     "dep:http",
     "tracing-subscriber/env-filter",
     "tokio/signal",
-]
+    "rmcp/transport-io",
+ ]
 
 [dependencies]
 wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }

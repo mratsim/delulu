@@ -24,10 +24,13 @@ use anyhow::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use scraper::{Html, Selector};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::FlightSearchParams;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct FlightSearchResult {
     pub search_params: FlightSearchParams,
     pub itineraries: Vec<Itinerary>,
@@ -59,35 +62,55 @@ impl FlightSearchResult {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct Layover {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub _airport_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub airport_city: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_minutes: Option<i32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct Itinerary {
     pub id: String,
     pub flights: Vec<FlightSegment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub price: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub currency: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_minutes: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub stops: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub class: Option<String>,
     pub layovers: Vec<Layover>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct FlightSegment {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub airline: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub flight_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub departure_airport: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub arrival_airport: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub departure_time: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub arrival_time: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub arrival_plus_days: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_minutes: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub aircraft: Option<String>,
 }
 

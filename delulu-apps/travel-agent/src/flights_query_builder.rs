@@ -28,11 +28,12 @@ use anyhow::{ensure, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use proto::{Airport as AirportProto, FlightData, Info, Passenger as PassengerProto, Seat as SeatProto, Trip as TripProto};
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum Seat {
@@ -75,7 +76,30 @@ impl TryFrom<i32> for Seat {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+impl Seat {
+    pub fn from_str_name(s: &str) -> Option<Self> {
+        match s {
+            "unknown" => Some(Seat::Unknown),
+            "economy" => Some(Seat::Economy),
+            "premium_economy" | "premium" => Some(Seat::PremiumEconomy),
+            "business" => Some(Seat::Business),
+            "first" => Some(Seat::First),
+            _ => None,
+        }
+    }
+
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Seat::Unknown => "unknown",
+            Seat::Economy => "economy",
+            Seat::PremiumEconomy => "premium_economy",
+            Seat::Business => "business",
+            Seat::First => "first",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum Trip {
@@ -112,7 +136,26 @@ impl TryFrom<i32> for Trip {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+impl Trip {
+    pub fn from_str_name(s: &str) -> Option<Self> {
+        match s {
+            "round_trip" | "roundtrip" | "round" => Some(Trip::RoundTrip),
+            "one_way" | "oneway" => Some(Trip::OneWay),
+            "multi_city" | "multicity" | "multi" => Some(Trip::MultiCity),
+            _ => None,
+        }
+    }
+
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Trip::RoundTrip => "round_trip",
+            Trip::OneWay => "one_way",
+            Trip::MultiCity => "multi_city",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum Passenger {
@@ -152,7 +195,28 @@ impl TryFrom<i32> for Passenger {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl Passenger {
+    pub fn from_str_name(s: &str) -> Option<Self> {
+        match s {
+            "adult" => Some(Passenger::Adult),
+            "child" => Some(Passenger::Child),
+            "infant_on_lap" | "infant" => Some(Passenger::InfantOnLap),
+            "infant_in_seat" => Some(Passenger::InfantInSeat),
+            _ => None,
+        }
+    }
+
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Passenger::Adult => "adult",
+            Passenger::Child => "child",
+            Passenger::InfantOnLap => "infant_on_lap",
+            Passenger::InfantInSeat => "infant_in_seat",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct FlightSearchParams {
     pub from_airport: String,

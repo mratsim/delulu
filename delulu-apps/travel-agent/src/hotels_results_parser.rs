@@ -22,9 +22,10 @@
 
 use anyhow::Result;
 use scraper::{Html, Selector};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct Hotel {
     pub name: String,
@@ -39,7 +40,7 @@ pub struct Hotel {
     pub address: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct HotelSearchResult {
     pub hotels: Vec<Hotel>,

@@ -21,7 +21,7 @@
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use delulu_travel_agent::{GoogleFlightsClient, GoogleHotelsClient, FlightSearchParams, HotelSearchParams, CabinClass as FlightsCabinClass, TripType as FlightsTripType};
+use delulu_travel_agent::{GoogleFlightsClient, GoogleHotelsClient, FlightSearchParams, HotelSearchParams, Seat, Trip, Amenity};
 use rmcp::handler::server::{wrapper::Parameters, ServerHandler};
 use rmcp::service::serve_server;
 use rmcp::tool;
@@ -64,46 +64,24 @@ pub struct FlightsInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_date: Option<String>,
     #[serde(default = "default_cabin_class")]
-    pub cabin_class: CabinClass,
+    pub cabin_class: Seat,
     pub adults: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children_ages: Vec<i32>,
     #[serde(default = "default_trip_type")]
-    pub trip_type: TripType,
+    pub trip_type: Trip,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_stops: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_airlines: Option<Vec<String>>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Copy, Clone)]
-#[serde(rename_all = "snake_case")]
-pub enum CabinClass {
-    #[serde(alias = "economy")]
-    Economy,
-    #[serde(alias = "premium_economy")]
-    PremiumEconomy,
-    #[serde(alias = "business")]
-    Business,
-    #[serde(alias = "first")]
-    First,
+fn default_cabin_class() -> Seat {
+    Seat::Economy
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Copy, Clone)]
-#[serde(rename_all = "snake_case")]
-pub enum TripType {
-    #[serde(alias = "roundtrip")]
-    RoundTrip,
-    #[serde(alias = "oneway")]
-    OneWay,
-}
-
-fn default_cabin_class() -> CabinClass {
-    CabinClass::Economy
-}
-
-fn default_trip_type() -> TripType {
-    TripType::RoundTrip
+fn default_trip_type() -> Trip {
+    Trip::RoundTrip
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -152,25 +130,15 @@ impl TravelAgentServer {
     )]
     async fn search_flights(&self, params: Parameters<FlightsInput>) -> Result<String, String> {
         let input = params.0;
-        let cabin_class: FlightsCabinClass = match input.cabin_class {
-            CabinClass::Economy => FlightsCabinClass::Economy,
-            CabinClass::PremiumEconomy => FlightsCabinClass::PremiumEconomy,
-            CabinClass::Business => FlightsCabinClass::Business,
-            CabinClass::First => FlightsCabinClass::First,
-        };
-        let trip_type: FlightsTripType = match input.trip_type {
-            TripType::RoundTrip => FlightsTripType::RoundTrip,
-            TripType::OneWay => FlightsTripType::OneWay,
-        };
+        let passengers = vec![(delulu_travel_agent::Passenger::Adult, input.adults)];
         let params = FlightSearchParams {
             from_airport: input.from_airport,
             to_airport: input.to_airport,
             depart_date: input.depart_date,
             return_date: input.return_date,
-            cabin_class,
-            adults: input.adults,
-            children_ages: input.children_ages,
-            trip_type,
+            cabin_class: input.cabin_class,
+            passengers,
+            trip_type: input.trip_type,
             max_stops: input.max_stops,
             preferred_airlines: input.preferred_airlines,
         };
@@ -188,6 +156,10 @@ impl TravelAgentServer {
     )]
     async fn search_hotels(&self, params: Parameters<HotelsInput>) -> Result<String, String> {
         let input = params.0;
+        let amenities: Vec<Amenity> = input.amenities
+            .iter()
+            .filter_map(|a| Amenity::from_str_name(a))
+            .collect();
         let params = HotelSearchParams {
             version: 1,
             adults: input.adults,
@@ -204,7 +176,7 @@ impl TravelAgentServer {
             sort_order: None,
             min_guest_rating: input.min_guest_rating,
             hotel_stars: input.hotel_stars,
-            amenities: Vec::new(),
+            amenities,
             min_price: input.min_price,
             max_price: input.max_price,
         };
@@ -241,7 +213,8 @@ async fn main() -> Result<()> {
         Command::Stdio => {
             tracing::info!("Starting MCP server over stdio...");
             let server = TravelAgentServer::new(flights_client, hotels_client);
-            serve_server(Arc::new(server), (std::io::stdin(), std::io::stdout())).await?;
+            let (stdin, stdout) = rmcp::transport::io::stdio();
+            serve_server(Arc::new(server), (stdin, stdout)).await?;
         }
         Command::Http { host, port } => {
             let addr: SocketAddr = format!("{}:{}", host, port).parse()
