@@ -25,6 +25,7 @@ use crate::hotels_results_parser::HotelSearchResult;
 use anyhow::{anyhow, bail, Context, Result};
 use delulu_query_queues::QueryQueue;
 use std::sync::Arc;
+use std::time::Duration;
 use wreq::redirect::Policy;
 use wreq_util::Emulation;
 
@@ -39,6 +40,8 @@ impl GoogleHotelsClient {
         let client = wreq::Client::builder()
             .emulation(Emulation::Safari18_5)
             .redirect(Policy::default())
+            .timeout(Duration::from_secs(5))
+            .connect_timeout(Duration::from_secs(5))
             .build()
             .context("Failed to build HTTP client")?;
         let query_queue = QueryQueue::with_max_concurrent(max_concurrent);
@@ -116,14 +119,10 @@ impl GoogleHotelsClient {
     }
 
     pub async fn search_hotels(&self, params: &HotelSearchParams) -> Result<HotelSearchResult> {
-        params.validate()?;
-
         let today = chrono::Local::now().date_naive();
         let checkin = chrono::NaiveDate::parse_from_str(&params.checkin_date, "%Y-%m-%d")
             .context("Invalid checkin date")?;
-        if checkin < today {
-            bail!("Check-in cannot be in the past");
-        }
+        anyhow::ensure!(checkin >= today, "Check-in cannot be in the past");
 
         let html = self.fetch_raw(params).await?;
         let result = HotelSearchResult::from_html(&html)?;

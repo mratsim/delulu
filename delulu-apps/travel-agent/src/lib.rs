@@ -21,20 +21,19 @@
 // Testing access - consent_cookie is re-exported for test modules
 pub(crate) mod consent_cookie;
 pub use consent_cookie::generate_cookie_header;
-mod flights_proto;
+mod flights_query_builder;
+mod flights_results_parser;
 mod flights_search;
 mod hotels_query_builder;
 mod hotels_results_parser;
 mod hotels_search;
 
-// Re-export commonly used items from flights_search
-pub use flights_search::*;
+pub use flights_query_builder::{
+    FlightSearchParams, FlightSearchParamsBuilder, Passenger, Seat, Trip,
+};
+pub use flights_results_parser::{FlightSearchResult, FlightSegment, Itinerary, Layover};
+pub use flights_search::GoogleFlightsClient;
 
-// Re-export hotels_query_builder
 pub use hotels_query_builder::{Amenity, HotelSearchParams, HotelSearchParamsBuilder, SortType};
-
-// Re-export hotels_results_parser
 pub use hotels_results_parser::{Hotel, HotelSearchResult};
-
-// Re-export hotels_search
 pub use hotels_search::GoogleHotelsClient;

@@ -23,16 +23,22 @@
 
 use std::path::Path;
 
+use delulu_travel_agent::{FlightSearchParams, FlightSearchResult, Seat};
+
 /// Fixture structure describing expected properties of parsed results.
 struct FixtureTestCase {
     /// Filename in tests/fixtures/ directory (without .zst extension)
     name: &'static str,
-    /// Expected minimum number of flights to extract
-    min_flights: usize,
-    /// Whether this fixture is expected to have a "best price" banner
-    has_best_price: bool,
+    /// Expected minimum number of itineraries to extract
+    min_itineraries: usize,
+    /// Whether this fixture is expected to have flights with prices
+    has_prices: bool,
     /// Description of what this fixture covers
     description: &'static str,
+    /// Origin airport code for this fixture (for test params)
+    from_airport: &'static str,
+    /// Destination airport code for this fixture (for test params)
+    to_airport: &'static str,
 }
 
 /// Test cases covering different HTML structure variations.
@@ -40,33 +46,51 @@ struct FixtureTestCase {
 const FIXTURE_TESTS: &[FixtureTestCase] = &[
     FixtureTestCase {
         name: "domestic+business-lax_ord",
-        min_flights: 5,
-        has_best_price: true,
+        min_itineraries: 5,
+        has_prices: true,
         description: "Domestic US business class - short haul, typical domestic layout",
+        from_airport: "LAX",
+        to_airport: "ORD",
     },
     FixtureTestCase {
         name: "nonstop-sfo_jfk_economy",
-        min_flights: 5,
-        has_best_price: true,
+        min_itineraries: 5,
+        has_prices: true,
         description: "Transcontinental economy with nonstop options visible",
+        from_airport: "SFO",
+        to_airport: "JFK",
     },
     FixtureTestCase {
         name: "overnight+1day-sfo_lhr_economy",
-        min_flights: 5,
-        has_best_price: true,
+        min_itineraries: 5,
+        has_prices: true,
         description: "International long-haul with +1 day arrival markers",
+        from_airport: "SFO",
+        to_airport: "LHR",
     },
     FixtureTestCase {
         name: "layover-mad_nrt",
-        min_flights: 5,
-        has_best_price: true,
+        min_itineraries: 5,
+        has_prices: true,
         description: "Europe to Asia with multiple layovers (1-2 stops)",
+        from_airport: "MAD",
+        to_airport: "NRT",
     },
     FixtureTestCase {
         name: "longhaul-lax_syd",
-        min_flights: 3,
-        has_best_price: true,
+        min_itineraries: 3,
+        has_prices: true,
         description: "Trans-Pacific ultra-long-haul routes",
+        from_airport: "LAX",
+        to_airport: "SYD",
+    },
+    FixtureTestCase {
+        name: "layover-yyz_cdg",
+        min_itineraries: 5,
+        has_prices: true,
+        description: "Toronto to Paris with potential Montréal layover",
+        from_airport: "YYZ",
+        to_airport: "CDG",
     },
 ];
 
@@ -84,20 +108,15 @@ fn decompress_zst(compressed: &[u8]) -> String {
 ///
 /// Panics if the file cannot be loaded (not found, corrupt, etc.).
 fn load_fixture(name: &str) -> String {
-    // Construct path to the fixture file
-    // This is relative to the crate root where Cargo.toml lives
     let fixtures_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures-flights-parsing");
     let fixture_path = fixtures_dir.join(format!("{}.html.zst", name));
 
-    // Read compressed bytes - using include_bytes would require rebuild on change,
-    // so we read from disk to allow updating fixtures independently
     let compressed = std::fs::read(&fixture_path).unwrap_or_else(|e| {
         panic!(
             "Failed to read fixture '{}' at {:?}: {}",
             name, fixture_path, e
         )
     });
-
     decompress_zst(&compressed)
 }
 
@@ -113,65 +132,65 @@ fn test_parser_fixtures() {
         println!("Testing fixture: {} - {}", case.name, case.description);
 
         let html = load_fixture(case.name);
-        let result = delulu_travel_agent::parse_flights_response(&html);
+        let params = FlightSearchParams::builder(
+            case.from_airport.into(),
+            case.to_airport.into(),
+            chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+        )
+        .cabin_class(Seat::Economy)
+        .build()
+        .unwrap();
+        let result = FlightSearchResult::from_html(&html, params);
 
         match result {
             Ok(parsed) => {
-                let flight_count = parsed.flights.len();
-                let has_banner = parsed.best_price.is_some();
+                let itinerary_count = parsed.itineraries.len();
 
-                // Verify minimum flights extracted
                 assert!(
-                    flight_count >= case.min_flights,
-                    "{}: Expected ≥{} flights, got {}",
+                    itinerary_count >= case.min_itineraries,
+                    "{}: Expected ≥{} itineraries, got {}",
                     case.name,
-                    case.min_flights,
-                    flight_count
+                    case.min_itineraries,
+                    itinerary_count
                 );
 
-                // Verify best_price consistency
+                // Verify prices consistency
+                let has_prices = parsed.itineraries.iter().any(|i| i.price.is_some());
                 assert_eq!(
-                    has_banner, case.has_best_price,
-                    "{}: has_best_price mismatch (expected {}, got {})",
-                    case.name, case.has_best_price, has_banner
+                    has_prices, case.has_prices,
+                    "{}: has_prices mismatch (expected {}, got {})",
+                    case.name, case.has_prices, has_prices
                 );
 
-                // Spot-check a few flights have reasonable data
-                if let Some(first) = parsed.flights.first() {
-                    assert!(
-                        !first.airline.is_empty(),
-                        "{}: First flight has empty airline",
-                        case.name
-                    );
-                    assert!(
-                        !first.dep_time.is_empty(),
-                        "{}: First flight has empty dep_time",
-                        case.name
-                    );
-                    assert!(
-                        !first.price.is_empty(),
-                        "{}: First flight has empty price",
-                        case.name
-                    );
+                // Spot-check a few itineraries have reasonable data
+                if let Some(first) = parsed.itineraries.first() {
+                    if let Some(seg) = first.flights.first() {
+                        assert!(
+                            seg.airline.is_some() && !seg.airline.as_ref().unwrap().is_empty(),
+                            "{}: First itinerary has empty airline",
+                            case.name
+                        );
+                        assert!(
+                            seg.departure_time.is_some()
+                                && !seg.departure_time.as_ref().unwrap().is_empty(),
+                            "{}: First itinerary has empty departure_time",
+                            case.name
+                        );
+                    }
                 }
 
-                println!(
-                    "✓ {}: {} flights extracted, best_price={}",
-                    case.name, flight_count, has_banner
-                );
+                println!("✓ {}: {} itineraries extracted", case.name, itinerary_count);
 
-                results.push((case.name.to_string(), true, flight_count));
+                results.push((case.name.to_string(), true, itinerary_count));
             }
             Err(e) => {
                 println!("✗ {}: PARSE FAILED: {}", case.name, e);
                 results.push((case.name.to_string(), false, 0));
-                // Fail the test on parse error - this is a regression
                 panic!("{}: Failed to parse fixture: {}", case.name, e);
             }
         }
     }
 
-    // Summary
     println!("\n{}", "=".repeat(60));
     println!("FIXTURE TEST SUMMARY");
     println!("{}", "=".repeat(60));
@@ -179,9 +198,9 @@ fn test_parser_fixtures() {
     let passed: usize = results.iter().filter(|(_, ok, _)| *ok).count();
     let total = results.len();
 
-    for (name, ok, flights) in &results {
+    for (name, ok, count) in &results {
         let status = if *ok { "✓" } else { "✗" };
-        println!("{} {:35} {} flights", status, name, flights);
+        println!("{} {:35} {} itineraries", status, name, count);
     }
 
     println!("\nTotal: {}/{} passed", passed, total);
@@ -193,55 +212,73 @@ fn test_parser_fixtures() {
 }
 
 /// Individual fixture tests for faster iteration during development.
-///
-/// These can be run individually with:
-///     cargo test --test fixtures -- nonstop
 #[test]
 fn test_nonstop_sfo_jfk_economy() {
     let html = load_fixture("nonstop-sfo_jfk_economy");
-    let result = delulu_travel_agent::parse_flights_response(&html).expect("parse fixture");
+    let params = FlightSearchParams::builder(
+        "SFO".into(),
+        "JFK".into(),
+        chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .build()
+    .unwrap();
+    let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
-    // Nonstop-heavy route should have plenty of direct options
     assert!(
-        result.flights.len() >= 5,
-        "Expected several nonstop flights"
+        result.itineraries.len() >= 5,
+        "Expected several nonstop itineraries"
     );
 
-    // Check we captured airlines correctly
-    let has_airlines = result.flights.iter().any(|f| !f.airline.is_empty());
+    let has_airlines = result.itineraries.iter().any(|i| {
+        i.flights
+            .first()
+            .map(|s| s.airline.is_some() && !s.airline.as_ref().unwrap().is_empty())
+            .unwrap_or(false)
+    });
 
     assert!(has_airlines, "Should extract at least one airline");
     println!(
-        "Extracted {} flights from nonstop-heavy route",
-        result.flights.len()
+        "Extracted {} itineraries from nonstop-heavy route",
+        result.itineraries.len()
     );
 }
 
 #[test]
 fn test_overnight_sfo_lhr_economy() {
     let html = load_fixture("overnight+1day-sfo_lhr_economy");
-    let result = delulu_travel_agent::parse_flights_response(&html).expect("parse fixture");
+    let params = FlightSearchParams::builder(
+        "SFO".into(),
+        "LHR".into(),
+        chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .build()
+    .unwrap();
+    let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
-    // International long-haul often has overnight departures with +1 arrivals
     assert!(
-        result.flights.len() >= 3,
+        result.itineraries.len() >= 3,
         "Should have multiple long-haul options"
     );
 
-    // Verify +1 day arrivals are captured
-    let overnight_flights: Vec<_> = result
-        .flights
+    let overnight_itineraries: Vec<_> = result
+        .itineraries
         .iter()
-        .filter(|f| f.arrive_plus_days.is_some())
+        .filter(|i| {
+            i.flights
+                .first()
+                .map(|s| s.arrival_plus_days.is_some() && s.arrival_plus_days.unwrap() > 0)
+                .unwrap_or(false)
+        })
         .collect();
 
     println!(
-        "Found {} overnight flights with +1 markers",
-        overnight_flights.len()
+        "Found {} overnight itineraries with +1 markers",
+        overnight_itineraries.len()
     );
-    // At least some should have +1 day markers for transatlantic
     assert!(
-        !overnight_flights.is_empty(),
+        !overnight_itineraries.is_empty(),
         "Expected some overnight/+1 day arrivals"
     );
 }
@@ -249,75 +286,168 @@ fn test_overnight_sfo_lhr_economy() {
 #[test]
 fn test_layover_mad_nrt() {
     let html = load_fixture("layover-mad_nrt");
-    let result = delulu_travel_agent::parse_flights_response(&html).expect("parse fixture");
+    let params = FlightSearchParams::builder(
+        "MAD".into(),
+        "NRT".into(),
+        chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .build()
+    .unwrap();
+    let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
-    // Europe to Asia typically has 1-2 stops via Middle East or hubs
     assert!(
-        result.flights.len() >= 3,
-        "Should extract connecting flights"
+        result.itineraries.len() >= 3,
+        "Should have multi-leg options"
     );
 
-    // Count flights by stop count
-    let onestop_plus: usize = result.flights.iter().filter(|f| f.stops >= 1).count();
+    let multi_stop = result
+        .itineraries
+        .iter()
+        .filter(|i| i.stops.map(|s| s > 1).unwrap_or(false))
+        .count();
 
-    println!("Found {} flights with 1+ stops", onestop_plus);
+    println!("Found {} multi-stop itineraries via Madrid", multi_stop);
+    assert!(multi_stop > 0, "Should have some 2+ stop options");
+}
 
-    // Most should have 1+ stops on this route
-    assert!(
-        onestop_plus > 0,
-        "Expected significant fraction with layovers"
+#[test]
+fn test_layover_doha_parsing() {
+    let html = load_fixture("layover-mad_nrt");
+    let params = FlightSearchParams::builder(
+        "MAD".into(),
+        "NRT".into(),
+        chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .build()
+    .unwrap();
+    let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
+
+    let doha_layovers: Vec<_> = result
+        .itineraries
+        .iter()
+        .filter(|i| {
+            i.layovers
+                .iter()
+                .any(|l| l.airport_city.as_ref().is_some_and(|n| n.contains("Doha")))
+        })
+        .collect();
+
+    println!(
+        "Found {} itineraries with Doha layover",
+        doha_layovers.len()
     );
+    assert!(
+        !doha_layovers.is_empty(),
+        "Should have itineraries with Doha layover"
+    );
+
+    for itinerary in &doha_layovers {
+        let doha = itinerary
+            .layovers
+            .iter()
+            .find(|l| l.airport_city.as_ref().is_some_and(|n| n.contains("Doha")))
+            .unwrap();
+        println!(
+            "Doha layover: {} - duration: {:?} min",
+            doha.airport_city.as_deref().unwrap_or("Unknown"),
+            doha.duration_minutes
+        );
+        assert!(
+            doha.duration_minutes.is_some() && doha.duration_minutes.unwrap() > 0,
+            "Doha layover should have positive duration"
+        );
+    }
 }
 
 #[test]
 fn test_longhaul_lax_syd() {
     let html = load_fixture("longhaul-lax_syd");
-    let result = delulu_travel_agent::parse_flights_response(&html).expect("parse fixture");
+    let params = FlightSearchParams::builder(
+        "LAX".into(),
+        "SYD".into(),
+        chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .build()
+    .unwrap();
+    let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
-    // Trans-Pacific should have very long durations
     assert!(
-        result.flights.len() >= 2,
-        "Should extract long-haul options"
+        result.itineraries.len() >= 2,
+        "Should have ultra long-haul options"
     );
+
+    let long_duration = result
+        .itineraries
+        .iter()
+        .filter(|i| i.duration_minutes.map(|d| d > 900).unwrap_or(false))
+        .count();
 
     println!(
-        "Extracted {} flights from trans-pacific route",
-        result.flights.len()
+        "Found {} ultra long-haul itineraries (>15h) LAX->SYD",
+        long_duration
     );
+    assert!(long_duration > 0, "Should have very long flights");
 }
 
 #[test]
-fn test_domestic_business_lax_ord() {
-    let html = load_fixture("domestic+business-lax_ord");
-    let result = delulu_travel_agent::parse_flights_response(&html).expect("parse fixture");
+fn test_layover_yyz_cdg() {
+    let html = load_fixture("layover-yyz_cdg");
+    let params = FlightSearchParams::builder(
+        "YYZ".into(),
+        "CDG".into(),
+        chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+    )
+    .cabin_class(Seat::Economy)
+    .build()
+    .unwrap();
+    let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
-    // Domestic short-haul should extract cleanly
-    assert!(result.flights.len() >= 5, "Should extract domestic flights");
+    assert!(
+        result.itineraries.len() >= 3,
+        "Should have multi-leg options"
+    );
 
-    // Business class often has a highlighted best price banner
-    if let Some(best) = &result.best_price {
-        if !best.trim().is_empty() {
-            println!("Best price displayed: ${}", best.trim());
-        }
-    }
-
-    // Durations should be short (2-4 hours typical for LA-Chicago)
-    let short_flights: Vec<_> = result
-        .flights
+    let multi_stop = result
+        .itineraries
         .iter()
-        .filter(|f| {
-            let dur = f.duration.trim();
-            // Match patterns like "2h", "3h", "4h" (but not "5h+" or "14h")
-            dur.starts_with("2h") || dur.starts_with("3h") || dur.starts_with("4h")
+        .filter(|i| i.stops.map(|s| s > 1).unwrap_or(false))
+        .count();
+
+    println!(
+        "Found {} multi-stop itineraries via Canada/Europe",
+        multi_stop
+    );
+    assert!(multi_stop > 0, "Should have some 2+ stop options");
+
+    let montreal_layovers: Vec<_> = result
+        .itineraries
+        .iter()
+        .filter(|i| {
+            i.layovers
+                .iter()
+                .any(|l| l.airport_city.as_ref().is_some_and(|n| n.contains("Montr")))
         })
         .collect();
 
-    // LA-Chicago is ~4h, some should be in the 2-5h range
-    if short_flights.is_empty() {
-        // Fallback: just verify we got flights parsed (duration varies by connector)
-        println!("Note: All durations - taking first few as samples:");
-        for (i, f) in result.flights.iter().take(3).enumerate() {
-            println!("  {}: {} -> {}", i + 1, f.dep_time, f.duration);
+    println!(
+        "Found {} itineraries with Montréal layover",
+        montreal_layovers.len()
+    );
+    if !montreal_layovers.is_empty() {
+        for itinerary in &montreal_layovers {
+            let montreal = itinerary
+                .layovers
+                .iter()
+                .find(|l| l.airport_city.as_ref().is_some_and(|n| n.contains("Montr")))
+                .unwrap();
+            println!(
+                "Montréal layover: {} - duration: {:?} min",
+                montreal.airport_city.as_deref().unwrap_or("Unknown"),
+                montreal.duration_minutes
+            );
         }
     }
 }

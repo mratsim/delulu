@@ -1,0 +1,15 @@
+//! Can be uncommented to regenerate src/proto/google_travel_{flights,hotels}.proto
+//! Given that I don't expect them to change for a long time
+//! and that if they change, having the build.rs would still break, we hardcode the generated code
+//! and save compilation time.
+
+fn main() {
+    println!("cargo:rerun-if-changed=src/proto/google_travel_flights.proto");
+    println!("cargo:rerun-if-changed=src/proto/google_travel_hotels.proto");
+
+    prost_build::compile_protos(
+        &["src/proto/google_travel_flights.proto", "src/proto/google_travel_hotels.proto"],
+        &["."],
+    )
+    .unwrap();
+}
