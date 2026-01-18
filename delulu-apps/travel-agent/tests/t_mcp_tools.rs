@@ -24,12 +24,12 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{ChildStdout, ChildStdin, Command};
+use tokio::process::{ChildStdout, ChildStdin, ChildStderr, Command};
 use tokio::time::Duration;
 
 // MCP stdio never quits so seems like we need rely on timeout
 // if we want to read stdout AND stderr since we can't send it a kill signal.
-const TIMEOUT: Duration = Duration::from_secs(2);
+const TIMEOUT: Duration = Duration::from_secs(3);
 
 fn find_binary() -> Result<PathBuf> {
     let manifest_dir = PathBuf::from(
@@ -127,6 +127,26 @@ async fn read_json_response_with_timeout(stdout: &mut ChildStdout, dur: Duration
     Ok(response)
 }
 
+async fn read_stderr_with_timeout(stderr: &mut ChildStderr, dur: Duration) -> Result<String> {
+    let mut output = String::new();
+    let mut buf = [0u8; 4096];
+
+    loop {
+        let read_result = tokio::time::timeout(dur, stderr.read(&mut buf)).await;
+
+        match read_result {
+            Ok(Ok(0)) => break,
+            Ok(Ok(n)) => {
+                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+            }
+            Ok(Err(_)) => break,
+            Err(_) => break,
+        }
+    }
+
+    Ok(output)
+}
+
 #[tokio::test]
 async fn test_mcp_server_starts_stdio() -> Result<()> {
     let path = find_binary()?;
@@ -146,6 +166,12 @@ async fn test_mcp_server_starts_stdio() -> Result<()> {
     mcp_initialize(&mut stdin, &mut stdout).await.context("MCP initialize failed")?;
 
     drop(stdin);
+    let stderr_output = read_stderr_with_timeout(&mut stderr, TIMEOUT).await?;
+    if !stderr_output.is_empty() {
+        println!("=== STDERR ===");
+        println!("{}", stderr_output);
+        println!("===========");
+    }
     drop(child);
 
     Ok(())
@@ -197,6 +223,7 @@ async fn test_mcp_flights() -> Result<()> {
         .spawn()?;
 
     let mut stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
     let mut stdin = child.stdin.take().unwrap();
 
     mcp_initialize(&mut stdin, &mut stdout)
@@ -228,6 +255,12 @@ async fn test_mcp_flights() -> Result<()> {
         .context("Failed to read flight search response")?;
 
     drop(stdin);
+    let stderr_output = read_stderr_with_timeout(&mut stderr, TIMEOUT).await?;
+    if !stderr_output.is_empty() {
+        println!("=== STDERR ===");
+        println!("{}", stderr_output);
+        println!("===========");
+    }
     drop(child);
 
     assert!(response.is_object(), "Response should be an object");
@@ -304,6 +337,7 @@ async fn test_mcp_hotels() -> Result<()> {
         .spawn()?;
 
     let mut stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
     let mut stdin = child.stdin.take().unwrap();
 
     mcp_initialize(&mut stdin, &mut stdout)
@@ -334,6 +368,12 @@ async fn test_mcp_hotels() -> Result<()> {
 
     drop(stdin);
     drop(child);
+    let stderr_output = read_stderr_with_timeout(&mut stderr, TIMEOUT).await?;
+    if !stderr_output.is_empty() {
+        println!("=== STDERR ===");
+        println!("{}", stderr_output);
+        println!("===========");
+    }
 
     assert!(response.is_object(), "Response should be an object");
     let obj = response.as_object().unwrap();
