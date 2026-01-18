@@ -46,7 +46,7 @@ impl Default for QueryQueueConfig {
     fn default() -> Self {
         Self {
             max_concurrent: 4,
-            initial_delay_ms: 1000,
+            initial_delay_ms: 0,
             max_delay_ms: 30000,
             max_retries: 3,
             jitter_factor: 0.5,

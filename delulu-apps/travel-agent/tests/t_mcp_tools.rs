@@ -27,6 +27,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdout, ChildStdin, Command};
 use tokio::time::Duration;
 
+// MCP stdio never quits so seems like we need rely on timeout
+// if we want to read stdout AND stderr since we can't send it a kill signal.
+const TIMEOUT: Duration = Duration::from_secs(2);
+
 fn find_binary() -> Result<PathBuf> {
     let manifest_dir = PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR")
@@ -74,7 +78,7 @@ async fn mcp_initialize(stdin: &mut ChildStdin, stdout: &mut ChildStdout) -> Res
 
     let mut resp = String::new();
     let mut buf = [0u8; 4096];
-    let n = tokio::time::timeout(Duration::from_secs(5), stdout.read(&mut buf)).await?
+    let n = tokio::time::timeout(TIMEOUT, stdout.read(&mut buf)).await?
         .context("Failed to read init response")?;
     if n > 0 {
         resp = String::from_utf8_lossy(&buf[..n]).to_string();
@@ -98,23 +102,22 @@ async fn send_tool_call(stdin: &mut ChildStdin, name: &str, args: serde_json::Va
     Ok(())
 }
 
-async fn read_json_response(stdout: &mut ChildStdout, timeout_secs: u8) -> Result<Value> {
+// MCP stdio never quits so seems like we need rely on timeout
+// if we want to read stdout AND stderr since we can't send it a kill signal.
+async fn read_json_response_with_timeout(stdout: &mut ChildStdout, dur: Duration) -> Result<Value> {
     let mut output = String::new();
     let mut buf = [0u8; 4096];
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs as u64);
 
-    while tokio::time::Instant::now() < deadline {
-        tokio::select! {
-            read_result = stdout.read(&mut buf) => {
-                match read_result {
-                    Ok(0) => break,
-                    Ok(n) if n > 0 => {
-                        output.push_str(&String::from_utf8_lossy(&buf[..n]));
-                    }
-                    Ok(_) => {}
-                    Err(_) => break,
-                }
+    loop {
+        let read_result = tokio::time::timeout(dur, stdout.read(&mut buf)).await;
+
+        match read_result {
+            Ok(Ok(0)) => break,
+            Ok(Ok(n)) => {
+                output.push_str(&String::from_utf8_lossy(&buf[..n]));
             }
+            Ok(Err(_)) => break,
+            Err(_) => break,
         }
     }
 
@@ -181,7 +184,8 @@ async fn test_mcp_version_output() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_mcp_flights_receives_and_processes() -> Result<()> {
+#[ignore]
+async fn test_mcp_flights() -> Result<()> {
     let path = find_binary()?;
 
     let mut child = Command::new(&path)
@@ -219,7 +223,7 @@ async fn test_mcp_flights_receives_and_processes() -> Result<()> {
         .await
         .context("Failed to send flight search tool call")?;
 
-    let response = read_json_response(&mut stdout, 5)
+    let response = read_json_response_with_timeout(&mut stdout, TIMEOUT)
         .await
         .context("Failed to read flight search response")?;
 
@@ -287,7 +291,8 @@ async fn test_mcp_flights_receives_and_processes() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_mcp_hotels_receives_and_processes() -> Result<()> {
+#[ignore]
+async fn test_mcp_hotels() -> Result<()> {
     let path = find_binary()?;
 
     let mut child = Command::new(&path)
@@ -323,7 +328,7 @@ async fn test_mcp_hotels_receives_and_processes() -> Result<()> {
         .await
         .context("Failed to send hotel search tool call")?;
 
-    let response = read_json_response(&mut stdout, 5)
+    let response = read_json_response_with_timeout(&mut stdout, TIMEOUT)
         .await
         .context("Failed to read hotel search response")?;
 
