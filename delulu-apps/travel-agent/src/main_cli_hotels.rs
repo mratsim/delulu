@@ -59,7 +59,7 @@
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use delulu_travel_agent::{Amenity, GoogleHotelsClient, HotelSearchParams, SortType};
+use delulu_travel_agent::{Amenity, GoogleHotelsClient, HotelSearchParams};
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-hotels")]

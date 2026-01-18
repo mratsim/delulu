@@ -19,10 +19,10 @@
 //!
 //! Supports stdio transport via subcommand.
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, Error};
 use clap::{Parser, Subcommand};
 use delulu_travel_agent::{GoogleFlightsClient, GoogleHotelsClient, FlightSearchParams, HotelSearchParams, Seat, Trip, Amenity};
-use rmcp::handler::server::{wrapper::Parameters, ServerHandler};
+use rmcp::handler::server::{wrapper::Parameters, tool::ToolRouter, ServerHandler};
 use rmcp::service::serve_server;
 use rmcp::tool;
 use rmcp::tool_router;
@@ -108,9 +108,11 @@ pub struct HotelsInput {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct TravelAgentServer {
     flights_client: Arc<GoogleFlightsClient>,
     hotels_client: Arc<GoogleHotelsClient>,
+    tool_router: ToolRouter<Self>,
 }
 
 impl TravelAgentServer {
@@ -118,6 +120,7 @@ impl TravelAgentServer {
         Self {
             flights_client,
             hotels_client,
+            tool_router: Self::tool_router(),
         }
     }
 }
@@ -189,32 +192,86 @@ impl TravelAgentServer {
     }
 }
 
-impl ServerHandler for TravelAgentServer {}
+impl ServerHandler for TravelAgentServer {
+    fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParam>,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<rmcp::model::ListToolsResult, rmcp::ErrorData>> + Send + '_>> {
+        tracing::debug!("list_tools called, tools count: {}", self.tool_router.list_all().len());
+        Box::pin(async move {
+            let tools = self.tool_router.list_all();
+            tracing::debug!("Returning {} tools", tools.len());
+            Ok(rmcp::model::ListToolsResult::with_all_items(tools))
+        })
+    }
+
+    fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParam,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<rmcp::model::CallToolResult, rmcp::ErrorData>> + Send + '_>> {
+        let router = self.tool_router.clone();
+        let self_clone = self.clone();
+        Box::pin(async move {
+            let context = rmcp::handler::server::tool::ToolCallContext::new(&self_clone, request, context);
+            router.call(context).await
+        })
+    }
+
+    fn get_info(&self) -> rmcp::model::ServerInfo {
+        rmcp::model::ServerInfo {
+            protocol_version: rmcp::model::ProtocolVersion::V_2025_03_26,
+            capabilities: rmcp::model::ServerCapabilities {
+                tools: Some(rmcp::model::ToolsCapability::default()),
+                ..Default::default()
+            },
+            server_info: rmcp::model::Implementation {
+                name: "delulu-travel-agent".into(),
+                title: None,
+                version: "0.1.0".into(),
+                icons: None,
+                website_url: None,
+            },
+            instructions: None,
+        }
+    }
+}
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Error> {
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".to_string().into()))
-        .with(tracing_subscriber::fmt::layer())
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "error".to_string().into()))
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init();
 
+    tracing::debug!("Parsing arguments...");
     let args = Args::parse();
+    tracing::debug!("Parsed args: {:?}", args);
 
+    tracing::debug!("Creating flights client...");
     let flights_client = Arc::new(
         GoogleFlightsClient::new("en".into(), "USD".into())
             .context("Failed to create flights client")?,
     );
+    tracing::debug!("Creating hotels client...");
     let hotels_client = Arc::new(
         GoogleHotelsClient::new(4)
             .context("Failed to create hotels client")?,
     );
+    tracing::debug!("Clients created");
 
     match args.command {
         Command::Stdio => {
-            tracing::info!("Starting MCP server over stdio...");
+            eprintln!("Starting MCP server over stdio...");
             let server = TravelAgentServer::new(flights_client, hotels_client);
             let (stdin, stdout) = rmcp::transport::io::stdio();
-            serve_server(Arc::new(server), (stdin, stdout)).await?;
+            tracing::debug!("Starting MCP server on stdio transport...");
+            let _running = serve_server(Arc::new(server), (stdin, stdout))
+                .await
+                .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
+            tracing::debug!("Server running. Press Ctrl+C to stop.");
+            std::future::pending::<()>().await;
         }
         Command::Http { host, port } => {
             let addr: SocketAddr = format!("{}:{}", host, port).parse()

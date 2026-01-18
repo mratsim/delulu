@@ -24,7 +24,7 @@ pub mod proto {
     include!("proto/google_travel_hotels.rs");
 }
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;

@@ -19,6 +19,7 @@ mcp = [
     "tracing-subscriber/env-filter",
     "tokio/signal",
     "rmcp/transport-io",
+    "rmcp/transport-streamable-http-server",
  ]
 
 [dependencies]
@@ -72,6 +73,6 @@ path = "src/main_cli_hotels.rs"
 required-features = ["cli"]
 
 [[bin]]
-name = "travel-mcp"
+name = "delulu-travel-mcp"
 path = "src/main_mcp.rs"
 required-features = ["mcp"]

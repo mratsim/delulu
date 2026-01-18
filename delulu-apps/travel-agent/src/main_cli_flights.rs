@@ -23,7 +23,7 @@ use clap::Parser;
 use delulu_travel_agent::{
     FlightSearchParams, FlightSearchResult, GoogleFlightsClient, Passenger, Seat, Trip,
 };
-use std::cmp::{max, min};
+use std::cmp::max;
 use term_size;
 
 /// CLI arguments
@@ -208,7 +208,6 @@ fn calc_column_widths(
     let mut max_times = 15;
     let mut max_duration = 10;
     let mut max_stops = 25;
-    let min_rank = 4;
 
     for itin in itins {
         if let Some(seg) = first_seg(itin) {
