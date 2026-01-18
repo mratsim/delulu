@@ -3,12 +3,24 @@
 
 import asyncio
 import json
+import os
+import signal
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
 from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp import ClientSession
+
+
+def kill_server_processes() -> None:
+    """Kill any leftover server processes using process group."""
+    if sys.platform != "win32":
+        try:
+            signal.pthread_sigmask(signal.SIG_BLOCK, (signal.SIGTERM,))
+            os.killpg(0, signal.SIGTERM)
+        except (ProcessLookupError, OSError):
+            pass
 
 
 def find_server_binary() -> Path:
@@ -181,6 +193,8 @@ async def run_tests() -> int:
 
         traceback.print_exc()
         return 1
+    finally:
+        kill_server_processes()
 
 
 if __name__ == "__main__":
