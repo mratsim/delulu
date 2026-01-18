@@ -8,9 +8,6 @@ dependencies = []
 [dependency-groups]
 dev = ["mcp>=1.0"]
 
-[tool.uv]
-dev-dependencies = ["mcp>=1.0"]
-
 [tool.ruff]
 target-version = "py312"
 
