@@ -197,7 +197,7 @@ impl ServerHandler for TravelAgentServer {
         &self,
         _request: Option<rmcp::model::PaginatedRequestParam>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<rmcp::model::ListToolsResult, rmcp::ErrorData>> + Send + '_>> {
+    ) -> impl Future<Output = Result<rmcp::model::ListToolsResult, rmcp::ErrorData>> + Send + '_ {
         tracing::debug!("list_tools called, tools count: {}", self.tool_router.list_all().len());
         Box::pin(async move {
             let tools = self.tool_router.list_all();
@@ -210,7 +210,7 @@ impl ServerHandler for TravelAgentServer {
         &self,
         request: rmcp::model::CallToolRequestParam,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<rmcp::model::CallToolResult, rmcp::ErrorData>> + Send + '_>> {
+    ) -> impl Future<Output = Result<rmcp::model::CallToolResult, rmcp::ErrorData>> + Send + '_ {
         let router = self.tool_router.clone();
         let self_clone = self.clone();
         Box::pin(async move {
