@@ -226,13 +226,7 @@ impl ServerHandler for TravelAgentServer {
                 tools: Some(rmcp::model::ToolsCapability::default()),
                 ..Default::default()
             },
-            server_info: rmcp::model::Implementation {
-                name: "delulu-travel-agent".into(),
-                title: None,
-                version: "0.1.0".into(),
-                icons: None,
-                website_url: None,
-            },
+            server_info: rmcp::model::Implementation::from_build_env(),
             instructions: None,
         }
     }
