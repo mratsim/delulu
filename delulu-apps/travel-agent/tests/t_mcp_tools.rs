@@ -17,12 +17,13 @@
 
 //! MCP server integration tests using subprocess with stdio transport.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};
 use serde_json::json;
+use serde_json::Value;
 use std::path::PathBuf;
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdout, ChildStdin, Command};
 use tokio::time::Duration;
 
@@ -56,7 +57,7 @@ fn today() -> NaiveDate {
     chrono::Local::now().date_naive()
 }
 
-async fn mcp_initialize(stdin: &mut ChildStdin, stdout: &mut BufReader<ChildStdout>) -> Result<()> {
+async fn mcp_initialize(stdin: &mut ChildStdin, stdout: &mut ChildStdout) -> Result<()> {
     let init = json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -72,7 +73,12 @@ async fn mcp_initialize(stdin: &mut ChildStdin, stdout: &mut BufReader<ChildStdo
     stdin.write_all(init_str.as_bytes()).await?;
 
     let mut resp = String::new();
-    stdout.read_line(&mut resp).await?;
+    let mut buf = [0u8; 4096];
+    let n = tokio::time::timeout(Duration::from_secs(5), stdout.read(&mut buf)).await?
+        .context("Failed to read init response")?;
+    if n > 0 {
+        resp = String::from_utf8_lossy(&buf[..n]).to_string();
+    }
     assert!(resp.contains("2.0"), "Should get JSON-RPC init response: {}", resp);
 
     stdin.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n").await?;
@@ -92,6 +98,32 @@ async fn send_tool_call(stdin: &mut ChildStdin, name: &str, args: serde_json::Va
     Ok(())
 }
 
+async fn read_json_response(stdout: &mut ChildStdout, timeout_secs: u8) -> Result<Value> {
+    let mut output = String::new();
+    let mut buf = [0u8; 4096];
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs as u64);
+
+    while tokio::time::Instant::now() < deadline {
+        tokio::select! {
+            read_result = stdout.read(&mut buf) => {
+                match read_result {
+                    Ok(0) => break,
+                    Ok(n) if n > 0 => {
+                        output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                    }
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+            }
+        }
+    }
+
+    let response: Value = serde_json::from_str(&output)
+        .context("Failed to parse JSON response")?;
+
+    Ok(response)
+}
+
 #[tokio::test]
 async fn test_mcp_server_starts_stdio() -> Result<()> {
     let path = find_binary()?;
@@ -104,12 +136,14 @@ async fn test_mcp_server_starts_stdio() -> Result<()> {
         .kill_on_drop(true)
         .spawn()?;
 
-    let mut stdout = BufReader::new(child.stdout.take().unwrap());
-    let mut line = String::new();
+    let mut stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    let mut stdin = child.stdin.take().unwrap();
 
-    let result = tokio::time::timeout(Duration::from_secs(2), stdout.read_line(&mut line)).await;
+    mcp_initialize(&mut stdin, &mut stdout).await.context("MCP initialize failed")?;
 
-    assert!(result.is_ok() || line.is_empty(), "Should not timeout, got: '{}'", line);
+    drop(stdin);
+    drop(child);
 
     Ok(())
 }
@@ -147,7 +181,6 @@ async fn test_mcp_version_output() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_mcp_flights_receives_and_processes() -> Result<()> {
     let path = find_binary()?;
 
@@ -159,18 +192,12 @@ async fn test_mcp_flights_receives_and_processes() -> Result<()> {
         .kill_on_drop(true)
         .spawn()?;
 
-    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut stdout = child.stdout.take().unwrap();
     let mut stdin = child.stdin.take().unwrap();
 
-    let mut startup = String::new();
-    let _ = tokio::time::timeout(Duration::from_secs(5), stdout.read_line(&mut startup)).await;
-
-    let init_result = mcp_initialize(&mut stdin, &mut stdout).await;
-
-    if init_result.is_err() {
-        drop(child);
-        return Ok(());
-    }
+    mcp_initialize(&mut stdin, &mut stdout)
+        .await
+        .context("MCP initialize failed")?;
 
     let depart_naive = today() + Months::new(2);
     let return_naive = depart_naive + chrono::Duration::days(7);
@@ -185,28 +212,81 @@ async fn test_mcp_flights_receives_and_processes() -> Result<()> {
         "cabin_class": "economy",
         "adults": 1,
         "children_ages": [],
-        "trip_type": "roundtrip"
+        "trip_type": "round_trip"
     });
 
-    let _ = send_tool_call(&mut stdin, "search_flights", args).await;
+    send_tool_call(&mut stdin, "search_flights", args)
+        .await
+        .context("Failed to send flight search tool call")?;
+
+    let response = read_json_response(&mut stdout, 5)
+        .await
+        .context("Failed to read flight search response")?;
 
     drop(stdin);
-
-    let mut output = String::new();
-    let _ = tokio::time::timeout(Duration::from_secs(5), stdout.read_line(&mut output)).await;
-
     drop(child);
+
+    assert!(response.is_object(), "Response should be an object");
+    let obj = response.as_object().unwrap();
+
+    assert!(obj.contains_key("id"), "Response should have id");
+    assert_eq!(obj["id"], 2, "Response id should be 2");
+
+    if obj.contains_key("error") {
+        let error = &obj["error"];
+        println!("Got expected error response: {}", error);
+        assert!(error.is_object(), "Error should be an object");
+        assert!(error.as_object().unwrap().contains_key("code"), "Error should have code");
+        assert!(error.as_object().unwrap().contains_key("message"), "Error should have message");
+        return Ok(());
+    }
+
+    assert!(obj.contains_key("result"), "Response should have result");
+    let result = &obj["result"];
+    assert!(result.is_object(), "Result should be an object");
+
+    let content = &result["content"];
+    assert!(content.is_array(), "Content should be an array");
+    let items = content.as_array().unwrap();
+    assert!(!items.is_empty(), "Content should not be empty");
+
+    let text_item = &items[0];
+    assert!(text_item.is_object(), "First content item should be object");
+    let text_obj = text_item.as_object().unwrap();
+    assert_eq!(text_obj["type"], "text", "Content type should be text");
+
+    let text = &text_obj["text"];
+    assert!(text.is_string(), "Text should be string");
+
+    let text_str = text.as_str().unwrap();
+    let inner: Value = serde_json::from_str(text_str)
+        .context("Failed to parse inner flight JSON")?;
+
+    assert!(inner.is_object(), "Inner response should be object");
+    let inner_obj = inner.as_object().unwrap();
+    assert!(inner_obj.contains_key("itineraries"), "Should have itineraries key");
+    assert!(inner_obj.contains_key("search_params"), "Should have search_params key");
+    assert!(inner_obj["search_params"].is_object(), "search_params should be object");
+
+    let search_params = &inner_obj["search_params"].as_object().unwrap();
+    assert_eq!(search_params["from_airport"], "SFO", "From airport should be SFO");
+    assert_eq!(search_params["to_airport"], "JFK", "To airport should be JFK");
+
+    let itineraries = &inner_obj["itineraries"].as_array().unwrap();
+    assert!(!itineraries.is_empty(), "Should have itineraries");
 
     println!("=== FLIGHTS REQUEST ===");
     println!("SFO → JFK on {} (return {})", depart_date, return_date);
     println!("======================");
-    println!("Raw output:\n{}", output);
+    println!("Found {} itineraries", itineraries.len());
+
+    let first_flights = &itineraries[0]["flights"].as_array().unwrap();
+    println!("First itinerary: {} flights", first_flights.len());
 
     Ok(())
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_mcp_hotels_receives_and_processes() -> Result<()> {
     let path = find_binary()?;
 
@@ -218,18 +298,12 @@ async fn test_mcp_hotels_receives_and_processes() -> Result<()> {
         .kill_on_drop(true)
         .spawn()?;
 
-    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut stdout = child.stdout.take().unwrap();
     let mut stdin = child.stdin.take().unwrap();
 
-    let mut startup = String::new();
-    let _ = tokio::time::timeout(Duration::from_secs(5), stdout.read_line(&mut startup)).await;
-
-    let init_result = mcp_initialize(&mut stdin, &mut stdout).await;
-
-    if init_result.is_err() {
-        drop(child);
-        return Ok(());
-    }
+    mcp_initialize(&mut stdin, &mut stdout)
+        .await
+        .context("MCP initialize failed")?;
 
     let checkin_naive = today() + Months::new(1);
     let checkout_naive = checkin_naive + chrono::Duration::days(3);
@@ -245,19 +319,72 @@ async fn test_mcp_hotels_receives_and_processes() -> Result<()> {
         "currency": "USD"
     });
 
-    let _ = send_tool_call(&mut stdin, "search_hotels", args).await;
+    send_tool_call(&mut stdin, "search_hotels", args)
+        .await
+        .context("Failed to send hotel search tool call")?;
+
+    let response = read_json_response(&mut stdout, 5)
+        .await
+        .context("Failed to read hotel search response")?;
 
     drop(stdin);
-
-    let mut output = String::new();
-    let _ = tokio::time::timeout(Duration::from_secs(5), stdout.read_line(&mut output)).await;
-
     drop(child);
+
+    assert!(response.is_object(), "Response should be an object");
+    let obj = response.as_object().unwrap();
+
+    assert!(obj.contains_key("id"), "Response should have id");
+    assert_eq!(obj["id"], 2, "Response id should be 2");
+
+    if obj.contains_key("error") {
+        let error = &obj["error"];
+        println!("Got expected error response: {}", error);
+        assert!(error.is_object(), "Error should be an object");
+        assert!(error.as_object().unwrap().contains_key("code"), "Error should have code");
+        assert!(error.as_object().unwrap().contains_key("message"), "Error should have message");
+        return Ok(());
+    }
+
+    assert!(obj.contains_key("result"), "Response should have result");
+    let result = &obj["result"];
+    assert!(result.is_object(), "Result should be an object");
+
+    let content = &result["content"];
+    assert!(content.is_array(), "Content should be an array");
+    let items = content.as_array().unwrap();
+    assert!(!items.is_empty(), "Content should not be empty");
+
+    let text_item = &items[0];
+    assert!(text_item.is_object(), "First content item should be object");
+    let text_obj = text_item.as_object().unwrap();
+    assert_eq!(text_obj["type"], "text", "Content type should be text");
+
+    let text = &text_obj["text"];
+    assert!(text.is_string(), "Text should be string");
+
+    let text_str = text.as_str().unwrap();
+    let inner: Value = serde_json::from_str(text_str)
+        .context("Failed to parse inner hotel JSON")?;
+
+    assert!(inner.is_object(), "Inner response should be object");
+    let inner_obj = inner.as_object().unwrap();
+    assert!(inner_obj.contains_key("hotels"), "Should have hotels key");
+    assert!(inner_obj["hotels"].is_array(), "hotels should be array");
+
+    let hotels = &inner_obj["hotels"].as_array().unwrap();
+    assert!(!hotels.is_empty(), "Should have hotels");
+    assert!(hotels[0].is_object(), "First hotel should be object");
+
+    let first_hotel = hotels[0].as_object().unwrap();
+    assert!(first_hotel.contains_key("name"), "Hotel should have name");
+    let name = first_hotel["name"].as_str().unwrap();
+    assert!(!name.is_empty(), "Hotel name should not be empty");
 
     println!("=== HOTELS REQUEST ===");
     println!("New York, {} to {}", checkin, checkout);
     println!("===================");
-    println!("Raw output:\n{}", output);
+    println!("Found {} hotels", hotels.len());
+    println!("First hotel: {}", name);
 
     Ok(())
 }
