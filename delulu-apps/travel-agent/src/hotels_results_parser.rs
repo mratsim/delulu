@@ -19,6 +19,53 @@
 //!
 //! Side-effect free HTML parsing for Google Hotels search results.
 //! Extracts hotel information from the HTML response.
+//!
+//! ## MCP API Response Schema (Optimized)
+//!
+//! The `to_mcp_api_response()` method serializes results to the following JSON schema:
+//! Optimized for context compression - currency moved to query, ratings simplified,
+//! amenities as compact array, and stars/rating merged where possible.
+//!
+//! ```json
+//! {
+//!   "$schema": "http://json-schema.org/draft-07/schema#",
+//!   "type": "object",
+//!   "required": ["search_hotels"],
+//!   "properties": {
+//!     "search_hotels": {
+//!       "type": "object",
+//!       "required": ["total", "query", "results"],
+//!       "properties": {
+//!         "total": {"type": "integer", "minimum": 0},
+//!         "query": {
+//!           "type": "object",
+//!           "required": ["loc", "in", "out", "curr"],
+//!           "properties": {
+//!             "loc": {"type": "string"},
+//!             "in": {"type": "string"},
+//!             "out": {"type": "string"},
+//!             "curr": {"type": "string"}
+//!           }
+//!         },
+//!         "results": {
+//!           "type": "array",
+//!           "items": {
+//!             "type": "object",
+//!             "required": ["name", "price", "rating", "amenities"],
+//!             "properties": {
+//!               "name": {"type": "string"},
+//!               "price": {"type": "integer", "minimum": 0},
+//!               "rating": {"type": "number"},
+//!               "stars": {"type": "integer"},
+//!               "amenities": {"type": "array", "items": {"type": "string"}}
+//!             }
+//!           }
+//!         }
+//!       }
+//!     }
+//!   }
+//! }
+//! ```
 
 use anyhow::Result;
 use scraper::{Html, Selector};
@@ -46,6 +93,85 @@ pub struct HotelSearchResult {
     pub hotels: Vec<Hotel>,
     pub lowest_price: Option<String>,
     pub current_price: Option<String>,
+}
+
+impl HotelSearchResult {
+    pub fn to_mcp_api_response(
+        &self,
+        location: String,
+        checkin_date: String,
+        checkout_date: String,
+        currency: String,
+    ) -> McpHotelResponse {
+        let results: Vec<McpHotel> = self.hotels.iter().map(|hotel| {
+            let price = hotel.price.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
+            let stars = hotel.star_class.as_ref()
+                .and_then(|s| s.trim().parse().ok())
+                .filter(|&s| s > 0);
+            let rating = hotel.rating.unwrap_or(0.0);
+            let amenities: Vec<String> = hotel.amenities.iter()
+                .map(|a| a.replace(" ", "").replace("-", "_").to_lowercase())
+                .filter(|a| a.len() > 2)
+                .collect();
+
+            McpHotel {
+                name: hotel.name.clone(),
+                price,
+                rating,
+                stars,
+                amenities,
+            }
+        }).collect();
+
+        McpHotelResponse {
+            search_hotels: McpHotelsResponse {
+                total: results.len(),
+                query: McpHotelQuery {
+                    loc: location,
+                    in_: checkin_date,
+                    out: checkout_date,
+                    curr: currency,
+                },
+                results,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct McpHotelResponse {
+    pub search_hotels: McpHotelsResponse,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct McpHotelsResponse {
+    pub total: usize,
+    pub query: McpHotelQuery,
+    pub results: Vec<McpHotel>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct McpHotelQuery {
+    pub loc: String,
+    #[serde(rename = "in")]
+    pub in_: String,
+    pub out: String,
+    pub curr: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct McpHotel {
+    pub name: String,
+    pub price: i32,
+    pub rating: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stars: Option<i32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub amenities: Vec<String>,
 }
 
 impl HotelSearchResult {

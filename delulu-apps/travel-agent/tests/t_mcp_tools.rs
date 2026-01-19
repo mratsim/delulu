@@ -133,23 +133,22 @@ const HOTELS_RESPONSE_SCHEMA: &str = r#"
                 "total": {"type": "integer", "minimum": 0},
                 "query": {
                     "type": "object",
-                    "required": ["location", "checkin", "checkout"],
+                    "required": ["loc", "in", "out", "curr"],
                     "properties": {
-                        "location": {"type": "string"},
-                        "checkin": {"type": "string"},
-                        "checkout": {"type": "string"}
+                        "loc": {"type": "string"},
+                        "in": {"type": "string"},
+                        "out": {"type": "string"},
+                        "curr": {"type": "string"}
                     }
                 },
                 "results": {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["name", "address", "price", "currency", "rating", "stars", "amenities"],
+                        "required": ["name", "price", "rating", "amenities"],
                         "properties": {
                             "name": {"type": "string"},
-                            "address": {"type": "string"},
-                            "price": {"type": "integer"},
-                            "currency": {"type": "string"},
+                            "price": {"type": "integer", "minimum": 0},
                             "rating": {"type": "number"},
                             "stars": {"type": "integer"},
                             "amenities": {"type": "array", "items": {"type": "string"}}
