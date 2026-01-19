@@ -57,6 +57,7 @@ prost-build = "0.13"
 zstd = "0.13"
 thirtyfour = "0.36"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "fs", "process"] }
+jsonschema = "0.26"
 
 [package.metadata.mcp]
 name = "delulu-travel-agent"

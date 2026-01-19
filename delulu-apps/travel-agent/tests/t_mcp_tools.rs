@@ -27,6 +27,154 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdout, ChildStdin, ChildStderr, Command};
 use tokio::time::Duration;
 
+// Request schemas defined for documentation and potential future validation
+#[allow(dead_code)]
+const FLIGHTS_REQUEST_SCHEMA: &str = r#"
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": ["from", "to", "date", "adults"],
+    "properties": {
+        "from": {"type": "string", "description": "Origin airport code (IATA)"},
+        "to": {"type": "string", "description": "Destination airport code (IATA)"},
+        "date": {"type": "string", "description": "Departure date (YYYY-MM-DD)"},
+        "return_date": {"type": "string"},
+        "seat": {"type": "string", "enum": ["Economy", "PremiumEconomy", "Business", "First"]},
+        "adults": {"type": "integer", "minimum": 1},
+        "children_ages": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+        "trip_type": {"type": "string", "enum": ["round-trip", "one-way"]},
+        "max_stops": {"type": "integer", "minimum": 0}
+    }
+}
+"#;
+
+#[allow(dead_code)]
+const HOTELS_REQUEST_SCHEMA: &str = r#"
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": ["location", "checkin_date", "checkout_date", "adults"],
+    "properties": {
+        "location": {"type": "string"},
+        "checkin_date": {"type": "string"},
+        "checkout_date": {"type": "string"},
+        "adults": {"type": "integer", "minimum": 1},
+        "children_ages": {"type": "array", "items": {"type": "integer"}},
+        "min_guest_rating": {"type": "number", "minimum": 0, "maximum": 5},
+        "stars": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 5}},
+        "amenities": {"type": "array", "items": {"type": "string"}},
+        "min_price": {"type": "integer"},
+        "max_price": {"type": "integer"}
+    }
+}
+"#;
+
+const FLIGHTS_RESPONSE_SCHEMA: &str = r#"
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": ["search_flights"],
+    "properties": {
+        "search_flights": {
+            "type": "object",
+            "required": ["total", "query", "results"],
+            "properties": {
+                "total": {"type": "integer", "minimum": 0},
+                "query": {
+                    "type": "object",
+                    "required": ["from", "to", "date"],
+                    "properties": {
+                        "from": {"type": "string"},
+                        "to": {"type": "string"},
+                        "date": {"type": "string"}
+                    }
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["price", "currency", "airlines", "route", "stops"],
+                        "properties": {
+                            "price": {"type": "integer", "minimum": 0},
+                            "currency": {"type": "string"},
+                            "airlines": {"type": "array", "items": {"type": "string"}},
+                            "route": {
+                                "type": "object",
+                                "required": ["dep", "arr", "duration_hrs"],
+                                "properties": {
+                                    "dep": {"type": "string"},
+                                    "arr": {"type": "string"},
+                                    "duration_hrs": {"type": "integer"}
+                                }
+                            },
+                            "stops": {"type": "array"}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"#;
+
+const HOTELS_RESPONSE_SCHEMA: &str = r#"
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": ["search_hotels"],
+    "properties": {
+        "search_hotels": {
+            "type": "object",
+            "required": ["total", "query", "results"],
+            "properties": {
+                "total": {"type": "integer", "minimum": 0},
+                "query": {
+                    "type": "object",
+                    "required": ["location", "checkin", "checkout"],
+                    "properties": {
+                        "location": {"type": "string"},
+                        "checkin": {"type": "string"},
+                        "checkout": {"type": "string"}
+                    }
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name", "address", "price", "currency", "rating", "stars", "amenities"],
+                        "properties": {
+                            "name": {"type": "string"},
+                            "address": {"type": "string"},
+                            "price": {"type": "integer"},
+                            "currency": {"type": "string"},
+                            "rating": {"type": "number"},
+                            "stars": {"type": "integer"},
+                            "amenities": {"type": "array", "items": {"type": "string"}}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"#;
+
+fn validate_json_schema(instance: &Value, schema_str: &str, schema_name: &str) -> Result<()> {
+    let schema: Value = serde_json::from_str(schema_str)
+        .context(format!("Failed to parse {} schema", schema_name))?;
+
+    let validator = jsonschema::Validator::new(&schema)
+        .context(format!("Failed to create validator for {}", schema_name))?;
+
+    let errors: Vec<String> = validator.iter_errors(instance).map(|e| format!("{}: {}", schema_name, e)).collect();
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        anyhow::bail!("Schema validation failed for {}:\n{}", schema_name, errors.join("\n"))
+    }
+}
+
 // MCP stdio never quits so seems like we need rely on timeout
 // if we want to read stdout AND stderr since we can't send it a kill signal.
 const TIMEOUT: Duration = Duration::from_secs(3);
@@ -102,8 +250,6 @@ async fn send_tool_call(stdin: &mut ChildStdin, name: &str, args: serde_json::Va
     Ok(())
 }
 
-// MCP stdio never quits so seems like we need rely on timeout
-// if we want to read stdout AND stderr since we can't send it a kill signal.
 async fn read_json_response_with_timeout(stdout: &mut ChildStdout, dur: Duration) -> Result<Value> {
     let mut output = String::new();
     let mut buf = [0u8; 4096];
@@ -236,14 +382,15 @@ async fn test_mcp_flights() -> Result<()> {
     let return_date = return_naive.format("%Y-%m-%d").to_string();
 
     let args = json!({
-        "from_airport": "SFO",
-        "to_airport": "JFK",
-        "depart_date": depart_date,
+        "from": "NRT",
+        "to": "JFK",
+        "date": depart_date,
         "return_date": return_date,
-        "cabin_class": "economy",
-        "adults": 1,
-        "children_ages": [],
-        "trip_type": "round_trip"
+        "seat": "economy",
+        "adults": 2,
+        "children_ages": [5, 8],
+        "trip_type": "round_trip",
+        "max_stops": 2
     });
 
     send_tool_call(&mut stdin, "search_flights", args)
@@ -271,54 +418,34 @@ async fn test_mcp_flights() -> Result<()> {
 
     if obj.contains_key("error") {
         let error = &obj["error"];
-        println!("Got expected error response: {}", error);
-        assert!(error.is_object(), "Error should be an object");
-        assert!(error.as_object().unwrap().contains_key("code"), "Error should have code");
-        assert!(error.as_object().unwrap().contains_key("message"), "Error should have message");
-        return Ok(());
+        let error_obj = error.as_object().unwrap();
+        let code = error_obj["code"].as_i64().unwrap_or(-1);
+        let message = error_obj["message"].as_str().unwrap_or("unknown");
+        anyhow::bail!("API error: code={}, message={}", code, message);
     }
 
-    assert!(obj.contains_key("result"), "Response should have result");
-    let result = &obj["result"];
-    assert!(result.is_object(), "Result should be an object");
-
-    let content = &result["content"];
-    assert!(content.is_array(), "Content should be an array");
-    let items = content.as_array().unwrap();
-    assert!(!items.is_empty(), "Content should not be empty");
-
-    let text_item = &items[0];
-    assert!(text_item.is_object(), "First content item should be object");
-    let text_obj = text_item.as_object().unwrap();
-    assert_eq!(text_obj["type"], "text", "Content type should be text");
-
-    let text = &text_obj["text"];
-    assert!(text.is_string(), "Text should be string");
-
-    let text_str = text.as_str().unwrap();
-    let inner: Value = serde_json::from_str(text_str)
+    let text_str = &obj["result"]["content"][0]["text"];
+    println!("=== RAW RESPONSE ===");
+    println!("{}", text_str);
+    println!("====================");
+    let inner: Value = serde_json::from_str(text_str.as_str().unwrap())
         .context("Failed to parse inner flight JSON")?;
 
-    assert!(inner.is_object(), "Inner response should be object");
+    validate_json_schema(&inner, FLIGHTS_RESPONSE_SCHEMA, "flights_response")?;
+
     let inner_obj = inner.as_object().unwrap();
-    assert!(inner_obj.contains_key("itineraries"), "Should have itineraries key");
-    assert!(inner_obj.contains_key("search_params"), "Should have search_params key");
-    assert!(inner_obj["search_params"].is_object(), "search_params should be object");
+    let sf_obj = inner_obj["search_flights"].as_object().unwrap();
+    let results = sf_obj["results"].as_array().unwrap();
+    let total = sf_obj["total"].as_u64().unwrap();
 
-    let search_params = &inner_obj["search_params"].as_object().unwrap();
-    assert_eq!(search_params["from_airport"], "SFO", "From airport should be SFO");
-    assert_eq!(search_params["to_airport"], "JFK", "To airport should be JFK");
-
-    let itineraries = &inner_obj["itineraries"].as_array().unwrap();
-    assert!(!itineraries.is_empty(), "Should have itineraries");
+    assert!(!results.is_empty(), "Results should not be empty");
+    assert_eq!(results.len() as u64, total, "Result count should match total");
 
     println!("=== FLIGHTS REQUEST ===");
     println!("SFO → JFK on {} (return {})", depart_date, return_date);
     println!("======================");
-    println!("Found {} itineraries", itineraries.len());
-
-    let first_flights = &itineraries[0]["flights"].as_array().unwrap();
-    println!("First itinerary: {} flights", first_flights.len());
+    println!("✓ Response validated against FLIGHTS_RESPONSE_SCHEMA");
+    println!("✓ Found {} results (total: {})", results.len(), total);
 
     Ok(())
 }
@@ -350,12 +477,16 @@ async fn test_mcp_hotels() -> Result<()> {
     let checkout = checkout_naive.format("%Y-%m-%d").to_string();
 
     let args = json!({
-        "location": "New York",
+        "location": "Paris",
         "checkin_date": checkin,
         "checkout_date": checkout,
         "adults": 2,
-        "children_ages": [],
-        "currency": "USD"
+        "children_ages": [10],
+        "min_guest_rating": 4.5,
+        "stars": [4, 5],
+        "amenities": ["pool", "spa"],
+        "min_price": 100,
+        "max_price": 500
     });
 
     send_tool_call(&mut stdin, "search_hotels", args)
@@ -367,13 +498,13 @@ async fn test_mcp_hotels() -> Result<()> {
         .context("Failed to read hotel search response")?;
 
     drop(stdin);
-    drop(child);
     let stderr_output = read_stderr_with_timeout(&mut stderr, TIMEOUT).await?;
     if !stderr_output.is_empty() {
         println!("=== STDERR ===");
         println!("{}", stderr_output);
         println!("===========");
     }
+    drop(child);
 
     assert!(response.is_object(), "Response should be an object");
     let obj = response.as_object().unwrap();
@@ -383,53 +514,31 @@ async fn test_mcp_hotels() -> Result<()> {
 
     if obj.contains_key("error") {
         let error = &obj["error"];
-        println!("Got expected error response: {}", error);
-        assert!(error.is_object(), "Error should be an object");
-        assert!(error.as_object().unwrap().contains_key("code"), "Error should have code");
-        assert!(error.as_object().unwrap().contains_key("message"), "Error should have message");
-        return Ok(());
+        let error_obj = error.as_object().unwrap();
+        let code = error_obj["code"].as_i64().unwrap_or(-1);
+        let message = error_obj["message"].as_str().unwrap_or("unknown");
+        anyhow::bail!("API error: code={}, message={}", code, message);
     }
 
-    assert!(obj.contains_key("result"), "Response should have result");
-    let result = &obj["result"];
-    assert!(result.is_object(), "Result should be an object");
-
-    let content = &result["content"];
-    assert!(content.is_array(), "Content should be an array");
-    let items = content.as_array().unwrap();
-    assert!(!items.is_empty(), "Content should not be empty");
-
-    let text_item = &items[0];
-    assert!(text_item.is_object(), "First content item should be object");
-    let text_obj = text_item.as_object().unwrap();
-    assert_eq!(text_obj["type"], "text", "Content type should be text");
-
-    let text = &text_obj["text"];
-    assert!(text.is_string(), "Text should be string");
-
-    let text_str = text.as_str().unwrap();
-    let inner: Value = serde_json::from_str(text_str)
+    let text_str = &obj["result"]["content"][0]["text"];
+    let inner: Value = serde_json::from_str(text_str.as_str().unwrap())
         .context("Failed to parse inner hotel JSON")?;
 
-    assert!(inner.is_object(), "Inner response should be object");
+    validate_json_schema(&inner, HOTELS_RESPONSE_SCHEMA, "hotels_response")?;
+
     let inner_obj = inner.as_object().unwrap();
-    assert!(inner_obj.contains_key("hotels"), "Should have hotels key");
-    assert!(inner_obj["hotels"].is_array(), "hotels should be array");
+    let sh_obj = inner_obj["search_hotels"].as_object().unwrap();
+    let results = sh_obj["results"].as_array().unwrap();
+    let total = sh_obj["total"].as_u64().unwrap();
 
-    let hotels = &inner_obj["hotels"].as_array().unwrap();
-    assert!(!hotels.is_empty(), "Should have hotels");
-    assert!(hotels[0].is_object(), "First hotel should be object");
-
-    let first_hotel = hotels[0].as_object().unwrap();
-    assert!(first_hotel.contains_key("name"), "Hotel should have name");
-    let name = first_hotel["name"].as_str().unwrap();
-    assert!(!name.is_empty(), "Hotel name should not be empty");
+    assert!(!results.is_empty(), "Results should not be empty");
+    assert_eq!(results.len() as u64, total, "Result count should match total");
 
     println!("=== HOTELS REQUEST ===");
-    println!("New York, {} to {}", checkin, checkout);
+    println!("Paris, {} to {}", checkin, checkout);
     println!("===================");
-    println!("Found {} hotels", hotels.len());
-    println!("First hotel: {}", name);
+    println!("✓ Response validated against HOTELS_RESPONSE_SCHEMA");
+    println!("✓ Found {} results (total: {})", results.len(), total);
 
     Ok(())
 }

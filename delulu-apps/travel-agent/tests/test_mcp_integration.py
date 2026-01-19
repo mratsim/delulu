@@ -69,19 +69,20 @@ async def test_search_flights(session) -> bool:
     depart_date = future_date(2)
     return_date = (date.fromisoformat(depart_date) + timedelta(days=7)).isoformat()
 
-    print(f"Query: SFO → JFK on {depart_date} (return {return_date})")
+    print(f"Query: YYZ → CDG on {depart_date} (return {return_date})")
 
     result = await session.call_tool(
         "search_flights",
         {
-            "from_airport": "SFO",
-            "to_airport": "JFK",
-            "depart_date": depart_date,
+            "from": "YYZ",
+            "to": "CDG",
+            "date": depart_date,
             "return_date": return_date,
-            "cabin_class": "economy",
+            "seat": "Economy",
             "adults": 1,
-            "children_ages": [],
-            "trip_type": "round_trip",
+            "children_ages": [5, 8],
+            "trip_type": "round-trip",
+            "max_stops": 1,
         },
     )
 
@@ -91,16 +92,32 @@ async def test_search_flights(session) -> bool:
         print(f"Response length: {len(text)} chars")
 
         data = json.loads(text)
-        print(f"✓ Got response with {len(data.get('itineraries', []))} itineraries")
+        print(f"✓ Got response")
 
-        assert "itineraries" in data, "Response should contain itineraries"
-        assert "raw_response" in data, "Response should contain raw_response"
-        assert "search_params" in data, "Response should contain search_params"
+        assert "search_flights" in data, "Response should contain search_flights"
 
-        params = data["search_params"]
-        assert params["from_airport"] == "SFO", "from_airport should match"
-        assert params["to_airport"] == "JFK", "to_airport should match"
+        sf = data["search_flights"]
+        assert "total" in sf, "search_flights should contain 'total'"
+        assert "query" in sf, "search_flights should contain 'query'"
+        assert "results" in sf, "search_flights should contain 'results'"
 
+        query = sf["query"]
+        assert query["from"] == "YYZ", "from should be YYZ"
+        assert query["to"] == "CDG", "to should be CDG"
+
+        results = sf["results"]
+        assert isinstance(results, list), "results should be a list"
+
+        if results:
+            first = results[0]
+            assert "price" in first, "result should have price"
+            assert "currency" in first, "result should have currency"
+            assert "airlines" in first, "result should have airlines"
+            assert "route" in first, "result should have route"
+
+        print(
+            f"✓ Response schema validated: total={sf['total']}, results={len(results)}"
+        )
         return True
     else:
         print(f"✗ Unexpected response type: {type(content[0])}")
@@ -114,17 +131,21 @@ async def test_search_hotels(session) -> bool:
     checkin = future_date(1)
     checkout = (date.fromisoformat(checkin) + timedelta(days=3)).isoformat()
 
-    print(f"Query: New York, {checkin} to {checkout}")
+    print(f"Query: Paris, {checkin} to {checkout}")
 
     result = await session.call_tool(
         "search_hotels",
         {
-            "location": "New York",
+            "location": "Paris",
             "checkin_date": checkin,
             "checkout_date": checkout,
             "adults": 2,
-            "children_ages": [],
-            "currency": "USD",
+            "children_ages": [10],
+            "min_guest_rating": 4.5,
+            "stars": [4, 5],
+            "amenities": ["pool", "spa", "gym"],
+            "min_price": 100,
+            "max_price": 500,
         },
     )
 
@@ -134,11 +155,34 @@ async def test_search_hotels(session) -> bool:
         print(f"Response length: {len(text)} chars")
 
         data = json.loads(text)
-        print(f"✓ Got response with {len(data.get('hotels', []))} hotels")
+        print(f"✓ Got response")
 
-        assert "hotels" in data, "Response should contain hotels"
-        assert "lowest_price" in data, "Response should contain lowest_price"
+        assert "search_hotels" in data, "Response should contain search_hotels"
 
+        sh = data["search_hotels"]
+        assert "total" in sh, "search_hotels should contain 'total'"
+        assert "query" in sh, "search_hotels should contain 'query'"
+        assert "results" in sh, "search_hotels should contain 'results'"
+
+        query = sh["query"]
+        assert query["location"] == "Paris", "location should be Paris"
+
+        results = sh["results"]
+        assert isinstance(results, list), "results should be a list"
+
+        if results:
+            first = results[0]
+            assert "name" in first, "result should have name"
+            assert "address" in first, "result should have address"
+            assert "price" in first, "result should have price"
+            assert "currency" in first, "result should have currency"
+            assert "rating" in first, "result should have rating"
+            assert "stars" in first, "result should have stars"
+            assert "amenities" in first, "result should have amenities"
+
+        print(
+            f"✓ Response schema validated: total={sh['total']}, results={len(results)}"
+        )
         return True
     else:
         print(f"✗ Unexpected response type: {type(content[0])}")

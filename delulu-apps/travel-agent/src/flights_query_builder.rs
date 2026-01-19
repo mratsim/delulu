@@ -38,10 +38,20 @@ use proto::{Airport as AirportProto, FlightData, Info, Passenger as PassengerPro
 #[serde(rename_all = "snake_case")]
 pub enum Seat {
     Unknown = SeatProto::UnknownSeat as i32,
+    #[serde(alias = "Economy")]
     Economy = SeatProto::Economy as i32,
+    #[serde(alias = "PremiumEconomy")]
     PremiumEconomy = SeatProto::PremiumEconomy as i32,
+    #[serde(alias = "Business")]
     Business = SeatProto::Business as i32,
+    #[serde(alias = "First")]
     First = SeatProto::First as i32,
+}
+
+impl Default for Seat {
+    fn default() -> Self {
+        Seat::Economy
+    }
 }
 
 impl From<Seat> for SeatProto {
@@ -103,9 +113,17 @@ impl Seat {
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum Trip {
+    #[serde(alias = "round-trip")]
     RoundTrip = TripProto::RoundTrip as i32,
+    #[serde(alias = "one-way")]
     OneWay = TripProto::OneWay as i32,
     MultiCity = TripProto::MultiCity as i32,
+}
+
+impl Default for Trip {
+    fn default() -> Self {
+        Trip::OneWay
+    }
 }
 
 impl From<Trip> for TripProto {

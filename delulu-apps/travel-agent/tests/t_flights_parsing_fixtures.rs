@@ -144,7 +144,7 @@ fn test_parser_fixtures() {
 
         match result {
             Ok(parsed) => {
-                let itinerary_count = parsed.itineraries.len();
+                let itinerary_count = parsed.search_flights.results.len();
 
                 assert!(
                     itinerary_count >= case.min_itineraries,
@@ -155,7 +155,7 @@ fn test_parser_fixtures() {
                 );
 
                 // Verify prices consistency
-                let has_prices = parsed.itineraries.iter().any(|i| i.price.is_some());
+                let has_prices = parsed.search_flights.results.iter().any(|i| i.price.is_some());
                 assert_eq!(
                     has_prices, case.has_prices,
                     "{}: has_prices mismatch (expected {}, got {})",
@@ -163,7 +163,7 @@ fn test_parser_fixtures() {
                 );
 
                 // Spot-check a few itineraries have reasonable data
-                if let Some(first) = parsed.itineraries.first() {
+                if let Some(first) = parsed.search_flights.results.first() {
                     if let Some(seg) = first.flights.first() {
                         assert!(
                             seg.airline.is_some() && !seg.airline.as_ref().unwrap().is_empty(),
@@ -226,11 +226,11 @@ fn test_nonstop_sfo_jfk_economy() {
     let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
     assert!(
-        result.itineraries.len() >= 5,
+        result.search_flights.results.len() >= 5,
         "Expected several nonstop itineraries"
     );
 
-    let has_airlines = result.itineraries.iter().any(|i| {
+    let has_airlines = result.search_flights.results.iter().any(|i| {
         i.flights
             .first()
             .map(|s| s.airline.is_some() && !s.airline.as_ref().unwrap().is_empty())
@@ -240,7 +240,7 @@ fn test_nonstop_sfo_jfk_economy() {
     assert!(has_airlines, "Should extract at least one airline");
     println!(
         "Extracted {} itineraries from nonstop-heavy route",
-        result.itineraries.len()
+        result.search_flights.results.len()
     );
 }
 
@@ -258,12 +258,12 @@ fn test_overnight_sfo_lhr_economy() {
     let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
     assert!(
-        result.itineraries.len() >= 3,
+        result.search_flights.results.len() >= 3,
         "Should have multiple long-haul options"
     );
 
     let overnight_itineraries: Vec<_> = result
-        .itineraries
+        .search_flights.results
         .iter()
         .filter(|i| {
             i.flights
@@ -297,12 +297,12 @@ fn test_layover_mad_nrt() {
     let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
     assert!(
-        result.itineraries.len() >= 3,
+        result.search_flights.results.len() >= 3,
         "Should have multi-leg options"
     );
 
     let multi_stop = result
-        .itineraries
+        .search_flights.results
         .iter()
         .filter(|i| i.stops.map(|s| s > 1).unwrap_or(false))
         .count();
@@ -325,7 +325,7 @@ fn test_layover_doha_parsing() {
     let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
     let doha_layovers: Vec<_> = result
-        .itineraries
+        .search_flights.results
         .iter()
         .filter(|i| {
             i.layovers
@@ -375,12 +375,12 @@ fn test_longhaul_lax_syd() {
     let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
     assert!(
-        result.itineraries.len() >= 2,
+        result.search_flights.results.len() >= 2,
         "Should have ultra long-haul options"
     );
 
     let long_duration = result
-        .itineraries
+        .search_flights.results
         .iter()
         .filter(|i| i.duration_minutes.map(|d| d > 900).unwrap_or(false))
         .count();
@@ -406,12 +406,12 @@ fn test_layover_yyz_cdg() {
     let result = FlightSearchResult::from_html(&html, params).expect("parse fixture");
 
     assert!(
-        result.itineraries.len() >= 3,
+        result.search_flights.results.len() >= 3,
         "Should have multi-leg options"
     );
 
     let multi_stop = result
-        .itineraries
+        .search_flights.results
         .iter()
         .filter(|i| i.stops.map(|s| s > 1).unwrap_or(false))
         .count();
@@ -423,7 +423,7 @@ fn test_layover_yyz_cdg() {
     assert!(multi_stop > 0, "Should have some 2+ stop options");
 
     let montreal_layovers: Vec<_> = result
-        .itineraries
+        .search_flights.results
         .iter()
         .filter(|i| {
             i.layovers

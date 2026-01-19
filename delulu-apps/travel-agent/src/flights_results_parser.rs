@@ -32,9 +32,25 @@ use crate::FlightSearchParams;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct FlightSearchResult {
-    pub search_params: FlightSearchParams,
-    pub itineraries: Vec<Itinerary>,
+    pub search_flights: FlightsResponse,
+    #[serde(skip)]
     pub raw_response: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct FlightsResponse {
+    pub total: usize,
+    pub query: FlightQuery,
+    pub results: Vec<Itinerary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct FlightQuery {
+    pub from: String,
+    pub to: String,
+    pub date: String,
 }
 
 impl FlightSearchResult {
@@ -47,18 +63,17 @@ impl FlightSearchResult {
         );
         anyhow::ensure!(!itineraries.is_empty(), "No flights parsed from response");
         Ok(Self {
-            search_params,
-            itineraries,
+            search_flights: FlightsResponse {
+                total: itineraries.len(),
+                query: FlightQuery {
+                    from: search_params.from_airport,
+                    to: search_params.to_airport,
+                    date: search_params.depart_date,
+                },
+                results: itineraries,
+            },
             raw_response: html.to_string(),
         })
-    }
-
-    pub fn len(&self) -> usize {
-        self.itineraries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.itineraries.is_empty()
     }
 }
 

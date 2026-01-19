@@ -58,48 +58,41 @@ enum Command {
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct FlightsInput {
-    pub from_airport: String,
-    pub to_airport: String,
-    pub depart_date: String,
+    pub from: String,
+    pub to: String,
+    pub date: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_date: Option<String>,
-    #[serde(default = "default_cabin_class")]
-    pub cabin_class: Seat,
+    #[serde(default)]
+    pub seat: Seat,
     pub adults: u32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub children_ages: Vec<i32>,
-    #[serde(default = "default_trip_type")]
+    #[serde(default)]
+    #[serde(alias = "round-trip")]
+    #[serde(alias = "one-way")]
     pub trip_type: Trip,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_stops: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preferred_airlines: Option<Vec<String>>,
+    // pub preferred_airlines: Option<Vec<String>>,
+    // pub currency: Option<String>,
 }
 
-fn default_cabin_class() -> Seat {
-    Seat::Economy
-}
-
-fn default_trip_type() -> Trip {
-    Trip::RoundTrip
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub struct HotelsInput {
     pub location: String,
     pub checkin_date: String,
     pub checkout_date: String,
     pub adults: u32,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub children_ages: Vec<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub currency: Option<String>,
+    // pub currency: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_guest_rating: Option<f64>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub hotel_stars: Vec<i32>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub stars: Vec<i32>,
+    #[serde(default)]
     pub amenities: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_price: Option<i32>,
@@ -129,21 +122,21 @@ impl TravelAgentServer {
 impl TravelAgentServer {
     #[tool(
         name = "search_flights",
-        description = "Search for flights using Google Flights. Parameters: from_airport (IATA), to_airport (IATA), depart_date (YYYY-MM-DD), optional return_date, cabin_class (economy/premium_economy/business/first), adults (1+), children_ages (1-17), trip_type (roundtrip/oneway), max_stops, preferred_airlines."
+        description = "Search for flights using Google Flights. Parameters: from (IATA), to (IATA), date (YYYY-MM-DD), return_date (YYYY-MM-DD, optional), seat (Economy/PremiumEconomy/Business/First), adults (1+), children_ages (1-17), trip_type (round-trip/one-way), max_stops."
     )]
     async fn search_flights(&self, params: Parameters<FlightsInput>) -> Result<String, String> {
         let input = params.0;
         let passengers = vec![(delulu_travel_agent::Passenger::Adult, input.adults)];
         let params = FlightSearchParams {
-            from_airport: input.from_airport,
-            to_airport: input.to_airport,
-            depart_date: input.depart_date,
+            from_airport: input.from,
+            to_airport: input.to,
+            depart_date: input.date,
             return_date: input.return_date,
-            cabin_class: input.cabin_class,
+            cabin_class: input.seat,
             passengers,
             trip_type: input.trip_type,
             max_stops: input.max_stops,
-            preferred_airlines: input.preferred_airlines,
+            preferred_airlines: None,
         };
 
         let result = self.flights_client.search_flights(&params)
@@ -155,7 +148,7 @@ impl TravelAgentServer {
 
     #[tool(
         name = "search_hotels",
-        description = "Search for hotels using Google Hotels. Parameters: location, checkin_date (YYYY-MM-DD), checkout_date, adults (1+), children_ages, currency, min_guest_rating, hotel_stars, amenities, min_price, max_price."
+        description = "Search for hotels using Google Hotels. Parameters: location (city/area/POI), checkin_date (YYYY-MM-DD), checkout_date (YYYY-MM-DD), adults (1+), children_ages, min_guest_rating (3.5+/4+/4.5+), stars (hotel rating 2-5), amenities (indoor_pool/outdoor_pool/pool/spa/kid_friendly/air_conditioned/ev_charger), min_price, max_price."
     )]
     async fn search_hotels(&self, params: Parameters<HotelsInput>) -> Result<String, String> {
         let input = params.0;
@@ -175,10 +168,10 @@ impl TravelAgentServer {
             checkout_date: input.checkout_date,
             nights: 0,
             used_guests_dropdown: 0,
-            currency: input.currency.unwrap_or_default(),
+            currency: "USD".to_string(),
             sort_order: None,
             min_guest_rating: input.min_guest_rating,
-            hotel_stars: input.hotel_stars,
+            hotel_stars: input.stars,
             amenities,
             min_price: input.min_price,
             max_price: input.max_price,

@@ -248,31 +248,32 @@ fn calc_column_widths(
 
 /// Render results to stdout
 fn render_results(result: &delulu_travel_agent::FlightSearchResult, search_url: Option<&str>) {
-    let params = &result.search_params;
+    let params = &result.search_flights.query;
 
     let title_bar = format!(
         "================================================================================================\n  🛫  {} → {} on {}\n================================================================================================",
-        params.from_airport, params.to_airport, params.depart_date
+        params.from, params.to, params.date
     );
     println!("{}\n", title_bar);
 
     let best_price = result
-        .itineraries
+        .search_flights
+        .results
         .first()
         .map(|i| opt_i32(&i.price, 0))
         .unwrap_or(0);
 
     println!("💰 Best Price:  ${}", best_price);
-    println!("📊 Total Flights: {}", result.itineraries.len());
+    println!("📊 Total Flights: {}", result.search_flights.results.len());
 
     if let Some(url) = search_url {
         println!("\n🔗 Search URL: {}", url);
     }
 
     // Calculate column widths
-    let (rw, aw, tw, dw, sw) = calc_column_widths(&result.itineraries, true);
+    let (rw, aw, tw, dw, sw) = calc_column_widths(&result.search_flights.results, true);
 
-    println!("\n🏆 Top {} Results:", 5.min(result.itineraries.len()));
+    println!("\n🏆 Top {} Results:", 5.min(result.search_flights.results.len()));
     println!("{}\n", dash_bar());
 
     // Header with manual padding
@@ -285,7 +286,7 @@ fn render_results(result: &delulu_travel_agent::FlightSearchResult, search_url: 
     println!("{}\n", dash_bar());
 
     // Data rows with individual cell formatting
-    for (i, itin) in result.itineraries.iter().take(5).enumerate() {
+    for (i, itin) in result.search_flights.results.iter().take(5).enumerate() {
         if let Some(seg) = first_seg(itin) {
             let stops_label = fmt_stops_and_layovers(itin.stops, &itin.layovers);
             let is_suspicious =
@@ -383,9 +384,10 @@ async fn main() -> Result<()> {
 
     tracing::info!(
         "Search completed: {} itineraries found, best price: ${}",
-        result.itineraries.len(),
+        result.search_flights.results.len(),
         result
-            .itineraries
+            .search_flights
+            .results
             .first()
             .and_then(|i| i.price)
             .unwrap_or(0)

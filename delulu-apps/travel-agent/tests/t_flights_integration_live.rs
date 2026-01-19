@@ -83,8 +83,8 @@ async fn rate_limited_query(
     tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
 
     let result = client.search_flights(&params).await?;
-    println!("Parsed {} itineraries", result.itineraries.len());
-    let best_price = result.itineraries.iter().filter_map(|i| i.price).min();
+    println!("Parsed {} itineraries", result.search_flights.results.len());
+    let best_price = result.search_flights.results.iter().filter_map(|i| i.price).min();
     if let Some(price) = best_price {
         println!("Best price: {} USD", price);
     }
@@ -230,7 +230,7 @@ async fn test_real_query_overnight_plus_two_days() -> Result<()> {
         "Should not hit consent wall"
     );
     assert!(
-        !result.itineraries.is_empty(),
+        !result.search_flights.results.is_empty(),
         "Should parse at least one itinerary"
     );
 
@@ -382,12 +382,12 @@ async fn fetch_single_flight_fixture(
     println!("Fetching flight '{}': {}", name, url_display);
 
     let result = client.search_flights(params).await?;
-    let text = result.raw_response;
+    let text = result.raw_response.clone();
 
     println!(
         "Response size: {} bytes, itineraries: {}",
         text.len(),
-        result.itineraries.len()
+        result.search_flights.results.len()
     );
 
     if text.to_lowercase().contains("consent") {
@@ -400,7 +400,7 @@ async fn fetch_single_flight_fixture(
         );
     }
 
-    if result.itineraries.is_empty() {
+    if result.search_flights.results.is_empty() {
         let preview = text.chars().take(1000).collect::<String>();
         eprintln!("No flights parsed. Body preview:\n{}", preview);
         return Err(anyhow::anyhow!("No flights parsed from response").into());

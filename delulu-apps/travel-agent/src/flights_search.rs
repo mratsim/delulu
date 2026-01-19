@@ -142,7 +142,7 @@ impl GoogleFlightsClient {
 
         match FlightSearchResult::from_html(&html, params.clone()) {
             Ok(result) => {
-                tracing::debug!("Parsed {} itineraries", result.itineraries.len());
+                tracing::debug!("Parsed {} itineraries", result.search_flights.results.len());
                 Ok(result)
             }
             Err(e) => {
