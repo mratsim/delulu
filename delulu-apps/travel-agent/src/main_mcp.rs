@@ -143,7 +143,7 @@ impl TravelAgentServer {
             .await
             .map_err(|e| e.to_string())?;
 
-        serde_json::to_string(&result).map_err(|e| e.to_string())
+        serde_json::to_string(&result.to_mcp_api_response()).map_err(|e| e.to_string())
     }
 
     #[tool(

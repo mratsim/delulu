@@ -82,32 +82,35 @@ const FLIGHTS_RESPONSE_SCHEMA: &str = r#"
                 "total": {"type": "integer", "minimum": 0},
                 "query": {
                     "type": "object",
-                    "required": ["from", "to", "date"],
+                    "required": ["from", "to", "date", "curr", "seat"],
                     "properties": {
                         "from": {"type": "string"},
                         "to": {"type": "string"},
-                        "date": {"type": "string"}
+                        "date": {"type": "string"},
+                        "curr": {"type": "string"},
+                        "seat": {"type": "string"}
                     }
                 },
                 "results": {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["price", "currency", "airlines", "route", "stops"],
+                        "required": ["price", "airlines", "dur_min"],
                         "properties": {
                             "price": {"type": "integer", "minimum": 0},
-                            "currency": {"type": "string"},
                             "airlines": {"type": "array", "items": {"type": "string"}},
-                            "route": {
-                                "type": "object",
-                                "required": ["dep", "arr", "duration_hrs"],
-                                "properties": {
-                                    "dep": {"type": "string"},
-                                    "arr": {"type": "string"},
-                                    "duration_hrs": {"type": "integer"}
+                            "dur_min": {"type": "integer", "minimum": 0},
+                            "layover": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["city", "dur_min"],
+                                    "properties": {
+                                        "city": {"type": "string"},
+                                        "dur_min": {"type": "integer", "minimum": 0}
+                                    }
                                 }
-                            },
-                            "stops": {"type": "array"}
+                            }
                         }
                     }
                 }

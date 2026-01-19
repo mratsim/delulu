@@ -163,10 +163,11 @@ fn first_seg<'a>(
 }
 
 /// Format stops and layovers combined: "2 stops: 5h09@Vancouver, 2h20@Brisbane"
-fn fmt_stops_and_layovers(stops: Option<i32>, layovers: &[delulu_travel_agent::Layover]) -> String {
+fn fmt_stops_and_layovers(layovers: &[delulu_travel_agent::Layover]) -> String {
+    let stops = layovers.len();
     match stops {
-        Some(0) => "direct".to_string(),
-        Some(1) => {
+        0 => "direct".to_string(),
+        1 => {
             if let Some(l) = layovers.first() {
                 let dur = l
                     .duration_minutes
@@ -177,7 +178,7 @@ fn fmt_stops_and_layovers(stops: Option<i32>, layovers: &[delulu_travel_agent::L
                 "1 stop".to_string()
             }
         }
-        Some(n) if n > 1 => {
+        n => {
             let layover_str = if layovers.is_empty() {
                 String::new()
             } else {
@@ -195,7 +196,6 @@ fn fmt_stops_and_layovers(stops: Option<i32>, layovers: &[delulu_travel_agent::L
             };
             format!("{} stops{}", n, layover_str)
         }
-        _ => "unknown".to_string(),
     }
 }
 
@@ -220,7 +220,7 @@ fn calc_column_widths(
                 max_duration,
                 fmt_duration(opt_i32(&itin.duration_minutes, 0)).len(),
             );
-            let stops_label = fmt_stops_and_layovers(itin.stops, &itin.layovers);
+            let stops_label = fmt_stops_and_layovers(&itin.layovers);
             max_stops = max(max_stops, stops_label.len());
         }
     }
@@ -248,32 +248,31 @@ fn calc_column_widths(
 
 /// Render results to stdout
 fn render_results(result: &delulu_travel_agent::FlightSearchResult, search_url: Option<&str>) {
-    let params = &result.search_flights.query;
+    let params = &result.search_params;
 
     let title_bar = format!(
         "================================================================================================\n  🛫  {} → {} on {}\n================================================================================================",
-        params.from, params.to, params.date
+        params.from_airport, params.to_airport, params.depart_date
     );
     println!("{}\n", title_bar);
 
     let best_price = result
-        .search_flights
-        .results
+        .itineraries
         .first()
-        .map(|i| opt_i32(&i.price, 0))
+        .and_then(|i| i.price)
         .unwrap_or(0);
 
     println!("💰 Best Price:  ${}", best_price);
-    println!("📊 Total Flights: {}", result.search_flights.results.len());
+    println!("📊 Total Flights: {}", result.itineraries.len());
 
     if let Some(url) = search_url {
         println!("\n🔗 Search URL: {}", url);
     }
 
     // Calculate column widths
-    let (rw, aw, tw, dw, sw) = calc_column_widths(&result.search_flights.results, true);
+    let (rw, aw, tw, dw, sw) = calc_column_widths(&result.itineraries, true);
 
-    println!("\n🏆 Top {} Results:", 5.min(result.search_flights.results.len()));
+    println!("\n🏆 Top {} Results:", 5.min(result.itineraries.len()));
     println!("{}\n", dash_bar());
 
     // Header with manual padding
@@ -286,9 +285,9 @@ fn render_results(result: &delulu_travel_agent::FlightSearchResult, search_url: 
     println!("{}\n", dash_bar());
 
     // Data rows with individual cell formatting
-    for (i, itin) in result.search_flights.results.iter().take(5).enumerate() {
+    for (i, itin) in result.itineraries.iter().take(5).enumerate() {
         if let Some(seg) = first_seg(itin) {
-            let stops_label = fmt_stops_and_layovers(itin.stops, &itin.layovers);
+            let stops_label = fmt_stops_and_layovers(&itin.layovers);
             let is_suspicious =
                 stops_label == "direct" && opt_i32(&itin.duration_minutes, 0) > 1080;
             let price = opt_i32(&itin.price, 0);
@@ -384,10 +383,9 @@ async fn main() -> Result<()> {
 
     tracing::info!(
         "Search completed: {} itineraries found, best price: ${}",
-        result.search_flights.results.len(),
+        result.itineraries.len(),
         result
-            .search_flights
-            .results
+            .itineraries
             .first()
             .and_then(|i| i.price)
             .unwrap_or(0)
