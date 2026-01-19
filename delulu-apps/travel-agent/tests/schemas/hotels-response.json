@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["search_hotels"],
+  "properties": {
+    "search_hotels": {
+      "type": "object",
+      "required": ["total", "query", "results"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "query": {
+          "type": "object",
+          "required": ["loc", "in", "out", "curr"],
+          "properties": {
+            "loc": { "type": "string" },
+            "in": { "type": "string" },
+            "out": { "type": "string" },
+            "curr": { "type": "string" }
+          }
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "price", "rating", "amenities"],
+            "properties": {
+              "name": { "type": "string" },
+              "price": { "type": "integer", "minimum": 0 },
+              "rating": { "type": "number" },
+              "stars": { "type": "integer" },
+              "amenities": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

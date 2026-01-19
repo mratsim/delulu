@@ -26,6 +26,7 @@ use rmcp::handler::server::{wrapper::Parameters, tool::ToolRouter, ServerHandler
 use rmcp::service::serve_server;
 use rmcp::tool;
 use rmcp::tool_router;
+use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -269,8 +270,25 @@ async fn main() -> Result<(), Error> {
             let addr: SocketAddr = format!("{}:{}", host, port).parse()
                 .context("Invalid host:port")?;
             tracing::info!("Starting MCP server over HTTP on {}", addr);
-            tracing::warn!("HTTP transport not yet implemented");
-            anyhow::bail!("HTTP transport not yet implemented");
+            let server = TravelAgentServer::new(flights_client, hotels_client);
+            let session_manager = Arc::new(LocalSessionManager::default());
+            let config = StreamableHttpServerConfig {
+                stateful_mode: true,
+                ..Default::default()
+            };
+            let service = StreamableHttpService::new(
+                move || Ok(server.clone()),
+                session_manager,
+                config,
+            );
+            let app = axum::Router::new()
+                .nest_service("/mcp", service);
+            let listener = tokio::net::TcpListener::bind(addr).await
+                .context("Failed to bind to address")?;
+            tracing::debug!("Listening on {}", addr);
+            axum::serve(listener, app)
+                .await
+                .context("HTTP server error")?;
         }
     }
 

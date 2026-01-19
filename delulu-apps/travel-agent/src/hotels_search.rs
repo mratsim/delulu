@@ -54,6 +54,7 @@ impl GoogleHotelsClient {
 
 impl GoogleHotelsClient {
     async fn fetch_raw(&self, request: &HotelSearchParams) -> Result<String> {
+        let t0 = std::time::Instant::now();
         let cookie_header = generate_cookie_header();
         let client_inner = Arc::clone(&self.client);
 
@@ -75,9 +76,13 @@ impl GoogleHotelsClient {
             })
             .await
             .map_err(|e| anyhow!("Request failed: {:?}", e))?;
+        tracing::debug!("HTTP request took {:?}", t0.elapsed());
 
         let status = response.status();
+        let t1 = std::time::Instant::now();
         let body = response.text().await.context("Read body")?;
+        tracing::debug!("Read body took {:?}", t1.elapsed());
+        tracing::debug!("Total fetch_raw: {:?}", t0.elapsed());
 
         if !status.is_success() {
             let body_preview = body.chars().take(500).collect::<String>();
@@ -124,8 +129,12 @@ impl GoogleHotelsClient {
             .context("Invalid checkin date")?;
         anyhow::ensure!(checkin >= today, "Check-in cannot be in the past");
 
+        let t0 = std::time::Instant::now();
         let html = self.fetch_raw(params).await?;
+        tracing::debug!("fetch_raw took {:?}", t0.elapsed());
+        let t1 = std::time::Instant::now();
         let result = HotelSearchResult::from_html(&html)?;
+        tracing::debug!("from_html took {:?}", t1.elapsed());
         Ok(result)
     }
 }

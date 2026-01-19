@@ -17,6 +17,8 @@
 
 //! MCP server integration tests using subprocess with stdio transport.
 
+#![cfg(test)]
+
 use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};
 use serde_json::json;
@@ -27,145 +29,30 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdout, ChildStdin, ChildStderr, Command};
 use tokio::time::Duration;
 
-// Request schemas defined for documentation and potential future validation
-#[allow(dead_code)]
-const FLIGHTS_REQUEST_SCHEMA: &str = r#"
-{
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "type": "object",
-    "required": ["from", "to", "date", "adults"],
-    "properties": {
-        "from": {"type": "string", "description": "Origin airport code (IATA)"},
-        "to": {"type": "string", "description": "Destination airport code (IATA)"},
-        "date": {"type": "string", "description": "Departure date (YYYY-MM-DD)"},
-        "return_date": {"type": "string"},
-        "seat": {"type": "string", "enum": ["Economy", "PremiumEconomy", "Business", "First"]},
-        "adults": {"type": "integer", "minimum": 1},
-        "children_ages": {"type": "array", "items": {"type": "integer", "minimum": 0}},
-        "trip_type": {"type": "string", "enum": ["round-trip", "one-way"]},
-        "max_stops": {"type": "integer", "minimum": 0}
-    }
+fn load_schema_from_file(name: &str) -> Result<Value> {
+    let manifest_dir = PathBuf::from(
+        std::env::var("CARGO_MANIFEST_DIR")
+            .map_err(|e| anyhow::anyhow!("CARGO_MANIFEST_DIR not set: {}", e))?,
+    );
+    let schema_path = manifest_dir.join("tests").join("schemas").join(name);
+    
+    let content = std::fs::read_to_string(&schema_path)
+        .context(format!("Failed to read schema file: {:?}", schema_path))?;
+    
+    serde_json::from_str(&content)
+        .context(format!("Failed to parse schema file: {:?}", schema_path))
 }
-"#;
 
-#[allow(dead_code)]
-const HOTELS_REQUEST_SCHEMA: &str = r#"
-{
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "type": "object",
-    "required": ["location", "checkin_date", "checkout_date", "adults"],
-    "properties": {
-        "location": {"type": "string"},
-        "checkin_date": {"type": "string"},
-        "checkout_date": {"type": "string"},
-        "adults": {"type": "integer", "minimum": 1},
-        "children_ages": {"type": "array", "items": {"type": "integer"}},
-        "min_guest_rating": {"type": "number", "minimum": 0, "maximum": 5},
-        "stars": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 5}},
-        "amenities": {"type": "array", "items": {"type": "string"}},
-        "min_price": {"type": "integer"},
-        "max_price": {"type": "integer"}
-    }
+fn get_flights_response_schema() -> Result<Value> {
+    load_schema_from_file("flights-response.json")
 }
-"#;
 
-const FLIGHTS_RESPONSE_SCHEMA: &str = r#"
-{
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "type": "object",
-    "required": ["search_flights"],
-    "properties": {
-        "search_flights": {
-            "type": "object",
-            "required": ["total", "query", "results"],
-            "properties": {
-                "total": {"type": "integer", "minimum": 0},
-                "query": {
-                    "type": "object",
-                    "required": ["from", "to", "date", "curr", "seat"],
-                    "properties": {
-                        "from": {"type": "string"},
-                        "to": {"type": "string"},
-                        "date": {"type": "string"},
-                        "curr": {"type": "string"},
-                        "seat": {"type": "string"}
-                    }
-                },
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["price", "airlines", "dur_min"],
-                        "properties": {
-                            "price": {"type": "integer", "minimum": 0},
-                            "airlines": {"type": "array", "items": {"type": "string"}},
-                            "dur_min": {"type": "integer", "minimum": 0},
-                            "layover": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "required": ["city", "dur_min"],
-                                    "properties": {
-                                        "city": {"type": "string"},
-                                        "dur_min": {"type": "integer", "minimum": 0}
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+fn get_hotels_response_schema() -> Result<Value> {
+    load_schema_from_file("hotels-response.json")
 }
-"#;
 
-const HOTELS_RESPONSE_SCHEMA: &str = r#"
-{
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "type": "object",
-    "required": ["search_hotels"],
-    "properties": {
-        "search_hotels": {
-            "type": "object",
-            "required": ["total", "query", "results"],
-            "properties": {
-                "total": {"type": "integer", "minimum": 0},
-                "query": {
-                    "type": "object",
-                    "required": ["loc", "in", "out", "curr"],
-                    "properties": {
-                        "loc": {"type": "string"},
-                        "in": {"type": "string"},
-                        "out": {"type": "string"},
-                        "curr": {"type": "string"}
-                    }
-                },
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["name", "price", "rating", "amenities"],
-                        "properties": {
-                            "name": {"type": "string"},
-                            "price": {"type": "integer", "minimum": 0},
-                            "rating": {"type": "number"},
-                            "stars": {"type": "integer"},
-                            "amenities": {"type": "array", "items": {"type": "string"}}
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-"#;
-
-fn validate_json_schema(instance: &Value, schema_str: &str, schema_name: &str) -> Result<()> {
-    let schema: Value = serde_json::from_str(schema_str)
-        .context(format!("Failed to parse {} schema", schema_name))?;
-
-    let validator = jsonschema::Validator::new(&schema)
+fn validate_json_schema(instance: &Value, schema: &Value, schema_name: &str) -> Result<()> {
+    let validator = jsonschema::Validator::new(schema)
         .context(format!("Failed to create validator for {}", schema_name))?;
 
     let errors: Vec<String> = validator.iter_errors(instance).map(|e| format!("{}: {}", schema_name, e)).collect();
@@ -358,7 +245,6 @@ async fn test_mcp_version_output() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_mcp_flights() -> Result<()> {
     let path = find_binary()?;
 
@@ -433,7 +319,8 @@ async fn test_mcp_flights() -> Result<()> {
     let inner: Value = serde_json::from_str(text_str.as_str().unwrap())
         .context("Failed to parse inner flight JSON")?;
 
-    validate_json_schema(&inner, FLIGHTS_RESPONSE_SCHEMA, "flights_response")?;
+    let flights_schema = get_flights_response_schema()?;
+    validate_json_schema(&inner, &flights_schema, "flights_response")?;
 
     let inner_obj = inner.as_object().unwrap();
     let sf_obj = inner_obj["search_flights"].as_object().unwrap();
@@ -453,7 +340,6 @@ async fn test_mcp_flights() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_mcp_hotels() -> Result<()> {
     let path = find_binary()?;
 
@@ -526,7 +412,8 @@ async fn test_mcp_hotels() -> Result<()> {
     let inner: Value = serde_json::from_str(text_str.as_str().unwrap())
         .context("Failed to parse inner hotel JSON")?;
 
-    validate_json_schema(&inner, HOTELS_RESPONSE_SCHEMA, "hotels_response")?;
+    let hotels_schema = get_hotels_response_schema()?;
+    validate_json_schema(&inner, &hotels_schema, "hotels_response")?;
 
     let inner_obj = inner.as_object().unwrap();
     let sh_obj = inner_obj["search_hotels"].as_object().unwrap();

@@ -309,11 +309,10 @@ checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
 name = "boring-sys2"
-version = "5.0.0-alpha.10"
+version = "5.0.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fc6cf07c95de5849d3e42032e2bc35242f2b9cffdd1835ee4e5d2b7a0ec65c7"
+checksum = "6708f31d293423b48662069e699b8a79ac1c2a5d8de2c560c2cc0958e480d377"
 dependencies = [
- "autocfg",
  "bindgen",
  "cmake",
  "fs_extra",
@@ -322,9 +321,9 @@ dependencies = [
 
 [[package]]
 name = "boring2"
-version = "5.0.0-alpha.10"
+version = "5.0.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38a24a6ad62dc302105299550ef2f09ebaf82be4d60bff4ceabc36146a35322b"
+checksum = "d190e62fc07d3433265641a2df3109baab591175c42a39a5f2379b584f3f0768"
 dependencies = [
  "bitflags",
  "boring-sys2",
@@ -1091,6 +1090,7 @@ dependencies = [
  "futures-sink",
  "http",
  "indexmap",
+ "parking_lot",
  "slab",
  "smallvec",
  "tokio",
@@ -2825,11 +2825,10 @@ dependencies = [
 
 [[package]]
 name = "tokio-boring2"
-version = "5.0.0-alpha.10"
+version = "5.0.0-alpha.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e756617f510b6822897b6fe9c40d643585e524ed11de2e308bff1ee837eefe2"
+checksum = "8332a3a493b27722984a621fc00dc6e46211ac034083f4aab4305fc1bbae2b85"
 dependencies = [
- "boring-sys2",
  "boring2",
  "tokio",
 ]
@@ -3494,9 +3493,9 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
 name = "wreq"
-version = "6.0.0-rc.26"
+version = "6.0.0-rc.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5d765ea3bb2191cc31e6b2ccc838f93ccdb3b7b3bcdc2797c986b13c625185b"
+checksum = "0c8684564b0d1c97124f3c2dff73b43698c8c65400c52eebf5bc7a83e74807f2"
 dependencies = [
  "ahash",
  "boring2",
