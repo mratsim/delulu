@@ -19,23 +19,32 @@
 //!
 //! Supports stdio transport via subcommand.
 
-use anyhow::{Context, Result, Error};
+use anyhow::{Context, Error, Result};
 use clap::{Parser, Subcommand};
-use delulu_travel_agent::{GoogleFlightsClient, GoogleHotelsClient, FlightSearchParams, HotelSearchParams, Seat, Trip, Amenity};
-use rmcp::handler::server::{wrapper::Parameters, tool::ToolRouter, ServerHandler};
+use delulu_travel_agent::{
+    Amenity, FlightSearchParams, GoogleFlightsClient, GoogleHotelsClient, HotelSearchParams, Seat,
+    Trip,
+};
+use rmcp::handler::server::{ServerHandler, tool::ToolRouter, wrapper::Parameters};
 use rmcp::service::serve_server;
 use rmcp::tool;
 use rmcp::tool_router;
-use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager};
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
 #[command(name = "travel-mcp")]
-#[command(author, version, about = "MCP server for travel search (flights & hotels)")]
+#[command(
+    author,
+    version,
+    about = "MCP server for travel search (flights & hotels)"
+)]
 struct Args {
     #[command(subcommand)]
     command: Command,
@@ -110,7 +119,10 @@ pub struct TravelAgentServer {
 }
 
 impl TravelAgentServer {
-    pub fn new(flights_client: Arc<GoogleFlightsClient>, hotels_client: Arc<GoogleHotelsClient>) -> Self {
+    pub fn new(
+        flights_client: Arc<GoogleFlightsClient>,
+        hotels_client: Arc<GoogleHotelsClient>,
+    ) -> Self {
         Self {
             flights_client,
             hotels_client,
@@ -140,7 +152,9 @@ impl TravelAgentServer {
             preferred_airlines: None,
         };
 
-        let result = self.flights_client.search_flights(&params)
+        let result = self
+            .flights_client
+            .search_flights(&params)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -153,7 +167,8 @@ impl TravelAgentServer {
     )]
     async fn search_hotels(&self, params: Parameters<HotelsInput>) -> Result<String, String> {
         let input = params.0;
-        let amenities: Vec<Amenity> = input.amenities
+        let amenities: Vec<Amenity> = input
+            .amenities
             .iter()
             .filter_map(|a| Amenity::from_str_name(a))
             .collect();
@@ -178,7 +193,9 @@ impl TravelAgentServer {
             max_price: input.max_price,
         };
 
-        let result = self.hotels_client.search_hotels(&params)
+        let result = self
+            .hotels_client
+            .search_hotels(&params)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -187,7 +204,8 @@ impl TravelAgentServer {
             params.checkin_date,
             params.checkout_date,
             params.currency,
-        )).map_err(|e| e.to_string())
+        ))
+        .map_err(|e| e.to_string())
     }
 }
 
@@ -196,8 +214,12 @@ impl ServerHandler for TravelAgentServer {
         &self,
         _request: Option<rmcp::model::PaginatedRequestParam>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> impl Future<Output = Result<rmcp::model::ListToolsResult, rmcp::ErrorData>> + Send + '_ {
-        tracing::debug!("list_tools called, tools count: {}", self.tool_router.list_all().len());
+    ) -> impl Future<Output = Result<rmcp::model::ListToolsResult, rmcp::ErrorData>> + Send + '_
+    {
+        tracing::debug!(
+            "list_tools called, tools count: {}",
+            self.tool_router.list_all().len()
+        );
         Box::pin(async move {
             let tools = self.tool_router.list_all();
             tracing::debug!("Returning {} tools", tools.len());
@@ -209,11 +231,13 @@ impl ServerHandler for TravelAgentServer {
         &self,
         request: rmcp::model::CallToolRequestParam,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> impl Future<Output = Result<rmcp::model::CallToolResult, rmcp::ErrorData>> + Send + '_ {
+    ) -> impl Future<Output = Result<rmcp::model::CallToolResult, rmcp::ErrorData>> + Send + '_
+    {
         let router = self.tool_router.clone();
         let self_clone = self.clone();
         Box::pin(async move {
-            let context = rmcp::handler::server::tool::ToolCallContext::new(&self_clone, request, context);
+            let context =
+                rmcp::handler::server::tool::ToolCallContext::new(&self_clone, request, context);
             router.call(context).await
         })
     }
@@ -235,9 +259,11 @@ impl ServerHandler for TravelAgentServer {
 async fn main() -> Result<(), Error> {
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".to_string().into()))
-        .with(tracing_subscriber::fmt::layer()
-            .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc_3339())
-            .with_writer(std::io::stderr))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc_3339())
+                .with_writer(std::io::stderr),
+        )
         .init();
 
     tracing::debug!("Parsing arguments...");
@@ -250,10 +276,8 @@ async fn main() -> Result<(), Error> {
             .context("Failed to create flights client")?,
     );
     tracing::debug!("Creating hotels client...");
-    let hotels_client = Arc::new(
-        GoogleHotelsClient::new(4)
-            .context("Failed to create hotels client")?,
-    );
+    let hotels_client =
+        Arc::new(GoogleHotelsClient::new(4).context("Failed to create hotels client")?);
     tracing::debug!("Clients created");
 
     match args.command {
@@ -269,7 +293,8 @@ async fn main() -> Result<(), Error> {
             std::future::pending::<()>().await;
         }
         Command::Http { host, port } => {
-            let addr: SocketAddr = format!("{}:{}", host, port).parse()
+            let addr: SocketAddr = format!("{}:{}", host, port)
+                .parse()
                 .context("Invalid host:port")?;
             tracing::info!("Starting MCP server over HTTP on {}", addr);
             let server = TravelAgentServer::new(flights_client, hotels_client);
@@ -278,14 +303,11 @@ async fn main() -> Result<(), Error> {
                 stateful_mode: true,
                 ..Default::default()
             };
-            let service = StreamableHttpService::new(
-                move || Ok(server.clone()),
-                session_manager,
-                config,
-            );
-            let app = axum::Router::new()
-                .nest_service("/mcp", service);
-            let listener = tokio::net::TcpListener::bind(addr).await
+            let service =
+                StreamableHttpService::new(move || Ok(server.clone()), session_manager, config);
+            let app = axum::Router::new().nest_service("/mcp", service);
+            let listener = tokio::net::TcpListener::bind(addr)
+                .await
                 .context("Failed to bind to address")?;
             tracing::debug!("Listening on {}", addr);
             axum::serve(listener, app)

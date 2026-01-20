@@ -68,8 +68,8 @@
 //! ```
 
 use anyhow::Result;
-use scraper::{Html, Selector};
 use schemars::JsonSchema;
+use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -103,25 +103,39 @@ impl HotelSearchResult {
         checkout_date: String,
         currency: String,
     ) -> McpHotelResponse {
-        let results: Vec<McpHotel> = self.hotels.iter().map(|hotel| {
-            let price = hotel.price.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
-            let stars = hotel.star_class.as_ref()
-                .and_then(|s| s.trim().parse().ok())
-                .filter(|&s| s > 0);
-            let rating = hotel.rating.unwrap_or(0.0);
-            let amenities: Vec<String> = hotel.amenities.iter()
-                .map(|a| a.replace(" ", "").replace("-", "_").to_lowercase())
-                .filter(|a| a.len() > 2)
-                .collect();
+        let results: Vec<McpHotel> = self
+            .hotels
+            .iter()
+            .map(|hotel| {
+                let price = hotel
+                    .price
+                    .chars()
+                    .filter(|c| c.is_ascii_digit())
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(0);
+                let stars = hotel
+                    .star_class
+                    .as_ref()
+                    .and_then(|s| s.trim().parse().ok())
+                    .filter(|&s| s > 0);
+                let rating = hotel.rating.unwrap_or(0.0);
+                let amenities: Vec<String> = hotel
+                    .amenities
+                    .iter()
+                    .map(|a| a.replace(" ", "").replace("-", "_").to_lowercase())
+                    .filter(|a| a.len() > 2)
+                    .collect();
 
-            McpHotel {
-                name: hotel.name.clone(),
-                price,
-                rating,
-                stars,
-                amenities,
-            }
-        }).collect();
+                McpHotel {
+                    name: hotel.name.clone(),
+                    price,
+                    rating,
+                    stars,
+                    amenities,
+                }
+            })
+            .collect();
 
         McpHotelResponse {
             search_hotels: McpHotelsResponse {

@@ -31,7 +31,9 @@ mod hotels_search;
 pub use flights_query_builder::{
     FlightSearchParams, FlightSearchParamsBuilder, Passenger, Seat, Trip,
 };
-pub use flights_results_parser::{FlightSearchResult, FlightSegment, Itinerary, Layover, McpFlightResponse};
+pub use flights_results_parser::{
+    FlightSearchResult, FlightSegment, Itinerary, Layover, McpFlightResponse,
+};
 pub use flights_search::GoogleFlightsClient;
 
 pub use hotels_query_builder::{Amenity, HotelSearchParams, HotelSearchParamsBuilder, SortType};

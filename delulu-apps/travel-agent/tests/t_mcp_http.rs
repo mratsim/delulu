@@ -21,8 +21,8 @@
 
 use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -127,7 +127,10 @@ async fn mcp_http_initialize(stream: &mut TcpStream, port: u16) -> Result<String
                     if json_response.is_object() {
                         let obj = json_response.as_object().unwrap();
                         if obj.contains_key("id") && obj.contains_key("result") {
-                            debug!("Complete JSON-RPC response received after {:?}", start.elapsed());
+                            debug!(
+                                "Complete JSON-RPC response received after {:?}",
+                                start.elapsed()
+                            );
                             break;
                         }
                     }
@@ -150,7 +153,12 @@ async fn mcp_http_initialize(stream: &mut TcpStream, port: u16) -> Result<String
     }
 
     let response_str = String::from_utf8_lossy(&response);
-    debug!("Response received ({} bytes) after {:?}: {:?}", response_str.len(), start.elapsed(), &response_str[..200.min(response_str.len())]);
+    debug!(
+        "Response received ({} bytes) after {:?}: {:?}",
+        response_str.len(),
+        start.elapsed(),
+        &response_str[..200.min(response_str.len())]
+    );
 
     if response_str.is_empty() {
         debug!("Response is empty!");
@@ -169,7 +177,12 @@ async fn mcp_http_initialize(stream: &mut TcpStream, port: u16) -> Result<String
     session_id.context("No session ID")
 }
 
-async fn mcp_http_send(stream: &mut TcpStream, session_id: &str, request: &str, _wait_for_id: Option<i32>) -> Result<String> {
+async fn mcp_http_send(
+    stream: &mut TcpStream,
+    session_id: &str,
+    request: &str,
+    _wait_for_id: Option<i32>,
+) -> Result<String> {
     let headers = format!(
         "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nmcp-session-id: {}\r\nContent-Length: {}\r\n\r\n{}",
         session_id,
@@ -194,7 +207,12 @@ async fn mcp_http_send(stream: &mut TcpStream, session_id: &str, request: &str, 
             Ok(Ok(n)) => {
                 response.extend_from_slice(&buf[..n]);
                 let response_str = String::from_utf8_lossy(&response);
-                debug!("Iteration {}: read {} bytes, total {} bytes", iterations, n, response.len());
+                debug!(
+                    "Iteration {}: read {} bytes, total {} bytes",
+                    iterations,
+                    n,
+                    response.len()
+                );
 
                 if response_str.contains("\r\n0\r\n") || response_str.contains("\n0\n") {
                     debug!("Chunked end marker found, breaking");
@@ -204,8 +222,13 @@ async fn mcp_http_send(stream: &mut TcpStream, session_id: &str, request: &str, 
                 if let Ok(json_response) = serde_json::from_str::<Value>(&response_str) {
                     if json_response.is_object() {
                         let obj = json_response.as_object().unwrap();
-                        if obj.contains_key("id") && (obj.contains_key("result") || obj.contains_key("error")) {
-                            debug!("Complete JSON-RPC response received after {:?}", start.elapsed());
+                        if obj.contains_key("id")
+                            && (obj.contains_key("result") || obj.contains_key("error"))
+                        {
+                            debug!(
+                                "Complete JSON-RPC response received after {:?}",
+                                start.elapsed()
+                            );
                             break;
                         }
                     }
@@ -221,17 +244,30 @@ async fn mcp_http_send(stream: &mut TcpStream, session_id: &str, request: &str, 
                 break;
             }
             Err(_) => {
-                debug!("Timeout after {} iterations ({:?})", iterations, start.elapsed());
+                debug!(
+                    "Timeout after {} iterations ({:?})",
+                    iterations,
+                    start.elapsed()
+                );
                 break;
             }
         }
     }
 
-    debug!("Total read time: {:?}, iterations: {}, bytes: {}", start.elapsed(), iterations, response.len());
+    debug!(
+        "Total read time: {:?}, iterations: {}, bytes: {}",
+        start.elapsed(),
+        iterations,
+        response.len()
+    );
     Ok(String::from_utf8_lossy(&response).into_owned())
 }
 
-async fn mcp_http_send_notification(stream: &mut TcpStream, session_id: &str, request: &str) -> Result<()> {
+async fn mcp_http_send_notification(
+    stream: &mut TcpStream,
+    session_id: &str,
+    request: &str,
+) -> Result<()> {
     let headers = format!(
         "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nmcp-session-id: {}\r\nContent-Length: {}\r\n\r\n{}",
         session_id,
@@ -249,7 +285,9 @@ async fn read_stderr_to_string(stderr: &mut ChildStderr) -> String {
     let mut output = String::new();
     let mut buf = [0u8; 4096];
     while let Ok(n) = stderr.read(&mut buf).await {
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         output.push_str(&String::from_utf8_lossy(&buf[..n]));
     }
     output
@@ -286,7 +324,13 @@ fn parse_chunked_http_sse(body: &str) -> Result<String> {
         };
 
         let line = &body_start[pos..line_end];
-        debug!("Iter {}: pos={}, line='{}' (len={})", iterations, pos, line.escape_debug(), line.len());
+        debug!(
+            "Iter {}: pos={}, line='{}' (len={})",
+            iterations,
+            pos,
+            line.escape_debug(),
+            line.len()
+        );
 
         if let Ok(chunk_size) = usize::from_str_radix(line, 16) {
             debug!("  -> hex chunk size {} at pos {}", chunk_size, pos);
@@ -296,10 +340,17 @@ fn parse_chunked_http_sse(body: &str) -> Result<String> {
             }
             let data_start = line_end + 2;
             let data_end = data_start + chunk_size;
-            debug!("  -> data_start={}, data_end={}, chunk_size={}", data_start, data_end, chunk_size);
+            debug!(
+                "  -> data_start={}, data_end={}, chunk_size={}",
+                data_start, data_end, chunk_size
+            );
             if data_end <= body_len {
                 let data = &body_start[data_start..data_end];
-                debug!("  -> read {} bytes: '{}'...", data.len(), &data[..data.len().min(50)]);
+                debug!(
+                    "  -> read {} bytes: '{}'...",
+                    data.len(),
+                    &data[..data.len().min(50)]
+                );
                 current_event.push_str(data);
             } else {
                 debug!("  -> data_end {} > body_len {}", data_end, body_len);
@@ -311,17 +362,27 @@ fn parse_chunked_http_sse(body: &str) -> Result<String> {
         pos = line_end + 2;
     }
 
-    debug!("Finished parsing: current_event.len()={}", current_event.len());
-    debug!("current_event preview: '{}'", &current_event[..current_event.len().min(200)]);
+    debug!(
+        "Finished parsing: current_event.len()={}",
+        current_event.len()
+    );
+    debug!(
+        "current_event preview: '{}'",
+        &current_event[..current_event.len().min(200)]
+    );
 
     let sse_events: Vec<&str> = current_event.split("\n\n").collect();
     debug!("SSE events: {}", sse_events.len());
 
-    let json_event = sse_events.iter()
+    let json_event = sse_events
+        .iter()
         .find(|e| e.contains("{\"jsonrpc"))
         .ok_or_else(|| anyhow::anyhow!("No JSON event found in SSE response"))?;
 
-    debug!("Found JSON event: '{}'...", &json_event[..json_event.len().min(100)]);
+    debug!(
+        "Found JSON event: '{}'...",
+        &json_event[..json_event.len().min(100)]
+    );
 
     if let Some(data_line) = json_event.lines().find(|l| l.starts_with("data: ")) {
         return Ok(data_line[6..].to_string());
@@ -345,14 +406,14 @@ fn extract_json_from_sse(event: &str) -> Option<String> {
 async fn test_mcp_help_output() -> Result<()> {
     init_tracing();
     let path = find_binary()?;
-    let output = Command::new(&path)
-        .arg("--help")
-        .output()
-        .await?;
+    let output = Command::new(&path).arg("--help").output().await?;
 
     assert!(output.status.success(), "Help should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("delulu-travel-mcp"), "Help should show binary name");
+    assert!(
+        stdout.contains("delulu-travel-mcp"),
+        "Help should show binary name"
+    );
     assert!(stdout.contains("stdio"), "Help should show stdio command");
     assert!(stdout.contains("http"), "Help should show http command");
 
@@ -363,10 +424,7 @@ async fn test_mcp_help_output() -> Result<()> {
 async fn test_mcp_version_output() -> Result<()> {
     init_tracing();
     let path = find_binary()?;
-    let output = Command::new(&path)
-        .arg("--version")
-        .output()
-        .await?;
+    let output = Command::new(&path).arg("--version").output().await?;
 
     assert!(output.status.success(), "Version should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -401,7 +459,9 @@ async fn test_mcp_http_server_starts() -> Result<()> {
         .context("Failed to connect")?;
     debug!("TCP connected, initializing...");
 
-    let session_id = mcp_http_initialize(&mut stream, port).await.context("Initialize failed")?;
+    let session_id = mcp_http_initialize(&mut stream, port)
+        .await
+        .context("Initialize failed")?;
     debug!("Initialize complete, session_id={}", session_id);
     assert!(!session_id.is_empty(), "Should have session ID");
 
@@ -441,7 +501,9 @@ async fn test_mcp_flights_http() -> Result<()> {
         .await
         .context("Failed to connect")?;
 
-    let session_id = mcp_http_initialize(&mut stream, port).await.context("Initialize failed")?;
+    let session_id = mcp_http_initialize(&mut stream, port)
+        .await
+        .context("Initialize failed")?;
     assert!(!session_id.is_empty(), "Should have session ID");
 
     let initialized_notification = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
@@ -471,19 +533,25 @@ async fn test_mcp_flights_http() -> Result<()> {
         "id": 2,
         "method": "tools/call",
         "params": {"name": "search_flights", "arguments": args}
-    }).to_string();
+    })
+    .to_string();
 
     let response_body = mcp_http_send(&mut stream, &session_id, &call_request, Some(2))
         .await
         .context("Failed to send tool call")?;
 
-    let sse_data = parse_chunked_http_sse(&response_body)
-        .context("Failed to parse SSE data")?;
+    let sse_data = parse_chunked_http_sse(&response_body).context("Failed to parse SSE data")?;
 
-    debug!("SSE data ({} bytes): {:?}", sse_data.len(), &sse_data[..sse_data.len().min(500)]);
+    debug!(
+        "SSE data ({} bytes): {:?}",
+        sse_data.len(),
+        &sse_data[..sse_data.len().min(500)]
+    );
 
-    let response: Value = serde_json::from_str(&sse_data)
-        .context(format!("Failed to parse JSON response: {}", &sse_data[..sse_data.len().min(200)]))?;
+    let response: Value = serde_json::from_str(&sse_data).context(format!(
+        "Failed to parse JSON response: {}",
+        &sse_data[..sse_data.len().min(200)]
+    ))?;
 
     drop(stream);
     debug!("Killing child process (HTTP server won't exit on disconnect)...");
@@ -518,8 +586,10 @@ async fn test_mcp_flights_http() -> Result<()> {
     debug!("text_str length: {}", text_str.as_str().unwrap().len());
     debug!("====================");
 
-    let inner: Value = serde_json::from_str(text_str.as_str().unwrap())
-        .context(format!("Failed to parse inner flight JSON (first 100 chars): '{}')", &text_str.as_str().unwrap()[..100.min(text_str.as_str().unwrap().len())]))?;
+    let inner: Value = serde_json::from_str(text_str.as_str().unwrap()).context(format!(
+        "Failed to parse inner flight JSON (first 100 chars): '{}')",
+        &text_str.as_str().unwrap()[..100.min(text_str.as_str().unwrap().len())]
+    ))?;
 
     let inner_obj = inner.as_object().unwrap();
     let sf_obj = inner_obj["search_flights"].as_object().unwrap();
@@ -527,7 +597,11 @@ async fn test_mcp_flights_http() -> Result<()> {
     let total = sf_obj["total"].as_u64().unwrap();
 
     assert!(!results.is_empty(), "Results should not be empty");
-    assert_eq!(results.len() as u64, total, "Result count should match total");
+    assert_eq!(
+        results.len() as u64,
+        total,
+        "Result count should match total"
+    );
 
     println!("=== FLIGHTS REQUEST ===");
     println!("NRT → JFK on {} (return {})", depart_date, return_date);
@@ -562,7 +636,9 @@ async fn test_mcp_hotels_http() -> Result<()> {
         .await
         .context("Failed to connect")?;
 
-    let session_id = mcp_http_initialize(&mut stream, port).await.context("Initialize failed")?;
+    let session_id = mcp_http_initialize(&mut stream, port)
+        .await
+        .context("Initialize failed")?;
     assert!(!session_id.is_empty(), "Should have session ID");
 
     let initialized_notification = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
@@ -593,21 +669,31 @@ async fn test_mcp_hotels_http() -> Result<()> {
         "id": 2,
         "method": "tools/call",
         "params": {"name": "search_hotels", "arguments": args}
-    }).to_string();
+    })
+    .to_string();
 
     let response_body = mcp_http_send(&mut stream, &session_id, &call_request, Some(2))
         .await
         .context("Failed to send tool call")?;
 
-    debug!("Response body ({} bytes): {:?}", response_body.len(), &response_body[..response_body.len().min(500)]);
+    debug!(
+        "Response body ({} bytes): {:?}",
+        response_body.len(),
+        &response_body[..response_body.len().min(500)]
+    );
 
-    let sse_data = parse_chunked_http_sse(&response_body)
-        .context("Failed to parse SSE data")?;
+    let sse_data = parse_chunked_http_sse(&response_body).context("Failed to parse SSE data")?;
 
-    debug!("SSE data ({} bytes): {:?}", sse_data.len(), &sse_data[..sse_data.len().min(500)]);
+    debug!(
+        "SSE data ({} bytes): {:?}",
+        sse_data.len(),
+        &sse_data[..sse_data.len().min(500)]
+    );
 
-    let response: Value = serde_json::from_str(&sse_data)
-        .context(format!("Failed to parse JSON response: {}", &sse_data[..sse_data.len().min(200)]))?;
+    let response: Value = serde_json::from_str(&sse_data).context(format!(
+        "Failed to parse JSON response: {}",
+        &sse_data[..sse_data.len().min(200)]
+    ))?;
 
     drop(stream);
     let _ = child.kill().await;
@@ -648,7 +734,11 @@ async fn test_mcp_hotels_http() -> Result<()> {
     let total = sh_obj["total"].as_u64().unwrap();
 
     assert!(!results.is_empty(), "Results should not be empty");
-    assert_eq!(results.len() as u64, total, "Result count should match total");
+    assert_eq!(
+        results.len() as u64,
+        total,
+        "Result count should match total"
+    );
 
     println!("=== HOTELS REQUEST ===");
     println!("Paris, {} to {}", checkin, checkout);

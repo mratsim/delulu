@@ -21,13 +21,13 @@
 
 use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Once;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{ChildStdout, ChildStdin, ChildStderr, Command};
+use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::time::Duration;
 use tracing;
 use tracing_subscriber;
@@ -53,10 +53,10 @@ fn load_schema_from_file(name: &str) -> Result<Value> {
             .map_err(|e| anyhow::anyhow!("CARGO_MANIFEST_DIR not set: {}", e))?,
     );
     let schema_path = manifest_dir.join("tests").join("schemas").join(name);
-    
+
     let content = std::fs::read_to_string(&schema_path)
         .context(format!("Failed to read schema file: {:?}", schema_path))?;
-    
+
     serde_json::from_str(&content)
         .context(format!("Failed to parse schema file: {:?}", schema_path))
 }
@@ -73,12 +73,19 @@ fn validate_json_schema(instance: &Value, schema: &Value, schema_name: &str) -> 
     let validator = jsonschema::Validator::new(schema)
         .context(format!("Failed to create validator for {}", schema_name))?;
 
-    let errors: Vec<String> = validator.iter_errors(instance).map(|e| format!("{}: {}", schema_name, e)).collect();
+    let errors: Vec<String> = validator
+        .iter_errors(instance)
+        .map(|e| format!("{}: {}", schema_name, e))
+        .collect();
 
     if errors.is_empty() {
         Ok(())
     } else {
-        anyhow::bail!("Schema validation failed for {}:\n{}", schema_name, errors.join("\n"))
+        anyhow::bail!(
+            "Schema validation failed for {}:\n{}",
+            schema_name,
+            errors.join("\n")
+        )
     }
 }
 fn find_binary() -> Result<PathBuf> {
@@ -131,18 +138,29 @@ async fn mcp_initialize(stdin: &mut ChildStdin, stdout: &mut ChildStdout) -> Res
     let mut resp = String::new();
     let mut buf = [0u8; 4096];
     tracing::debug!("Waiting for init response...");
-    let n = tokio::time::timeout(TIMEOUT, stdout.read(&mut buf)).await?
+    let n = tokio::time::timeout(TIMEOUT, stdout.read(&mut buf))
+        .await?
         .context("Failed to read init response")?;
     if n > 0 {
         resp = String::from_utf8_lossy(&buf[..n]).to_string();
-        tracing::debug!("Init response received ({} bytes): {:?}", resp.len(), &resp[..200.min(resp.len())]);
+        tracing::debug!(
+            "Init response received ({} bytes): {:?}",
+            resp.len(),
+            &resp[..200.min(resp.len())]
+        );
     } else {
         tracing::debug!("No init response received (n={})", n);
     }
-    assert!(resp.contains("2.0"), "Should get JSON-RPC init response: {}", resp);
+    assert!(
+        resp.contains("2.0"),
+        "Should get JSON-RPC init response: {}",
+        resp
+    );
 
     tracing::debug!("Sending initialized notification...");
-    stdin.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n").await?;
+    stdin
+        .write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n")
+        .await?;
     tracing::debug!("Initialized notification sent");
     Ok(())
 }
@@ -182,13 +200,21 @@ async fn read_json_response_with_timeout(stdout: &mut ChildStdout, dur: Duration
             Ok(Ok(n)) => {
                 let chunk = String::from_utf8_lossy(&buf[..n]);
                 output.push_str(&chunk);
-                tracing::debug!("Iteration {}: read {} bytes, total {} bytes", iterations, n, output.len());
+                tracing::debug!(
+                    "Iteration {}: read {} bytes, total {} bytes",
+                    iterations,
+                    n,
+                    output.len()
+                );
 
                 if let Ok(response) = serde_json::from_str::<Value>(&output) {
                     if response.is_object() {
                         let obj = response.as_object().unwrap();
                         if obj.contains_key("id") && obj.contains_key("result") {
-                            tracing::debug!("Iteration {}: complete JSON-RPC response received", iterations);
+                            tracing::debug!(
+                                "Iteration {}: complete JSON-RPC response received",
+                                iterations
+                            );
                             return Ok(response);
                         }
                     }
@@ -205,14 +231,22 @@ async fn read_json_response_with_timeout(stdout: &mut ChildStdout, dur: Duration
         }
     }
 
-    tracing::debug!("Read loop complete after {:?} and {} iterations, total bytes: {}", total_start.elapsed(), iterations, output.len());
+    tracing::debug!(
+        "Read loop complete after {:?} and {} iterations, total bytes: {}",
+        total_start.elapsed(),
+        iterations,
+        output.len()
+    );
 
     if output.is_empty() {
         anyhow::bail!("Stdout output is empty - server produced no response");
     }
 
-    let response: Value = serde_json::from_str(&output)
-        .context(format!("Failed to parse JSON response ({} bytes): {}", output.len(), &output[..output.len().min(500)]))?;
+    let response: Value = serde_json::from_str(&output).context(format!(
+        "Failed to parse JSON response ({} bytes): {}",
+        output.len(),
+        &output[..output.len().min(500)]
+    ))?;
 
     Ok(response)
 }
@@ -246,7 +280,11 @@ async fn read_stderr_until_done(stderr: &mut ChildStderr) -> Result<String> {
     }
 
     if !output.is_empty() {
-        tracing::warn!("Stderr output ({} bytes): {:?}", output.len(), &output[..output.len().min(500)]);
+        tracing::warn!(
+            "Stderr output ({} bytes): {:?}",
+            output.len(),
+            &output[..output.len().min(500)]
+        );
     }
 
     Ok(output)
@@ -269,7 +307,9 @@ async fn test_mcp_server_starts_stdio() -> Result<()> {
     let mut stderr = child.stderr.take().unwrap();
     let mut stdin = child.stdin.take().unwrap();
 
-    mcp_initialize(&mut stdin, &mut stdout).await.context("MCP initialize failed")?;
+    mcp_initialize(&mut stdin, &mut stdout)
+        .await
+        .context("MCP initialize failed")?;
 
     drop(stdin);
     let stderr_output = read_stderr_until_done(&mut stderr).await?;
@@ -287,14 +327,14 @@ async fn test_mcp_server_starts_stdio() -> Result<()> {
 async fn test_mcp_help_output() -> Result<()> {
     init_tracing();
     let path = find_binary()?;
-    let output = Command::new(&path)
-        .arg("--help")
-        .output()
-        .await?;
+    let output = Command::new(&path).arg("--help").output().await?;
 
     assert!(output.status.success(), "Help should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("delulu-travel-mcp"), "Help should show binary name");
+    assert!(
+        stdout.contains("delulu-travel-mcp"),
+        "Help should show binary name"
+    );
     assert!(stdout.contains("stdio"), "Help should show stdio command");
     assert!(stdout.contains("http"), "Help should show http command");
 
@@ -305,10 +345,7 @@ async fn test_mcp_help_output() -> Result<()> {
 async fn test_mcp_version_output() -> Result<()> {
     init_tracing();
     let path = find_binary()?;
-    let output = Command::new(&path)
-        .arg("--version")
-        .output()
-        .await?;
+    let output = Command::new(&path).arg("--version").output().await?;
 
     assert!(output.status.success(), "Version should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -403,7 +440,11 @@ async fn test_mcp_flights() -> Result<()> {
     let total = sf_obj["total"].as_u64().unwrap();
 
     assert!(!results.is_empty(), "Results should not be empty");
-    assert_eq!(results.len() as u64, total, "Result count should match total");
+    assert_eq!(
+        results.len() as u64,
+        total,
+        "Result count should match total"
+    );
 
     println!("=== FLIGHTS REQUEST ===");
     println!("SFO → JFK on {} (return {})", depart_date, return_date);
@@ -498,7 +539,11 @@ async fn test_mcp_hotels() -> Result<()> {
     let total = sh_obj["total"].as_u64().unwrap();
 
     assert!(!results.is_empty(), "Results should not be empty");
-    assert_eq!(results.len() as u64, total, "Result count should match total");
+    assert_eq!(
+        results.len() as u64,
+        total,
+        "Result count should match total"
+    );
 
     println!("=== HOTELS REQUEST ===");
     println!("Paris, {} to {}", checkin, checkout);

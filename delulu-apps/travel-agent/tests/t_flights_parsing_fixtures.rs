@@ -225,7 +225,10 @@ fn test_nonstop_sfo_jfk_economy() {
     );
 
     let has_airlines = result.itineraries.iter().any(|i| {
-        i.flights.first().map(|s| s.airline.is_some() && !s.airline.as_ref().unwrap().is_empty()).unwrap_or(false)
+        i.flights
+            .first()
+            .map(|s| s.airline.is_some() && !s.airline.as_ref().unwrap().is_empty())
+            .unwrap_or(false)
     });
 
     assert!(has_airlines, "Should extract at least one airline");
@@ -314,7 +317,9 @@ fn test_layover_doha_parsing() {
         .itineraries
         .iter()
         .filter(|i| {
-            i.layovers.iter().any(|l| l.airport_city.as_ref().is_some_and(|n| n.contains("Doha")))
+            i.layovers
+                .iter()
+                .any(|l| l.airport_city.as_ref().is_some_and(|n| n.contains("Doha")))
         })
         .collect();
 

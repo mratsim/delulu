@@ -149,9 +149,9 @@ fn test_roundtrip_internal_codec() {
                         }
                         if let Some(ref amenity_names) = case.input.amenities {
                             for name in amenity_names {
-                                if let Some(amenity) = delulu_travel_agent::Amenity::from_str_name(
-                                    name,
-                                ) {
+                                if let Some(amenity) =
+                                    delulu_travel_agent::Amenity::from_str_name(name)
+                                {
                                     expected_filters.push(format!("amenity: {}", amenity as i32));
                                 }
                             }

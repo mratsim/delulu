@@ -163,8 +163,7 @@ fn test_validate_decoder_with_ui() {
                     .unwrap_or_default()
                     .iter()
                     .filter_map(|a| {
-                        delulu_travel_agent::Amenity::from_str_name(a)
-                            .map(|a| a as i32)
+                        delulu_travel_agent::Amenity::from_str_name(a).map(|a| a as i32)
                     })
                     .collect();
                 let expected_guest_rating = case.input.min_guest_rating;

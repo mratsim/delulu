@@ -190,15 +190,11 @@ fn test_guests_validation() {
             .build()
             .is_err()
     );
-    assert!(HotelSearchParams::builder(
-        "Tokyo".to_string(),
-        today,
-        checkout,
-        5,
-        vec![5, 5, 5, 5, 5]
-    )
-    .build()
-    .is_err());
+    assert!(
+        HotelSearchParams::builder("Tokyo".to_string(), today, checkout, 5, vec![5, 5, 5, 5, 5])
+            .build()
+            .is_err()
+    );
 }
 
 // ============================================================================

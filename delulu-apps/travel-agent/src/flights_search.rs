@@ -19,11 +19,11 @@
 //!
 //! Effectful (time, network) operations for Google Flights search.
 
+use crate::Trip;
 use crate::consent_cookie::generate_cookie_header;
 use crate::flights_query_builder::FlightSearchParams;
 use crate::flights_results_parser::FlightSearchResult;
-use crate::Trip;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use delulu_query_queues::QueryQueue;
 use std::sync::Arc;
 use std::time::Duration;
@@ -87,8 +87,7 @@ impl GoogleFlightsClient {
         let queue_elapsed = queue_start.elapsed();
         tracing::debug!("[fetch_raw] Query queue wait time: {:?}", queue_elapsed);
 
-        let response = response
-            .map_err(|e| anyhow!("Request failed: {:?}", e))?;
+        let response = response.map_err(|e| anyhow!("Request failed: {:?}", e))?;
 
         let status = response.status();
         tracing::debug!(
@@ -101,7 +100,11 @@ impl GoogleFlightsClient {
         let body = response.text().await.context("Read body")?;
         let body_elapsed = body_start.elapsed();
         let body_len_kb = body.len() / 1024;
-        tracing::debug!("[fetch_raw] Response body read in {:?}: {} KB", body_elapsed, body_len_kb);
+        tracing::debug!(
+            "[fetch_raw] Response body read in {:?}: {} KB",
+            body_elapsed,
+            body_len_kb
+        );
 
         if !status.is_success() {
             let body_preview = body.chars().take(500).collect::<String>();
@@ -155,13 +158,21 @@ impl GoogleFlightsClient {
         tracing::info!("Starting HTTP fetch to Google Flights...");
         let html = self.fetch_raw(params).await?;
         let fetch_elapsed = fetch_start.elapsed();
-        tracing::info!("HTTP fetch completed in {:?}, got {} KB", fetch_elapsed, html.len() / 1024);
+        tracing::info!(
+            "HTTP fetch completed in {:?}, got {} KB",
+            fetch_elapsed,
+            html.len() / 1024
+        );
 
         let parse_start = std::time::Instant::now();
         match FlightSearchResult::from_html(&html, params.clone()) {
             Ok(result) => {
                 let parse_elapsed = parse_start.elapsed();
-                tracing::debug!("Parsed {} itineraries in {:?}", result.itineraries.len(), parse_elapsed);
+                tracing::debug!(
+                    "Parsed {} itineraries in {:?}",
+                    result.itineraries.len(),
+                    parse_elapsed
+                );
                 let total_elapsed = overall_start.elapsed();
                 tracing::info!("Total search_flights time: {:?}", total_elapsed);
                 Ok(result)
@@ -179,16 +190,24 @@ impl GoogleFlightsClient {
                     tracing::error!("Consent wall detected - cookies not accepted");
                 } else if !has_flight_cards && has_loading {
                     tracing::warn!("Detected loading spinner without flight data.");
-                    tracing::warn!("This often happens for sparse routes or when Google loads results via JavaScript.");
-                    tracing::warn!("For NRT→JFK, this may indicate Google is using dynamic JS rendering.");
-                    tracing::warn!("Consider using a headless browser or checking route popularity.");
+                    tracing::warn!(
+                        "This often happens for sparse routes or when Google loads results via JavaScript."
+                    );
+                    tracing::warn!(
+                        "For NRT→JFK, this may indicate Google is using dynamic JS rendering."
+                    );
+                    tracing::warn!(
+                        "Consider using a headless browser or checking route popularity."
+                    );
                 } else if !has_flight_cards {
                     tracing::warn!("No flight data in response. This may indicate:");
                     tracing::warn!("  - Route returned no flights (might be sold out)");
                     tracing::warn!("  - Google using JS lazy-loading for this route");
                     tracing::warn!("  - Request caching vs fresh request behavior differs");
                 } else {
-                    tracing::error!("Flight HTML detected but parser failed to extract. Parser may need updating.");
+                    tracing::error!(
+                        "Flight HTML detected but parser failed to extract. Parser may need updating."
+                    );
                 }
 
                 tracing::error!("HTML preview (first 2000 chars):\n{}", preview);

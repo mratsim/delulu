@@ -24,14 +24,17 @@ pub mod proto {
     include!("proto/google_travel_flights.rs");
 }
 
-use anyhow::{ensure, Context, Result};
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use anyhow::{Context, Result, ensure};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use proto::{Airport as AirportProto, FlightData, Info, Passenger as PassengerProto, Seat as SeatProto, Trip as TripProto};
+use proto::{
+    Airport as AirportProto, FlightData, Info, Passenger as PassengerProto, Seat as SeatProto,
+    Trip as TripProto,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[repr(i32)]

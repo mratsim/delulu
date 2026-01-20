@@ -216,9 +216,7 @@ async fn main() -> Result<()> {
     let sort_order = match args.sort {
         Some(SortOption::Relevance) => None,
         Some(SortOption::LowestPrice) => Some(delulu_travel_agent::SortType::LowestPrice),
-        Some(SortOption::HighestRating) => {
-            Some(delulu_travel_agent::SortType::HighestRating)
-        }
+        Some(SortOption::HighestRating) => Some(delulu_travel_agent::SortType::HighestRating),
         Some(SortOption::MostReviewed) => Some(delulu_travel_agent::SortType::MostReviewed),
         None => None,
     };

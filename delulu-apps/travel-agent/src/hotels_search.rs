@@ -22,7 +22,7 @@
 use crate::consent_cookie::generate_cookie_header;
 use crate::hotels_query_builder::HotelSearchParams;
 use crate::hotels_results_parser::HotelSearchResult;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use delulu_query_queues::QueryQueue;
 use std::sync::Arc;
 use std::time::Duration;
@@ -82,16 +82,23 @@ impl GoogleHotelsClient {
         let queue_elapsed = queue_start.elapsed();
         tracing::debug!("[fetch_raw] Query queue wait time: {:?}", queue_elapsed);
 
-        let response = response
-            .map_err(|e| anyhow!("Request failed: {:?}", e))?;
+        let response = response.map_err(|e| anyhow!("Request failed: {:?}", e))?;
 
         let status = response.status();
-        tracing::debug!("[fetch_raw] HTTP Status: {} {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown"));
+        tracing::debug!(
+            "[fetch_raw] HTTP Status: {} {}",
+            status.as_u16(),
+            status.canonical_reason().unwrap_or("Unknown")
+        );
 
         let body_start = std::time::Instant::now();
         let body = response.text().await.context("Read body")?;
         let body_elapsed = body_start.elapsed();
-        tracing::debug!("[fetch_raw] Response body read in {:?}: {} chars", body_elapsed, body.len());
+        tracing::debug!(
+            "[fetch_raw] Response body read in {:?}: {} chars",
+            body_elapsed,
+            body.len()
+        );
 
         if !status.is_success() {
             let body_preview = body.chars().take(500).collect::<String>();
@@ -142,28 +149,46 @@ impl GoogleHotelsClient {
         tracing::info!("[search_hotels] Starting HTTP fetch to Google Hotels...");
         let html = self.fetch_raw(params).await?;
         let fetch_elapsed = fetch_start.elapsed();
-        tracing::info!("[search_hotels] HTTP fetch completed in {:?}, got {} KB", fetch_elapsed, html.len() / 1024);
+        tracing::info!(
+            "[search_hotels] HTTP fetch completed in {:?}, got {} KB",
+            fetch_elapsed,
+            html.len() / 1024
+        );
 
         let parse_start = std::time::Instant::now();
         match HotelSearchResult::from_html(&html) {
             Ok(result) => {
                 let parse_elapsed = parse_start.elapsed();
-                tracing::debug!("[search_hotels] Parsed {} hotels in {:?}", result.hotels.len(), parse_elapsed);
+                tracing::debug!(
+                    "[search_hotels] Parsed {} hotels in {:?}",
+                    result.hotels.len(),
+                    parse_elapsed
+                );
                 let total_elapsed = overall_start.elapsed();
-                tracing::info!("[search_hotels] Total search_hotels time: {:?}", total_elapsed);
+                tracing::info!(
+                    "[search_hotels] Total search_hotels time: {:?}",
+                    total_elapsed
+                );
                 Ok(result)
             }
             Err(e) => {
                 let parse_elapsed = parse_start.elapsed();
                 let preview = html.chars().take(2000).collect::<String>();
-                tracing::error!("[search_hotels] Parse failed after {:?}: {:?}", parse_elapsed, e);
+                tracing::error!(
+                    "[search_hotels] Parse failed after {:?}: {:?}",
+                    parse_elapsed,
+                    e
+                );
 
-                let has_hotel_markers = html.contains("uaTTDe") || html.contains("BgYkof") || html.contains("KFi5wf");
+                let has_hotel_markers =
+                    html.contains("uaTTDe") || html.contains("BgYkof") || html.contains("KFi5wf");
                 let has_loading = html.contains("Loading") || html.contains("jsshadow");
 
                 if has_loading && !has_hotel_markers {
                     tracing::warn!("[search_hotels] Detected loading spinner without hotel data.");
-                    tracing::warn!("[search_hotels] Google may use JS lazy-loading for this location.");
+                    tracing::warn!(
+                        "[search_hotels] Google may use JS lazy-loading for this location."
+                    );
                 } else if !has_hotel_markers {
                     tracing::warn!("[search_hotels] No hotel markers found. This may indicate:");
                     tracing::warn!("  - Location returned no hotels");
@@ -171,9 +196,15 @@ impl GoogleHotelsClient {
                     tracing::warn!("  - Request caching vs fresh request behavior differs");
                 }
 
-                tracing::error!("[search_hotels] HTML preview (first 2000 chars):\n{}", preview);
+                tracing::error!(
+                    "[search_hotels] HTML preview (first 2000 chars):\n{}",
+                    preview
+                );
                 let total_elapsed = overall_start.elapsed();
-                tracing::info!("[search_hotels] Total search_hotels time (failed): {:?}", total_elapsed);
+                tracing::info!(
+                    "[search_hotels] Total search_hotels time (failed): {:?}",
+                    total_elapsed
+                );
                 Err(e).context("Parse failed - see HTML preview above")
             }
         }

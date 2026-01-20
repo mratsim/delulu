@@ -130,8 +130,8 @@
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use scraper::{Html, Selector};
 use schemars::JsonSchema;
+use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
 use crate::FlightSearchParams;
@@ -202,35 +202,50 @@ impl FlightSearchResult {
     }
 
     pub fn to_mcp_api_response(&self) -> McpFlightResponse {
-        let curr = self.itineraries.first()
+        let curr = self
+            .itineraries
+            .first()
             .and_then(|it| it.currency.clone())
             .unwrap_or_else(|| "USD".to_string());
         let seat = crate::Seat::as_str_name(&self.search_params.cabin_class).to_string();
 
-        let results: Vec<McpItinerary> = self.itineraries.iter().map(|it| {
-            let price = it.price.unwrap_or(0);
-            let duration_minutes = it.duration_minutes.unwrap_or(0);
+        let results: Vec<McpItinerary> = self
+            .itineraries
+            .iter()
+            .map(|it| {
+                let price = it.price.unwrap_or(0);
+                let duration_minutes = it.duration_minutes.unwrap_or(0);
 
-            let airlines: Vec<String> = it.flights.iter().filter_map(|f| f.airline.clone()).collect();
+                let airlines: Vec<String> = it
+                    .flights
+                    .iter()
+                    .filter_map(|f| f.airline.clone())
+                    .collect();
 
-            let layover: Option<Vec<McpStop>> = if it.layovers.is_empty() {
-                None
-            } else {
-                Some(it.layovers.iter().filter_map(|l| {
-                    l.airport_city.as_ref().map(|city| McpStop {
-                        city: city.clone(),
-                        dur_min: l.duration_minutes.unwrap_or(0),
-                    })
-                }).collect())
-            };
+                let layover: Option<Vec<McpStop>> = if it.layovers.is_empty() {
+                    None
+                } else {
+                    Some(
+                        it.layovers
+                            .iter()
+                            .filter_map(|l| {
+                                l.airport_city.as_ref().map(|city| McpStop {
+                                    city: city.clone(),
+                                    dur_min: l.duration_minutes.unwrap_or(0),
+                                })
+                            })
+                            .collect(),
+                    )
+                };
 
-            McpItinerary {
-                price,
-                airlines,
-                dur_min: duration_minutes,
-                layover,
-            }
-        }).collect();
+                McpItinerary {
+                    price,
+                    airlines,
+                    dur_min: duration_minutes,
+                    layover,
+                }
+            })
+            .collect();
 
         McpFlightResponse {
             search_flights: McpFlightsResponse {
