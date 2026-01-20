@@ -234,8 +234,10 @@ impl ServerHandler for TravelAgentServer {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "error".to_string().into()))
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".to_string().into()))
+        .with(tracing_subscriber::fmt::layer()
+            .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc_3339())
+            .with_writer(std::io::stderr))
         .init();
 
     tracing::debug!("Parsing arguments...");

@@ -29,10 +29,26 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::process::{ChildStderr, Command};
 use tokio::time::Duration;
+use tracing::{debug, instrument};
+use tracing_subscriber;
+use tracing_subscriber::EnvFilter;
 
 // MCP http never quits so seems like we need rely on timeout
 // if we want to read stdout AND stderr since we can't send it a kill signal.
 const TIMEOUT: Duration = Duration::from_secs(3);
+
+fn init_tracing() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        tracing_subscriber::fmt()
+            .with_thread_ids(true)
+            .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc_3339())
+            .with_writer(std::io::stderr)
+            .with_env_filter(EnvFilter::new("debug"))
+            .init();
+    });
+}
 
 fn get_free_port() -> u16 {
     use std::net::TcpListener;
@@ -70,9 +86,11 @@ fn today() -> NaiveDate {
     chrono::Local::now().date_naive()
 }
 
+#[instrument(skip(stream))]
 async fn mcp_http_initialize(stream: &mut TcpStream, port: u16) -> Result<String> {
     let init_request = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0"}}}"#;
 
+    debug!("Sending initialize request...");
     let headers = format!(
         "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\n\r\n{}",
         port,
@@ -81,32 +99,61 @@ async fn mcp_http_initialize(stream: &mut TcpStream, port: u16) -> Result<String
     );
 
     stream.write_all(headers.as_bytes()).await?;
+    debug!("Request sent, waiting for response...");
 
     let mut response = Vec::new();
     let mut buf = [0u8; 8192];
+    let mut iterations = 0;
 
     loop {
+        iterations += 1;
         match tokio::time::timeout(TIMEOUT, stream.read(&mut buf)).await {
-            Ok(Ok(0)) => break,
+            Ok(Ok(0)) => {
+                debug!("Read EOF after {} iterations", iterations);
+                break;
+            }
             Ok(Ok(n)) => {
+                debug!("Read {} bytes after {} iterations", n, iterations);
                 response.extend_from_slice(&buf[..n]);
                 let response_str = String::from_utf8_lossy(&response);
                 if response_str.contains("\r\n0\r\n") || response_str.contains("\n0\n") {
+                    debug!("Response complete (chunked end marker found)");
+                    break;
+                }
+                if iterations > 10 {
+                    debug!("Response complete (max iterations)");
                     break;
                 }
             }
-            _ => break,
+            Ok(Err(e)) => {
+                debug!("Read error after {} iterations: {:?}", iterations, e);
+                break;
+            }
+            Err(_) => {
+                debug!("Timeout after {} iterations", iterations);
+                break;
+            }
         }
     }
 
     let response_str = String::from_utf8_lossy(&response);
+    debug!("Response received ({} bytes): {:?}", response_str.len(), &response_str[..200.min(response_str.len())]);
+
+    if response_str.is_empty() {
+        debug!("Response is empty!");
+    }
+
     let session_id = response_str
         .lines()
         .find(|l| l.starts_with("mcp-session-id:"))
-        .map(|l| l.trim_start_matches("mcp-session-id: ").trim().to_string())
-        .context("No session ID")?;
+        .map(|l| l.trim_start_matches("mcp-session-id: ").trim().to_string());
 
-    Ok(session_id)
+    match &session_id {
+        Some(id) => debug!("Session ID found: {}", id),
+        None => debug!("No session ID found in response"),
+    }
+
+    session_id.context("No session ID")
 }
 
 async fn mcp_http_send(stream: &mut TcpStream, session_id: &str, request: &str, _wait_for_id: Option<i32>) -> Result<String> {
@@ -202,6 +249,7 @@ fn extract_json_from_sse(event: &str) -> Option<String> {
 
 #[tokio::test]
 async fn test_mcp_help_output() -> Result<()> {
+    init_tracing();
     let path = find_binary()?;
     let output = Command::new(&path)
         .arg("--help")
@@ -219,6 +267,7 @@ async fn test_mcp_help_output() -> Result<()> {
 
 #[tokio::test]
 async fn test_mcp_version_output() -> Result<()> {
+    init_tracing();
     let path = find_binary()?;
     let output = Command::new(&path)
         .arg("--version")
@@ -234,8 +283,10 @@ async fn test_mcp_version_output() -> Result<()> {
 
 #[tokio::test]
 async fn test_mcp_http_server_starts() -> Result<()> {
+    init_tracing();
     let path = find_binary()?;
     let port = get_free_port();
+    debug!("Starting server on port {}", port);
 
     let mut child = Command::new(&path)
         .arg("http")
@@ -245,18 +296,30 @@ async fn test_mcp_http_server_starts() -> Result<()> {
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()?;
+    debug!("Server process spawned");
 
+    debug!("Waiting 1 second for server to start...");
     tokio::time::sleep(Duration::from_secs(1)).await;
+    debug!("Sleep complete, connecting to TCP...");
 
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", port))
         .await
         .context("Failed to connect")?;
+    debug!("TCP connected, initializing...");
 
     let session_id = mcp_http_initialize(&mut stream, port).await.context("Initialize failed")?;
+    debug!("Initialize complete, session_id={}", session_id);
     assert!(!session_id.is_empty(), "Should have session ID");
 
+    debug!("Dropping stream...");
     drop(stream);
-    let _ = child.wait().await;
+    debug!("Stream dropped");
+    debug!("Killing child process (HTTP server won't exit on disconnect)...");
+    let _ = child.kill().await;
+    debug!("Kill sent");
+    debug!("Waiting for child process to exit...");
+    let result = child.wait().await;
+    debug!("Child process exited: {:?}", result);
 
     Ok(())
 }
@@ -332,13 +395,16 @@ async fn test_mcp_flights_http() -> Result<()> {
         .context("Failed to parse JSON response")?;
 
     drop(stream);
-    drop(child);
+    debug!("Killing child process (HTTP server won't exit on disconnect)...");
+    let _ = child.kill().await;
+    debug!("Kill sent");
+    debug!("Waiting for child process to exit...");
+    let result = child.wait().await;
+    debug!("Child process exited: {:?}", result);
 
     let stderr_output = read_stderr_to_string(&mut stderr).await;
     if !stderr_output.is_empty() {
-        println!("=== STDERR ===");
-        println!("{}", stderr_output);
-        println!("===========");
+        debug!("STDERR: {}", stderr_output);
     }
 
     assert!(response.is_object(), "Response should be an object");
@@ -356,9 +422,9 @@ async fn test_mcp_flights_http() -> Result<()> {
     }
 
     let text_str = &obj["result"]["content"][0]["text"];
-    println!("=== RAW RESPONSE ===");
-    println!("{}", text_str);
-    println!("====================");
+    debug!("=== RAW RESPONSE ===");
+    debug!("{}", text_str);
+    debug!("====================");
 
     let inner: Value = serde_json::from_str(text_str.as_str().unwrap())
         .context("Failed to parse inner flight JSON")?;
@@ -476,9 +542,9 @@ async fn test_mcp_hotels_http() -> Result<()> {
     }
 
     let text_str = &obj["result"]["content"][0]["text"];
-    println!("=== RAW RESPONSE ===");
-    println!("{}", text_str);
-    println!("====================");
+    debug!("=== RAW RESPONSE ===");
+    debug!("{}", text_str);
+    debug!("====================");
 
     let inner: Value = serde_json::from_str(text_str.as_str().unwrap())
         .context("Failed to parse inner hotel JSON")?;

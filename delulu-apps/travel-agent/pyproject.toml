@@ -3,10 +3,10 @@ name = "delulu-travel-agent"
 version = "0.1.0"
 description = "CLI tools and MCP server for travel services"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["jsonschema"]
 
 [dependency-groups]
-dev = ["mcp>=1.0"]
+dev = ["mcp>=1.0", "jsonschema"]
 
 [tool.ruff]
 target-version = "py312"
