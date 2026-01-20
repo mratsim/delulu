@@ -515,11 +515,11 @@ async fn test_mcp_flights_http() -> Result<()> {
     let text_str = &obj["result"]["content"][0]["text"];
     debug!("=== RAW RESPONSE ===");
     debug!("text_str type: {:?}", text_str);
-    debug!("text_str: '{}'", text_str);
+    debug!("text_str length: {}", text_str.as_str().unwrap().len());
     debug!("====================");
 
     let inner: Value = serde_json::from_str(text_str.as_str().unwrap())
-        .context("Failed to parse inner flight JSON")?;
+        .context(format!("Failed to parse inner flight JSON (first 100 chars): '{}')", &text_str.as_str().unwrap()[..100.min(text_str.as_str().unwrap().len())]))?;
 
     let inner_obj = inner.as_object().unwrap();
     let sf_obj = inner_obj["search_flights"].as_object().unwrap();

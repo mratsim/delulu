@@ -217,33 +217,29 @@ async fn read_json_response_with_timeout(stdout: &mut ChildStdout, dur: Duration
     Ok(response)
 }
 
-async fn read_stderr_with_timeout(stderr: &mut ChildStderr, dur: Duration) -> Result<String> {
+async fn read_stderr_until_done(stderr: &mut ChildStderr) -> Result<String> {
     let mut output = String::new();
     let mut buf = [0u8; 4096];
     let mut iterations = 0;
-    let total_start = std::time::Instant::now();
+    let mut done = false;
 
-    loop {
+    while !done && iterations < 10 {
         iterations += 1;
-        let elapsed = total_start.elapsed();
-        let read_result = tokio::time::timeout(dur, stderr.read(&mut buf)).await;
-
-        match read_result {
-            Ok(Ok(0)) => {
+        match stderr.read(&mut buf).await {
+            Ok(0) => {
                 tracing::debug!("Stderr EOF after {} iterations", iterations);
                 break;
             }
-            Ok(Ok(n)) => {
+            Ok(n) => {
                 let chunk = String::from_utf8_lossy(&buf[..n]);
-                tracing::debug!("Stderr read {} bytes: {:?}", n, &chunk[..chunk.len().min(200)]);
                 output.push_str(&chunk);
+                if chunk.contains("input stream terminated") {
+                    tracing::debug!("Server signaled done");
+                    done = true;
+                }
             }
-            Ok(Err(e)) => {
+            Err(e) => {
                 tracing::debug!("Stderr error: {:?}", e);
-                break;
-            }
-            Err(_) => {
-                tracing::debug!("Stderr timeout after {:?}", elapsed);
                 break;
             }
         }
@@ -276,7 +272,7 @@ async fn test_mcp_server_starts_stdio() -> Result<()> {
     mcp_initialize(&mut stdin, &mut stdout).await.context("MCP initialize failed")?;
 
     drop(stdin);
-    let stderr_output = read_stderr_with_timeout(&mut stderr, TIMEOUT).await?;
+    let stderr_output = read_stderr_until_done(&mut stderr).await?;
     if !stderr_output.is_empty() {
         println!("=== STDERR ===");
         println!("{}", stderr_output);
@@ -369,7 +365,7 @@ async fn test_mcp_flights() -> Result<()> {
         .context("Failed to read flight search response")?;
 
     drop(stdin);
-    let stderr_output = read_stderr_with_timeout(&mut stderr, TIMEOUT).await?;
+    let stderr_output = read_stderr_until_done(&mut stderr).await?;
     if !stderr_output.is_empty() {
         println!("=== STDERR ===");
         println!("{}", stderr_output);
@@ -467,7 +463,7 @@ async fn test_mcp_hotels() -> Result<()> {
         .context("Failed to read hotel search response")?;
 
     drop(stdin);
-    let stderr_output = read_stderr_with_timeout(&mut stderr, TIMEOUT).await?;
+    let stderr_output = read_stderr_until_done(&mut stderr).await?;
     if !stderr_output.is_empty() {
         println!("=== STDERR ===");
         println!("{}", stderr_output);
