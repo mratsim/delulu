@@ -104,6 +104,7 @@ async fn mcp_http_initialize(stream: &mut TcpStream, port: u16) -> Result<String
     let mut response = Vec::new();
     let mut buf = [0u8; 8192];
     let mut iterations = 0;
+    let start = std::time::Instant::now();
 
     loop {
         iterations += 1;
@@ -116,10 +117,22 @@ async fn mcp_http_initialize(stream: &mut TcpStream, port: u16) -> Result<String
                 debug!("Read {} bytes after {} iterations", n, iterations);
                 response.extend_from_slice(&buf[..n]);
                 let response_str = String::from_utf8_lossy(&response);
+
                 if response_str.contains("\r\n0\r\n") || response_str.contains("\n0\n") {
                     debug!("Response complete (chunked end marker found)");
                     break;
                 }
+
+                if let Ok(json_response) = serde_json::from_str::<Value>(&response_str) {
+                    if json_response.is_object() {
+                        let obj = json_response.as_object().unwrap();
+                        if obj.contains_key("id") && obj.contains_key("result") {
+                            debug!("Complete JSON-RPC response received after {:?}", start.elapsed());
+                            break;
+                        }
+                    }
+                }
+
                 if iterations > 10 {
                     debug!("Response complete (max iterations)");
                     break;
@@ -137,7 +150,7 @@ async fn mcp_http_initialize(stream: &mut TcpStream, port: u16) -> Result<String
     }
 
     let response_str = String::from_utf8_lossy(&response);
-    debug!("Response received ({} bytes): {:?}", response_str.len(), &response_str[..200.min(response_str.len())]);
+    debug!("Response received ({} bytes) after {:?}: {:?}", response_str.len(), start.elapsed(), &response_str[..200.min(response_str.len())]);
 
     if response_str.is_empty() {
         debug!("Response is empty!");
@@ -168,21 +181,53 @@ async fn mcp_http_send(stream: &mut TcpStream, session_id: &str, request: &str, 
 
     let mut response = Vec::new();
     let mut buf = [0u8; 8192];
+    let start = std::time::Instant::now();
+    let mut iterations = 0;
 
     loop {
+        iterations += 1;
         match tokio::time::timeout(TIMEOUT, stream.read(&mut buf)).await {
-            Ok(Ok(0)) => break,
+            Ok(Ok(0)) => {
+                debug!("Read EOF after {} iterations", iterations);
+                break;
+            }
             Ok(Ok(n)) => {
                 response.extend_from_slice(&buf[..n]);
                 let response_str = String::from_utf8_lossy(&response);
+                debug!("Iteration {}: read {} bytes, total {} bytes", iterations, n, response.len());
+
                 if response_str.contains("\r\n0\r\n") || response_str.contains("\n0\n") {
+                    debug!("Chunked end marker found, breaking");
+                    break;
+                }
+
+                if let Ok(json_response) = serde_json::from_str::<Value>(&response_str) {
+                    if json_response.is_object() {
+                        let obj = json_response.as_object().unwrap();
+                        if obj.contains_key("id") && (obj.contains_key("result") || obj.contains_key("error")) {
+                            debug!("Complete JSON-RPC response received after {:?}", start.elapsed());
+                            break;
+                        }
+                    }
+                }
+
+                if iterations > 10 {
+                    debug!("Max iterations reached, breaking");
                     break;
                 }
             }
-            _ => break,
+            Ok(Err(e)) => {
+                debug!("Read error after {} iterations: {:?}", iterations, e);
+                break;
+            }
+            Err(_) => {
+                debug!("Timeout after {} iterations ({:?})", iterations, start.elapsed());
+                break;
+            }
         }
     }
 
+    debug!("Total read time: {:?}, iterations: {}, bytes: {}", start.elapsed(), iterations, response.len());
     Ok(String::from_utf8_lossy(&response).into_owned())
 }
 
@@ -196,8 +241,7 @@ async fn mcp_http_send_notification(stream: &mut TcpStream, session_id: &str, re
 
     stream.write_all(headers.as_bytes()).await?;
 
-    stream.shutdown().await?;
-
+    debug!("Notification sent (no shutdown - keep connection open for subsequent requests)");
     Ok(())
 }
 
@@ -211,29 +255,79 @@ async fn read_stderr_to_string(stderr: &mut ChildStderr) -> String {
     output
 }
 
-fn parse_sse_events(body: &str) -> Vec<String> {
-    let mut events = Vec::new();
+fn parse_chunked_http_sse(body: &str) -> Result<String> {
+    let second_response_start = body
+        .find("\r\n\r\nHTTP/1.1 2")
+        .ok_or_else(|| anyhow::anyhow!("No second HTTP response found"))?;
+
+    let second_response = &body[second_response_start + 4..];
+
+    let body_start = second_response
+        .find("\r\n\r\n")
+        .map(|p| &second_response[p + 4..])
+        .ok_or_else(|| anyhow::anyhow!("No HTTP body in second response"))?;
+
+    let body_len = body_start.len();
+    debug!("body_start length: {}", body_len);
+
     let mut current_event = String::new();
+    let mut pos = 0;
+    let mut iterations = 0;
 
-    for line in body.lines() {
-        if line.is_empty() {
-            if !current_event.is_empty() {
-                events.push(current_event.clone());
-                current_event.clear();
+    while pos < body_len {
+        iterations += 1;
+        let line_end_crlf = body_start[pos..].find("\r\n");
+        let line_end = match line_end_crlf {
+            Some(i) => pos + i,
+            None => {
+                debug!("No CRLF at pos {}", pos);
+                break;
             }
-        } else {
-            if !current_event.is_empty() {
-                current_event.push_str("\n");
+        };
+
+        let line = &body_start[pos..line_end];
+        debug!("Iter {}: pos={}, line='{}' (len={})", iterations, pos, line.escape_debug(), line.len());
+
+        if let Ok(chunk_size) = usize::from_str_radix(line, 16) {
+            debug!("  -> hex chunk size {} at pos {}", chunk_size, pos);
+            if chunk_size == 0 {
+                debug!("  -> chunk size 0, breaking");
+                break;
             }
-            current_event.push_str(line);
+            let data_start = line_end + 2;
+            let data_end = data_start + chunk_size;
+            debug!("  -> data_start={}, data_end={}, chunk_size={}", data_start, data_end, chunk_size);
+            if data_end <= body_len {
+                let data = &body_start[data_start..data_end];
+                debug!("  -> read {} bytes: '{}'...", data.len(), &data[..data.len().min(50)]);
+                current_event.push_str(data);
+            } else {
+                debug!("  -> data_end {} > body_len {}", data_end, body_len);
+            }
+            pos = data_end + 2;
+            continue;
         }
+
+        pos = line_end + 2;
     }
 
-    if !current_event.is_empty() {
-        events.push(current_event);
+    debug!("Finished parsing: current_event.len()={}", current_event.len());
+    debug!("current_event preview: '{}'", &current_event[..current_event.len().min(200)]);
+
+    let sse_events: Vec<&str> = current_event.split("\n\n").collect();
+    debug!("SSE events: {}", sse_events.len());
+
+    let json_event = sse_events.iter()
+        .find(|e| e.contains("{\"jsonrpc"))
+        .ok_or_else(|| anyhow::anyhow!("No JSON event found in SSE response"))?;
+
+    debug!("Found JSON event: '{}'...", &json_event[..json_event.len().min(100)]);
+
+    if let Some(data_line) = json_event.lines().find(|l| l.starts_with("data: ")) {
+        return Ok(data_line[6..].to_string());
     }
 
-    events
+    anyhow::bail!("No data: line found in SSE event");
 }
 
 fn extract_json_from_sse(event: &str) -> Option<String> {
@@ -383,16 +477,13 @@ async fn test_mcp_flights_http() -> Result<()> {
         .await
         .context("Failed to send tool call")?;
 
-    let body = response_body.split("\r\n\r\n").nth(1).unwrap_or("");
-    let events = parse_sse_events(body);
-    let call_event = events.iter()
-        .find(|e| extract_json_from_sse(e).map_or(false, |j| j.contains("\"id\":2")))
-        .context("Tool call response not found")?;
-    let json_str = extract_json_from_sse(call_event)
-        .context("Failed to extract JSON from SSE event")?;
+    let sse_data = parse_chunked_http_sse(&response_body)
+        .context("Failed to parse SSE data")?;
 
-    let response: Value = serde_json::from_str(&json_str)
-        .context("Failed to parse JSON response")?;
+    debug!("SSE data ({} bytes): {:?}", sse_data.len(), &sse_data[..sse_data.len().min(500)]);
+
+    let response: Value = serde_json::from_str(&sse_data)
+        .context(format!("Failed to parse JSON response: {}", &sse_data[..sse_data.len().min(200)]))?;
 
     drop(stream);
     debug!("Killing child process (HTTP server won't exit on disconnect)...");
@@ -423,7 +514,8 @@ async fn test_mcp_flights_http() -> Result<()> {
 
     let text_str = &obj["result"]["content"][0]["text"];
     debug!("=== RAW RESPONSE ===");
-    debug!("{}", text_str);
+    debug!("text_str type: {:?}", text_str);
+    debug!("text_str: '{}'", text_str);
     debug!("====================");
 
     let inner: Value = serde_json::from_str(text_str.as_str().unwrap())
@@ -449,6 +541,7 @@ async fn test_mcp_flights_http() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_mcp_hotels_http() -> Result<()> {
+    init_tracing();
     let path = find_binary()?;
     let port = get_free_port();
 
@@ -506,18 +599,18 @@ async fn test_mcp_hotels_http() -> Result<()> {
         .await
         .context("Failed to send tool call")?;
 
-    let body = response_body.split("\r\n\r\n").nth(1).unwrap_or("");
-    let events = parse_sse_events(body);
-    let call_event = events.iter()
-        .find(|e| extract_json_from_sse(e).map_or(false, |j| j.contains("\"id\":2")))
-        .context("Tool call response not found")?;
-    let json_str = extract_json_from_sse(call_event)
-        .context("Failed to extract JSON from SSE event")?;
+    debug!("Response body ({} bytes): {:?}", response_body.len(), &response_body[..response_body.len().min(500)]);
 
-    let response: Value = serde_json::from_str(&json_str)
-        .context("Failed to parse JSON response")?;
+    let sse_data = parse_chunked_http_sse(&response_body)
+        .context("Failed to parse SSE data")?;
+
+    debug!("SSE data ({} bytes): {:?}", sse_data.len(), &sse_data[..sse_data.len().min(500)]);
+
+    let response: Value = serde_json::from_str(&sse_data)
+        .context(format!("Failed to parse JSON response: {}", &sse_data[..sse_data.len().min(200)]))?;
 
     drop(stream);
+    let _ = child.kill().await;
     let _ = child.wait().await;
 
     let stderr_output = read_stderr_to_string(&mut stderr).await;
