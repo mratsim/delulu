@@ -156,7 +156,7 @@ impl TravelAgentServer {
             .flights_client
             .search_flights(&params)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("Flight search failed: {e}"))?;
 
         serde_json::to_string(&result.to_mcp_api_response()).map_err(|e| e.to_string())
     }
@@ -176,8 +176,8 @@ impl TravelAgentServer {
             version: 1,
             adults: input.adults,
             children_ages: input.children_ages,
-            loc_q_search: input.location.clone(),
-            loc_ts_name: input.location,
+            loc_q_search: input.location,
+            loc_ts_name: String::new(),
             loc_ts_id: String::new(),
             loc_ts_coords: String::new(),
             checkin_date: input.checkin_date,
@@ -197,7 +197,7 @@ impl TravelAgentServer {
             .hotels_client
             .search_hotels(&params)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("Hotel search failed: {e}"))?;
 
         serde_json::to_string(&result.to_mcp_api_response(
             params.loc_q_search,
