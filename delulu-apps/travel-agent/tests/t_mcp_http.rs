@@ -391,17 +391,6 @@ fn parse_chunked_http_sse(body: &str) -> Result<String> {
     anyhow::bail!("No data: line found in SSE event");
 }
 
-fn extract_json_from_sse(event: &str) -> Option<String> {
-    let data_prefix = "data: ";
-    for line in event.lines() {
-        if line.starts_with(data_prefix) {
-            let data = line.trim_start_matches(data_prefix);
-            return Some(data.to_string());
-        }
-    }
-    None
-}
-
 #[tokio::test]
 async fn test_mcp_help_output() -> Result<()> {
     init_tracing();
@@ -481,6 +470,7 @@ async fn test_mcp_http_server_starts() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_mcp_flights_http() -> Result<()> {
+    init_tracing();
     let path = find_binary()?;
     let port = get_free_port();
 

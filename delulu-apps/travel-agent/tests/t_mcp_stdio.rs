@@ -356,7 +356,7 @@ async fn test_mcp_version_output() -> Result<()> {
 
 #[tokio::test]
 #[ignore]
-async fn test_mcp_flights() -> Result<()> {
+async fn test_mcp_flights_stdio() -> Result<()> {
     init_tracing();
     let path = find_binary()?;
 
@@ -457,7 +457,7 @@ async fn test_mcp_flights() -> Result<()> {
 
 #[tokio::test]
 #[ignore]
-async fn test_mcp_hotels() -> Result<()> {
+async fn test_mcp_hotels_stdio() -> Result<()> {
     init_tracing();
     let path = find_binary()?;
 
