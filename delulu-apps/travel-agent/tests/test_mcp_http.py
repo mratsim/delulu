@@ -71,7 +71,7 @@ def kill_server_process(child: subprocess.Popen) -> None:
     """Kill server process and all its children."""
     if sys.platform != "win32":
         try:
-            os.killpg(os.getpgid(child.pid), signal.SIGTERM)
+            os.killpg(child.pid, signal.SIGTERM)
         except (ProcessLookupError, OSError):
             pass
     child.terminate()
@@ -238,6 +238,7 @@ async def run_http_tests(port: int) -> int:
         [binary, "http", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        start_new_session=True,
     )
 
     url = f"http://127.0.0.1:{port}/mcp"

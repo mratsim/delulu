@@ -39,8 +39,9 @@ def kill_server_processes() -> None:
     """Kill any leftover server processes using process group."""
     if sys.platform != "win32":
         try:
-            signal.pthread_sigmask(signal.SIG_BLOCK, (signal.SIGTERM,))
-            os.killpg(0, signal.SIGTERM)
+            if os.getpgrp() == os.getpid():
+                signal.pthread_sigmask(signal.SIG_BLOCK, (signal.SIGTERM,))
+                os.killpg(os.getpid(), signal.SIGTERM)
         except (ProcessLookupError, OSError):
             pass
 
