@@ -53,7 +53,7 @@ fn load_schema_from_file(name: &str) -> Result<Value> {
         std::env::var("CARGO_MANIFEST_DIR")
             .map_err(|e| anyhow::anyhow!("CARGO_MANIFEST_DIR not set: {}", e))?,
     );
-    let schema_path = manifest_dir.join("tests").join("schemas").join(name);
+    let schema_path = manifest_dir.join("src").join("schemas").join(name);
 
     let content = std::fs::read_to_string(&schema_path)
         .context(format!("Failed to read schema file: {:?}", schema_path))?;

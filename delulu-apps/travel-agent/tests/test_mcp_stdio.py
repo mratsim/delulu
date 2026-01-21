@@ -17,7 +17,7 @@ from mcp import ClientSession
 
 def load_json_schema(name: str) -> dict:
     """Load JSON schema from schemas directory."""
-    schema_path = Path(__file__).parent / "schemas" / name
+    schema_path = Path(__file__).parent.parent / "src" / "schemas" / name
     with open(schema_path) as f:
         return json.load(f)
 

@@ -20,63 +20,10 @@
 //! Side-effect free HTML parsing for Google Flights search results.
 //! Extracts flight information from the HTML response.
 //!
-//! ## MCP API Response Schema (Optimized)
+//! ## MCP API Response Schema
 //!
-//! The `to_mcp_api_response()` method serializes results to the following JSON schema:
-//! Optimized for context compression - currency/seat/search_url moved to query, route flattened,
-//! stops renamed to layover (optional), and duration in minutes for easier LLM math.
-//!
-//! ```json
-//! {
-//!   "$schema": "http://json-schema.org/draft-07/schema#",
-//!   "type": "object",
-//!   "required": ["search_flights"],
-//!   "properties": {
-//!     "search_flights": {
-//!       "type": "object",
-//!       "required": ["total", "query", "results"],
-//!       "properties": {
-//!         "total": {"type": "integer", "minimum": 0},
-//!         "query": {
-//!           "type": "object",
-//!           "required": ["from", "to", "date", "curr", "seat", "search_url"],
-//!           "properties": {
-//!             "from": {"type": "string"},
-//!             "to": {"type": "string"},
-//!             "date": {"type": "string"},
-//!             "curr": {"type": "string"},
-//!             "seat": {"type": "string"},
-//!             "search_url": {"type": "string"}
-//!           }
-//!         },
-//!         "results": {
-//!           "type": "array",
-//!           "items": {
-//!             "type": "object",
-//!             "required": ["price", "airlines", "dur_min"],
-//!             "properties": {
-//!               "price": {"type": "integer", "minimum": 0},
-//!               "airlines": {"type": "array", "items": {"type": "string"}},
-//!               "dur_min": {"type": "integer", "minimum": 0},
-//!               "layover": {
-//!                 "type": "array",
-//!                 "items": {
-//!                   "type": "object",
-//!                   "required": ["city", "dur_min"],
-//!                   "properties": {
-//!                     "city": {"type": "string"},
-//!                     "dur_min": {"type": "integer", "minimum": 0}
-//!                   }
-//!                 }
-//!               }
-//!             }
-//!           }
-//!         }
-//!       }
-//!     }
-//!   }
-//! }
-//! ```
+//! See [`schemas/flights-response.json`](schemas/flights-response.json) for the canonical JSON schema.
+
 
 use anyhow::Result;
 use once_cell::sync::Lazy;
