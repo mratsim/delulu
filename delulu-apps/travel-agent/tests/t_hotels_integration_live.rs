@@ -92,7 +92,7 @@ async fn execute_query(
     println!("\n🏨 Query: {} ({} adults)", location, adults);
     println!("Dates: {} to {}", checkin, checkout);
 
-    let client = GoogleHotelsClient::new(4)?;
+    let client = GoogleHotelsClient::new(4, 2)?;
     let result = client.search_hotels(&request).await?;
     let status = if !result.hotels.is_empty() {
         "VALID"

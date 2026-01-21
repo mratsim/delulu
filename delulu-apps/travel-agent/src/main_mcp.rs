@@ -296,12 +296,12 @@ async fn main() -> Result<(), Error> {
 
     tracing::debug!("Creating flights client...");
     let flights_client = Arc::new(
-        GoogleFlightsClient::new("en".into(), "USD".into())
+        GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)
             .context("Failed to create flights client")?,
     );
     tracing::debug!("Creating hotels client...");
     let hotels_client =
-        Arc::new(GoogleHotelsClient::new(4).context("Failed to create hotels client")?);
+        Arc::new(GoogleHotelsClient::new(5, 2).context("Failed to create hotels client")?);
     tracing::debug!("Clients created");
 
     match args.command {
@@ -334,11 +334,9 @@ async fn main() -> Result<(), Error> {
                 .await
                 .context("Failed to bind to address")?;
             tracing::debug!("Listening on {}", addr);
-            let ctrl_c = tokio::signal::ctrl_c();
-            tokio::pin!(ctrl_c);
             axum::serve(listener, app)
                 .with_graceful_shutdown(async move {
-                    let _ = ctrl_c.await;
+                    tokio::signal::ctrl_c().await.ok();
                     tracing::info!("Shutting down HTTP server...");
                 })
                 .await

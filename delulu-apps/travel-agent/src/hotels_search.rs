@@ -36,15 +36,15 @@ pub struct GoogleHotelsClient {
 }
 
 impl GoogleHotelsClient {
-    pub fn new(max_concurrent: u64) -> Result<Self> {
+    pub fn new(timeout_secs: u64, queries_per_second: u32) -> Result<Self> {
         let client = wreq::Client::builder()
             .emulation(Emulation::Safari18_5)
             .redirect(Policy::default())
-            .timeout(Duration::from_secs(5))
-            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(timeout_secs))
+            .connect_timeout(Duration::from_secs(timeout_secs))
             .build()
             .context("Failed to build HTTP client")?;
-        let query_queue = QueryQueue::with_max_concurrent(max_concurrent);
+        let query_queue = QueryQueue::with_qps_limit(queries_per_second as u64);
         Ok(Self {
             client: Arc::new(client),
             query_queue,

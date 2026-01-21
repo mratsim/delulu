@@ -365,7 +365,7 @@ async fn main() -> Result<()> {
     tracing::debug!("Generated search URL ({} chars)", search_url.len());
 
     // Create client and execute search
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
 
     let result = if args.save_html {
         let url = params.get_search_url();

@@ -280,8 +280,7 @@ async fn main() -> Result<()> {
 
     println!("\n🔗 Search URL: {}\n", search_url);
 
-    const MAX_CONCURRENT_REQUESTS: u64 = 4;
-    let client = GoogleHotelsClient::new(MAX_CONCURRENT_REQUESTS)?;
+    let client = GoogleHotelsClient::new(5, 2)?;
     match client.search_hotels(&request).await {
         Ok(results) => {
             if results.hotels.is_empty() {

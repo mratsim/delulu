@@ -28,7 +28,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Once;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{ChildStdout, Command};
+use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::time::Duration;
 use tracing;
 use tracing_subscriber;
