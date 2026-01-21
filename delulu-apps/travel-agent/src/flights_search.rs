@@ -83,8 +83,8 @@ impl GoogleFlightsClient {
                 }
             })
             .await;
-        let queue_elapsed = queue_start.elapsed();
-        tracing::debug!("[fetch_raw] Query queue wait time: {:?}", queue_elapsed);
+        let total_elapsed = queue_start.elapsed();
+        tracing::debug!("[fetch_raw] Query queue + HTTP execution time: {:?}", total_elapsed);
 
         let response = response.map_err(|e| anyhow!("Request failed: {:?}", e))?;
 
