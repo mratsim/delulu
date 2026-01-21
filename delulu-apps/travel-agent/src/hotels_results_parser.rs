@@ -60,6 +60,7 @@ impl HotelSearchResult {
         checkout_date: String,
         currency: String,
         search_url: String,
+        warnings: Vec<String>,
     ) -> McpHotelResponse {
         let results: Vec<McpHotel> = self
             .hotels
@@ -81,8 +82,7 @@ impl HotelSearchResult {
                 let amenities: Vec<String> = hotel
                     .amenities
                     .iter()
-                    .map(|a| a.replace(" ", "").replace("-", "_").to_lowercase())
-                    .filter(|a| a.len() > 2)
+                    .cloned()
                     .collect();
 
                 McpHotel {
@@ -106,6 +106,7 @@ impl HotelSearchResult {
                     search_url,
                 },
                 results,
+                warnings: Vec::new(),
             },
         }
     }
@@ -123,6 +124,8 @@ pub struct McpHotelsResponse {
     pub total: usize,
     pub query: McpHotelQuery,
     pub results: Vec<McpHotel>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

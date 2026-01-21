@@ -81,7 +81,8 @@ impl TryFrom<i32> for Amenity {
 
 impl Amenity {
     pub fn from_str_name(s: &str) -> Option<Self> {
-        match s {
+        let lower = s.to_lowercase();
+        match lower.as_str() {
             "indoor_pool" | "indoorpool" | "indoor" => Some(Amenity::IndoorPool),
             "outdoor_pool" | "outdoorpool" | "outdoor" => Some(Amenity::OutdoorPool),
             "pool" => Some(Amenity::Pool),

@@ -111,7 +111,6 @@ pub struct HotelsInput {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)]
 pub struct TravelAgentServer {
     flights_client: Arc<GoogleFlightsClient>,
     hotels_client: Arc<GoogleHotelsClient>,
@@ -164,7 +163,7 @@ impl TravelAgentServer {
             .await
             .map_err(|e| format!("Flight search failed: {e}"))?;
 
-        serde_json::to_string(&result.to_mcp_api_response()).map_err(|e| e.to_string())
+        serde_json::to_string(&result.to_mcp_api_response(Vec::new())).map_err(|e| e.to_string())
     }
 
     #[tool(
@@ -173,8 +172,24 @@ impl TravelAgentServer {
     )]
     async fn search_hotels(&self, params: Parameters<HotelsInput>) -> Result<String, String> {
         let input = params.0;
-        let amenities: Vec<Amenity> = input
+
+        let (valid_amenities, invalid_amenities): (Vec<_>, Vec<_>) = input
             .amenities
+            .iter()
+            .partition(|a| Amenity::from_str_name(a).is_some());
+
+        let mut warnings: Vec<String> = Vec::new();
+        if !invalid_amenities.is_empty() {
+            let valid_list = ["indoor_pool", "outdoor_pool", "pool", "spa", "kid_friendly", "air_conditioned", "ev_charger"]
+                .join(", ");
+            warnings.push(format!(
+                "Unknown amenity(s): {}. Valid amenities: {}.",
+                invalid_amenities.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "),
+                valid_list
+            ));
+        }
+
+        let amenities: Vec<Amenity> = valid_amenities
             .iter()
             .filter_map(|a| Amenity::from_str_name(a))
             .collect();
@@ -212,6 +227,7 @@ impl TravelAgentServer {
             params.checkout_date,
             params.currency,
             search_url,
+            warnings,
         ))
         .map_err(|e| e.to_string())
     }

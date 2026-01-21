@@ -368,7 +368,8 @@ async fn main() -> Result<()> {
     let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
 
     let result = if args.save_html {
-        let html = client.fetch_raw(&params).await.context("Fetch failed")?;
+        let url = params.get_search_url();
+        let html = client.fetch_raw(&url).await.context("Fetch failed")?;
         let filename = format!("debug_{}_{}.html", args.from, args.to);
         std::fs::write(&filename, &html).context("Failed to write HTML file")?;
         tracing::info!("Saved HTML to {}", filename);

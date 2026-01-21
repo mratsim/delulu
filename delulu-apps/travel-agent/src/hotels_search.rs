@@ -53,23 +53,22 @@ impl GoogleHotelsClient {
 }
 
 impl GoogleHotelsClient {
-    async fn fetch_raw(&self, request: &HotelSearchParams) -> Result<String> {
+    async fn fetch_raw(&self, url: &str) -> Result<String> {
         let cookie_header = generate_cookie_header();
         let client_inner = Arc::clone(&self.client);
-        let url = request.get_search_url();
 
         let queue_start = std::time::Instant::now();
         let response = self
             .query_queue
             .with_retry(move || {
-                let url = url.clone();
+                let url = url.to_string();
                 let cookie = cookie_header.clone();
                 let http_client = client_inner.clone();
                 async move {
                     let http_start = std::time::Instant::now();
                     tracing::info!("[fetch_raw] Starting HTTP request to: {}", url);
                     let resp = http_client
-                        .get(&url)
+                        .get(url)
                         .header("Cookie", &cookie)
                         .send()
                         .await?;
@@ -145,9 +144,14 @@ impl GoogleHotelsClient {
             .context("Invalid checkin date")?;
         anyhow::ensure!(checkin >= today, "Check-in cannot be in the past");
 
+        let url_build_start = std::time::Instant::now();
+        let url = params.get_search_url();
+        let url_build_elapsed = url_build_start.elapsed();
+        tracing::info!("🔗 Search URL built in {:?}: {}", url_build_elapsed, url);
+
         let fetch_start = std::time::Instant::now();
         tracing::info!("[search_hotels] Starting HTTP fetch to Google Hotels...");
-        let html = self.fetch_raw(params).await?;
+        let html = self.fetch_raw(&url).await?;
         let fetch_elapsed = fetch_start.elapsed();
         tracing::info!(
             "[search_hotels] HTTP fetch completed in {:?}, got {} KB",

@@ -54,6 +54,8 @@ pub struct McpFlightsResponse {
     pub total: usize,
     pub query: McpQuery,
     pub results: Vec<McpItinerary>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -100,7 +102,7 @@ impl FlightSearchResult {
         })
     }
 
-    pub fn to_mcp_api_response(&self) -> McpFlightResponse {
+    pub fn to_mcp_api_response(&self, warnings: Vec<String>) -> McpFlightResponse {
         let curr = self
             .itineraries
             .first()
@@ -158,6 +160,7 @@ impl FlightSearchResult {
                     search_url: self.search_params.get_search_url(),
                 },
                 results,
+                warnings,
             },
         }
     }
