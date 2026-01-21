@@ -28,7 +28,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Once;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
+use tokio::process::{ChildStdout, Command};
 use tokio::time::Duration;
 use tracing;
 use tracing_subscriber;
@@ -305,7 +305,7 @@ async fn test_mcp_flights_stdio() -> Result<()> {
         .spawn()?;
 
     let mut stdout = child.stdout.take().unwrap();
-    let mut stderr = child.stderr.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
     let mut stdin = child.stdin.take().unwrap();
 
     mcp_initialize(&mut stdin, &mut stdout)
@@ -495,7 +495,7 @@ async fn test_mcp_hotels_stdio() -> Result<()> {
         .spawn()?;
 
     let mut stdout = child.stdout.take().unwrap();
-    let mut stderr = child.stderr.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
     let mut stdin = child.stdin.take().unwrap();
 
     mcp_initialize(&mut stdin, &mut stdout)
@@ -672,6 +672,99 @@ async fn test_mcp_hotels_stdio() -> Result<()> {
     println!("=== FIRST RESULT ===");
     println!("{}", serde_json::to_string_pretty(&results[0]).unwrap());
     println!("======================");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_mcp_hotels_with_unknown_amenity_warning() -> Result<()> {
+    init_tracing();
+    let path = find_binary()?;
+
+    let mut child = Command::new(&path)
+        .arg("stdio")
+        .stdout(Stdio::piped())
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()?;
+
+    let mut stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+
+    mcp_initialize(&mut stdin, &mut stdout)
+        .await
+        .context("MCP initialize failed")?;
+
+    let checkin_naive = today() + Months::new(1);
+    let checkout_naive = checkin_naive + chrono::Duration::days(3);
+    let checkin = checkin_naive.format("%Y-%m-%d").to_string();
+    let checkout = checkout_naive.format("%Y-%m-%d").to_string();
+
+    let args = json!({
+        "location": "Paris",
+        "checkin_date": checkin,
+        "checkout_date": checkout,
+        "adults": 2,
+        "children_ages": [],
+        "min_guest_rating": 4.0,
+        "stars": [4, 5],
+        "amenities": ["pool", "swiming_pool", "spa"],
+        "min_price": 50,
+        "max_price": 500
+    });
+
+    send_tool_call(&mut stdin, "search_hotels", args)
+        .await
+        .context("Failed to send hotel search tool call")?;
+
+    let response = read_json_response_with_timeout(&mut stdout, TIMEOUT)
+        .await
+        .context("Failed to read hotel search response")?;
+
+    drop(stdin);
+    let stderr_task = tokio::spawn(stream_stderr_to_console(stderr));
+    let _ = stderr_task.await;
+    drop(child);
+
+    assert!(response.is_object(), "Response should be an object");
+    let obj = response.as_object().unwrap();
+
+    assert!(obj.contains_key("id"), "Response should have id");
+    assert_eq!(obj["id"], 2, "Response id should be 2");
+
+    if obj.contains_key("error") {
+        let error = &obj["error"];
+        let error_obj = error.as_object().unwrap();
+        let code = error_obj["code"].as_i64().unwrap_or(-1);
+        let message = error_obj["message"].as_str().unwrap_or("unknown");
+        anyhow::bail!("API error: code={}, message={}", code, message);
+    }
+
+    let text_str = &obj["result"]["content"][0]["text"];
+    let inner: Value = serde_json::from_str(text_str.as_str().unwrap())
+        .context("Failed to parse inner hotel JSON")?;
+
+    let inner_obj = inner.as_object().unwrap();
+    let sh_obj = inner_obj["search_hotels"].as_object().unwrap();
+    let warnings = sh_obj["warnings"].as_array().unwrap();
+
+    assert!(!warnings.is_empty(), "Should have warnings for misspelled amenity");
+    let warning_text = warnings[0].as_str().unwrap();
+    assert!(
+        warning_text.contains("swiming_pool"),
+        "Warning should mention misspelled amenity: {}",
+        warning_text
+    );
+    assert!(
+        warning_text.contains("Unknown amenity"),
+        "Warning should mention unknown amenity: {}",
+        warning_text
+    );
+
+    println!("✓ Got expected warning for misspelled amenity: {}", warning_text);
 
     Ok(())
 }

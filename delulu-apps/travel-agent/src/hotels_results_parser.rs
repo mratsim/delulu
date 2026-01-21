@@ -106,7 +106,7 @@ impl HotelSearchResult {
                     search_url,
                 },
                 results,
-                warnings: Vec::new(),
+                warnings,
             },
         }
     }
