@@ -12,13 +12,11 @@ mcp = [
     "dep:rmcp",
     "dep:schemars",
     "dep:axum",
-    "dep:tower",
-    "dep:tokio-util",
     "tracing-subscriber/env-filter",
     "tokio/signal",
     "rmcp/transport-io",
     "rmcp/transport-streamable-http-server",
- ]
+  ]
 
 [dependencies]
 wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
@@ -41,8 +39,6 @@ term_size = "0.3"
 urlencoding = "2"
 schemars = { version = "1.0", features = ["derive"], optional = true }
 axum = { version = "0.7", optional = true }
-tower = { version = "0.4", optional = true }
-tokio-util = { version = "0.7", optional = true }
 rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
 
 [build-dependencies]
