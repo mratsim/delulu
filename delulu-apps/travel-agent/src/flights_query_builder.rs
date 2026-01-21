@@ -32,7 +32,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use proto::{
-    Airport as AirportProto, FlightData, Info, Passenger as PassengerProto, Seat as SeatProto,
+    Airport as AirportProto, FlightData, ProtoFlightSearch, Passenger as PassengerProto, Seat as SeatProto,
     Trip as TripProto,
 };
 
@@ -362,7 +362,7 @@ impl FlightSearchParams {
             .flat_map(|(ptype, count)| std::iter::repeat_n(*ptype, *count as usize))
             .collect();
 
-        let info = Info {
+        let info = ProtoFlightSearch {
             data: flight_data,
             passengers,
             seat: Some(self.cabin_class as i32),
@@ -387,7 +387,7 @@ impl FlightSearchParams {
         let tfs_bytes = STANDARD
             .decode(tfs_base64)
             .map_err(|e| anyhow::anyhow!("Failed to decode base64: {}", e))?;
-        let info = proto::Info::decode(tfs_bytes.as_slice())
+        let info = proto::ProtoFlightSearch::decode(tfs_bytes.as_slice())
             .context("Failed to decode protobuf")?;
 
         let mut from_airport = String::new();

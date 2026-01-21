@@ -41,15 +41,15 @@ pub struct FlightData {
     pub to_flight: ::core::option::Option<Airport>,
 }
 /// -----------------------------------------------------------------------------
-/// Info - Top-level container sent to Google Flights
+/// ProtoFlightSearch - Top-level container sent to Google Flights
 /// Contains complete search configuration including multiple flight legs,
 /// passenger breakdown, cabin class, and trip type.
 ///
-/// All top-level fields in Info are effectively optional per Google Flights'
+/// All top-level fields in ProtoFlightSearch are effectively optional per Google Flights'
 /// TFS protocol - the service fills reasonable defaults for anything omitted.
 /// -----------------------------------------------------------------------------
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Info {
+pub struct ProtoFlightSearch {
     /// Multiple FlightData for multi-leg/multi-city trips
     #[prost(message, repeated, tag = "3")]
     pub data: ::prost::alloc::vec::Vec<FlightData>,

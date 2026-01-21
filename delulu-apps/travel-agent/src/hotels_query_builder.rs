@@ -328,7 +328,7 @@ impl HotelSearchParams {
 
         let explicit_guests = self.adults > 2 || !self.children_ages.is_empty();
 
-        let params = proto::TravelSearchParams {
+        let params = proto::ProtoHotelSearch {
             version: 1,
             guests: Some(proto::Guests {
                 entries: guest_entries,
@@ -372,7 +372,7 @@ impl HotelSearchParams {
         let ts_bytes = URL_SAFE_NO_PAD
             .decode(ts_base64)
             .map_err(|e| anyhow::anyhow!("Failed to decode base64: {}", e))?;
-        let params = proto::TravelSearchParams::decode(ts_bytes.as_slice())
+        let params = proto::ProtoHotelSearch::decode(ts_bytes.as_slice())
             .context("Failed to decode protobuf")?;
 
         let guests = params.guests.as_ref();
