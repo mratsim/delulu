@@ -32,7 +32,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "price", "rating", "amenities"],
+            "required": ["name", "price", "rating"],
             "properties": {
               "name": { "type": "string" },
               "price": { "type": "integer", "minimum": 0 },

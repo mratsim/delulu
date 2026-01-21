@@ -405,7 +405,7 @@ impl FlightSearchParams {
         let mut max_stops: Option<i32> = None;
         let mut preferred_airlines: Option<Vec<String>> = None;
 
-        for flight in &info.data {
+        for (idx, flight) in info.data.iter().enumerate() {
             if let Some(from) = &flight.from_flight {
                 if from_airport.is_empty() {
                     from_airport = from.airport.clone();
@@ -425,19 +425,21 @@ impl FlightSearchParams {
             if !flight.airlines.is_empty() {
                 preferred_airlines = Some(flight.airlines.clone());
             }
-            if info.data.len() > 1 && return_date.is_none() && !flight.date.is_empty() {
+            if info.data.len() > 1 && return_date.is_none() && idx > 0 && !flight.date.is_empty() {
                 return_date = Some(flight.date.clone());
             }
         }
 
         let mut adults: u32 = 0;
+        let mut infants_on_lap: u32 = 0;
+        let mut infants_in_seat: u32 = 0;
         let mut children_ages: Vec<i32> = Vec::new();
         for passenger_type in &info.passengers {
             match passenger_type {
                 p if *p == PassengerProto::Adult as i32 => adults += 1,
                 p if *p == PassengerProto::Child as i32 => children_ages.push(0),
-                p if *p == PassengerProto::InfantOnLap as i32 => children_ages.push(-1),
-                p if *p == PassengerProto::InfantInSeat as i32 => children_ages.push(-1),
+                p if *p == PassengerProto::InfantOnLap as i32 => infants_on_lap += 1,
+                p if *p == PassengerProto::InfantInSeat as i32 => infants_in_seat += 1,
                 _ => {}
             }
         }
@@ -470,6 +472,12 @@ impl FlightSearchParams {
                 }
                 if !children_ages.is_empty() {
                     passengers.push((Passenger::Child, children_ages.len() as u32));
+                }
+                if infants_on_lap > 0 {
+                    passengers.push((Passenger::InfantOnLap, infants_on_lap));
+                }
+                if infants_in_seat > 0 {
+                    passengers.push((Passenger::InfantInSeat, infants_in_seat));
                 }
                 passengers
             },
