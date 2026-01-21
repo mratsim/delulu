@@ -313,7 +313,8 @@ async fn main() -> Result<(), Error> {
                 .await
                 .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
             tracing::debug!("Server running. Press Ctrl+C to stop.");
-            std::future::pending::<()>().await;
+            tokio::signal::ctrl_c().await.ok();
+            tracing::info!("Shutting down...");
         }
         Command::Http { host, port } => {
             let addr: SocketAddr = format!("{}:{}", host, port)
@@ -333,7 +334,13 @@ async fn main() -> Result<(), Error> {
                 .await
                 .context("Failed to bind to address")?;
             tracing::debug!("Listening on {}", addr);
+            let ctrl_c = tokio::signal::ctrl_c();
+            tokio::pin!(ctrl_c);
             axum::serve(listener, app)
+                .with_graceful_shutdown(async move {
+                    let _ = ctrl_c.await;
+                    tracing::info!("Shutting down HTTP server...");
+                })
                 .await
                 .context("HTTP server error")?;
         }
