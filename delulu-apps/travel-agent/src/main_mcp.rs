@@ -306,10 +306,9 @@ async fn main() -> Result<(), Error> {
 
     match args.command {
         Command::Stdio => {
-            eprintln!("Starting MCP server over stdio...");
             let server = TravelAgentServer::new(flights_client, hotels_client);
             let (stdin, stdout) = rmcp::transport::io::stdio();
-            tracing::debug!("Starting MCP server on stdio transport...");
+            tracing::info!("Starting MCP server over stdio...");
             let _running = serve_server(Arc::new(server), (stdin, stdout))
                 .await
                 .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;

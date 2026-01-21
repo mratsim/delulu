@@ -34,6 +34,9 @@ use tracing;
 use tracing_subscriber;
 use tracing_subscriber::EnvFilter;
 
+mod mcp_helpers;
+use mcp_helpers::{find_binary, stream_stderr_to_console};
+
 const TIMEOUT: Duration = Duration::from_secs(3);
 
 fn init_tracing() {
@@ -88,31 +91,6 @@ fn validate_json_schema(instance: &Value, schema: &Value, schema_name: &str) -> 
             errors.join("\n")
         )
     }
-}
-fn find_binary() -> Result<PathBuf> {
-    let manifest_dir = PathBuf::from(
-        std::env::var("CARGO_MANIFEST_DIR")
-            .map_err(|e| anyhow::anyhow!("CARGO_MANIFEST_DIR not set: {}", e))?,
-    );
-    let workspace_root = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .ok_or_else(|| anyhow::anyhow!("Could not determine workspace root"))?;
-
-    let paths = [
-        workspace_root.join("target/debug/delulu-travel-mcp"),
-        workspace_root.join("target/release/delulu-travel-mcp"),
-    ];
-
-    for path in &paths {
-        if path.exists() {
-            return Ok(path.to_path_buf());
-        }
-    }
-    anyhow::bail!(
-        "Could not find delulu-travel-mcp binary. Run `cargo build -p delulu-travel-agent --features mcp` first. Searched: {:?}",
-        paths
-    )
 }
 
 fn today() -> NaiveDate {
@@ -252,45 +230,6 @@ async fn read_json_response_with_timeout(stdout: &mut ChildStdout, dur: Duration
     Ok(response)
 }
 
-async fn read_stderr_until_done(stderr: &mut ChildStderr) -> Result<String> {
-    let mut output = String::new();
-    let mut buf = [0u8; 4096];
-    let mut iterations = 0;
-    let mut done = false;
-
-    while !done && iterations < 10 {
-        iterations += 1;
-        match stderr.read(&mut buf).await {
-            Ok(0) => {
-                tracing::debug!("Stderr EOF after {} iterations", iterations);
-                break;
-            }
-            Ok(n) => {
-                let chunk = String::from_utf8_lossy(&buf[..n]);
-                output.push_str(&chunk);
-                if chunk.contains("input stream terminated") {
-                    tracing::debug!("Server signaled done");
-                    done = true;
-                }
-            }
-            Err(e) => {
-                tracing::debug!("Stderr error: {:?}", e);
-                break;
-            }
-        }
-    }
-
-    if !output.is_empty() {
-        tracing::warn!(
-            "Stderr output ({} bytes): {:?}",
-            output.len(),
-            &output[..output.len().min(500)]
-        );
-    }
-
-    Ok(output)
-}
-
 #[tokio::test]
 async fn test_mcp_server_starts_stdio() -> Result<()> {
     init_tracing();
@@ -304,21 +243,17 @@ async fn test_mcp_server_starts_stdio() -> Result<()> {
         .kill_on_drop(true)
         .spawn()?;
 
+    let stderr = child.stderr.take().unwrap();
     let mut stdout = child.stdout.take().unwrap();
-    let mut stderr = child.stderr.take().unwrap();
     let mut stdin = child.stdin.take().unwrap();
+
+    let _stderr_task = tokio::spawn(stream_stderr_to_console(stderr));
 
     mcp_initialize(&mut stdin, &mut stdout)
         .await
         .context("MCP initialize failed")?;
 
     drop(stdin);
-    let stderr_output = read_stderr_until_done(&mut stderr).await?;
-    if !stderr_output.is_empty() {
-        println!("=== STDERR ===");
-        println!("{}", stderr_output);
-        println!("===========");
-    }
     drop(child);
 
     Ok(())
@@ -413,12 +348,8 @@ async fn test_mcp_flights_stdio() -> Result<()> {
         .context("Failed to read flight search response")?;
 
     drop(stdin);
-    let stderr_output = read_stderr_until_done(&mut stderr).await?;
-    if !stderr_output.is_empty() {
-        println!("=== STDERR ===");
-        println!("{}", stderr_output);
-        println!("===========");
-    }
+    let stderr_task = tokio::spawn(stream_stderr_to_console(stderr));
+    let _ = stderr_task.await;
     drop(child);
 
     assert!(response.is_object(), "Response should be an object");
@@ -617,12 +548,8 @@ async fn test_mcp_hotels_stdio() -> Result<()> {
         .context("Failed to read hotel search response")?;
 
     drop(stdin);
-    let stderr_output = read_stderr_until_done(&mut stderr).await?;
-    if !stderr_output.is_empty() {
-        println!("=== STDERR ===");
-        println!("{}", stderr_output);
-        println!("===========");
-    }
+    let stderr_task = tokio::spawn(stream_stderr_to_console(stderr));
+    let _ = stderr_task.await;
     drop(child);
 
     assert!(response.is_object(), "Response should be an object");

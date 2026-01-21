@@ -24,15 +24,17 @@ use chrono::{Months, NaiveDate};
 use delulu_travel_agent::{FlightSearchParams, HotelSearchParams};
 use serde_json::Value;
 use serde_json::json;
-use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::process::{ChildStderr, Command};
+use tokio::process::Command;
 use tokio::time::Duration;
 use tracing::{debug, instrument};
 use tracing_subscriber;
 use tracing_subscriber::EnvFilter;
+
+mod mcp_helpers;
+use mcp_helpers::{find_binary, stream_stderr_to_console};
 
 // MCP http never quits so seems like we need rely on timeout
 // if we want to read stdout AND stderr since we can't send it a kill signal.
@@ -55,32 +57,6 @@ fn get_free_port() -> u16 {
     use std::net::TcpListener;
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.local_addr().unwrap().port()
-}
-
-fn find_binary() -> Result<PathBuf> {
-    let manifest_dir = PathBuf::from(
-        std::env::var("CARGO_MANIFEST_DIR")
-            .map_err(|e| anyhow::anyhow!("CARGO_MANIFEST_DIR not set: {}", e))?,
-    );
-    let workspace_root = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .ok_or_else(|| anyhow::anyhow!("Could not determine workspace root"))?;
-
-    let paths = [
-        workspace_root.join("target/debug/delulu-travel-mcp"),
-        workspace_root.join("target/release/delulu-travel-mcp"),
-    ];
-
-    for path in &paths {
-        if path.exists() {
-            return Ok(path.to_path_buf());
-        }
-    }
-    anyhow::bail!(
-        "Could not find delulu-travel-mcp binary. Run `cargo build -p delulu-travel-agent --features mcp` first. Searched: {:?}",
-        paths
-    )
 }
 
 fn today() -> NaiveDate {
@@ -282,18 +258,6 @@ async fn mcp_http_send_notification(
     Ok(())
 }
 
-async fn stream_stderr_to_stdout(stderr: ChildStderr) {
-    let mut stderr = stderr;
-    let mut buf = [0u8; 4096];
-    while let Ok(n) = stderr.read(&mut buf).await {
-        if n == 0 {
-            break;
-        }
-        let output = String::from_utf8_lossy(&buf[..n]);
-        eprint!("{}", output);
-    }
-}
-
 fn parse_chunked_http_sse(body: &str) -> Result<String> {
     let second_response_start = body
         .find("\r\n\r\nHTTP/1.1 2")
@@ -440,7 +404,7 @@ async fn test_mcp_http_server_starts() -> Result<()> {
         .spawn()?;
 
     let stderr = child.stderr.take().unwrap();
-    let stderr_task = tokio::spawn(stream_stderr_to_stdout(stderr));
+    let stderr_task = tokio::spawn(stream_stderr_to_console(stderr));
 
     tokio::time::sleep(Duration::from_secs(1)).await;
     debug!("Sleep complete, connecting to TCP...");
@@ -488,7 +452,7 @@ async fn test_mcp_flights_http() -> Result<()> {
         .spawn()?;
 
     let stderr = child.stderr.take().unwrap();
-    let stderr_task = tokio::spawn(stream_stderr_to_stdout(stderr));
+    let stderr_task = tokio::spawn(stream_stderr_to_console(stderr));
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
@@ -720,7 +684,7 @@ async fn test_mcp_hotels_http() -> Result<()> {
         .spawn()?;
 
     let stderr = child.stderr.take().unwrap();
-    let stderr_task = tokio::spawn(stream_stderr_to_stdout(stderr));
+    let stderr_task = tokio::spawn(stream_stderr_to_console(stderr));
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
