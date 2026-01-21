@@ -23,6 +23,54 @@
 //! ## MCP API Response Schema (Optimized)
 //!
 //! The `to_mcp_api_response()` method serializes results to the following JSON schema:
+//! Optimized for context compression - currency/search_url moved to query, ratings simplified,
+//! amenities as compact array, and stars/rating merged where possible.
+//!
+//! ```json
+//! {
+//!   "$schema": "http://json-schema.org/draft-07/schema#",
+//!   "type": "object",
+//!   "required": ["search_hotels"],
+//!   "properties": {
+//!     "search_hotels": {
+//!       "type": "object",
+//!       "required": ["total", "query", "results"],
+//!       "properties": {
+//!         "total": {"type": "integer", "minimum": 0},
+//!         "query": {
+//!           "type": "object",
+//!           "required": ["loc", "in", "out", "curr", "search_url"],
+//!           "properties": {
+//!             "loc": {"type": "string"},
+//!             "in": {"type": "string"},
+//!             "out": {"type": "string"},
+//!             "curr": {"type": "string"},
+//!             "search_url": {"type": "string"}
+//!           }
+//!         },
+//!         "results": {
+//!           "type": "array",
+//!           "items": {
+//!             "type": "object",
+//!             "required": ["name", "price", "rating", "amenities"],
+//!             "properties": {
+//!               "name": {"type": "string"},
+//!               "price": {"type": "integer", "minimum": 0},
+//!               "rating": {"type": "number"},
+//!               "stars": {"type": "integer"},
+//!               "amenities": {"type": "array", "items": {"type": "string"}}
+//!             }
+//!           }
+//!         }
+//!       }
+//!     }
+//!   }
+//! }
+//! ```
+//!
+//! ## MCP API Response Schema (Optimized)
+//!
+//! The `to_mcp_api_response()` method serializes results to the following JSON schema:
 //! Optimized for context compression - currency moved to query, ratings simplified,
 //! amenities as compact array, and stars/rating merged where possible.
 //!
@@ -102,6 +150,7 @@ impl HotelSearchResult {
         checkin_date: String,
         checkout_date: String,
         currency: String,
+        search_url: String,
     ) -> McpHotelResponse {
         let results: Vec<McpHotel> = self
             .hotels
@@ -145,6 +194,7 @@ impl HotelSearchResult {
                     in_: checkin_date,
                     out: checkout_date,
                     curr: currency,
+                    search_url,
                 },
                 results,
             },
@@ -174,6 +224,7 @@ pub struct McpHotelQuery {
     pub in_: String,
     pub out: String,
     pub curr: String,
+    pub search_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

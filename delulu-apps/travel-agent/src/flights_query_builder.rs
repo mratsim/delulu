@@ -383,6 +383,96 @@ impl FlightSearchParams {
         )
     }
 
+    pub fn from_tfs(tfs_base64: &str) -> Result<Self> {
+        let tfs_bytes = STANDARD
+            .decode(tfs_base64)
+            .map_err(|e| anyhow::anyhow!("Failed to decode base64: {}", e))?;
+        let info = proto::Info::decode(tfs_bytes.as_slice())
+            .context("Failed to decode protobuf")?;
+
+        let mut from_airport = String::new();
+        let mut to_airport = String::new();
+        let mut depart_date = String::new();
+        let mut return_date: Option<String> = None;
+        let mut cabin_class = Seat::Economy;
+        let mut trip_type = Trip::RoundTrip;
+        let mut max_stops: Option<i32> = None;
+        let mut preferred_airlines: Option<Vec<String>> = None;
+
+        for flight in &info.data {
+            if let Some(from) = &flight.from_flight {
+                if from_airport.is_empty() {
+                    from_airport = from.airport.clone();
+                }
+            }
+            if let Some(to) = &flight.to_flight {
+                if to_airport.is_empty() {
+                    to_airport = to.airport.clone();
+                }
+            }
+            if depart_date.is_empty() {
+                depart_date = flight.date.clone();
+            }
+            if flight.max_stops.is_some() {
+                max_stops = flight.max_stops;
+            }
+            if !flight.airlines.is_empty() {
+                preferred_airlines = Some(flight.airlines.clone());
+            }
+            if info.data.len() > 1 && return_date.is_none() && !flight.date.is_empty() {
+                return_date = Some(flight.date.clone());
+            }
+        }
+
+        let mut adults: u32 = 0;
+        let mut children_ages: Vec<i32> = Vec::new();
+        for passenger_type in &info.passengers {
+            match passenger_type {
+                p if *p == PassengerProto::Adult as i32 => adults += 1,
+                p if *p == PassengerProto::Child as i32 => children_ages.push(0),
+                p if *p == PassengerProto::InfantOnLap as i32 => children_ages.push(-1),
+                p if *p == PassengerProto::InfantInSeat as i32 => children_ages.push(-1),
+                _ => {}
+            }
+        }
+        if adults == 0 {
+            adults = 1;
+        }
+
+        if let Some(seat) = info.seat {
+            if let Ok(s) = Seat::try_from(seat) {
+                cabin_class = s;
+            }
+        }
+
+        if let Some(trip) = info.trip {
+            if let Ok(t) = Trip::try_from(trip) {
+                trip_type = t;
+            }
+        }
+
+        Ok(FlightSearchParams {
+            from_airport,
+            to_airport,
+            depart_date,
+            return_date,
+            cabin_class,
+            passengers: {
+                let mut passengers = vec![];
+                if adults > 0 {
+                    passengers.push((Passenger::Adult, adults));
+                }
+                if !children_ages.is_empty() {
+                    passengers.push((Passenger::Child, children_ages.len() as u32));
+                }
+                passengers
+            },
+            trip_type,
+            max_stops,
+            preferred_airlines,
+        })
+    }
+
     pub fn builder(
         from_airport: String,
         to_airport: String,

@@ -10,13 +10,14 @@
         "total": { "type": "integer", "minimum": 0 },
         "query": {
           "type": "object",
-          "required": ["from", "to", "date", "curr", "seat"],
+          "required": ["from", "to", "date", "curr", "seat", "search_url"],
           "properties": {
             "from": { "type": "string" },
             "to": { "type": "string" },
             "date": { "type": "string" },
             "curr": { "type": "string" },
-            "seat": { "type": "string" }
+            "seat": { "type": "string" },
+            "search_url": { "type": "string" }
           }
         },
         "results": {

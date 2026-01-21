@@ -22,8 +22,8 @@
 //!
 //! ## MCP API Response Schema (Optimized)
 //!
-//! The `to_api_response()` method serializes results to the following JSON schema:
-//! Optimized for context compression - currency/seat moved to query, route flattened,
+//! The `to_mcp_api_response()` method serializes results to the following JSON schema:
+//! Optimized for context compression - currency/seat/search_url moved to query, route flattened,
 //! stops renamed to layover (optional), and duration in minutes for easier LLM math.
 //!
 //! ```json
@@ -39,13 +39,14 @@
 //!         "total": {"type": "integer", "minimum": 0},
 //!         "query": {
 //!           "type": "object",
-//!           "required": ["from", "to", "date", "curr", "seat"],
+//!           "required": ["from", "to", "date", "curr", "seat", "search_url"],
 //!           "properties": {
 //!             "from": {"type": "string"},
 //!             "to": {"type": "string"},
 //!             "date": {"type": "string"},
 //!             "curr": {"type": "string"},
-//!             "seat": {"type": "string"}
+//!             "seat": {"type": "string"},
+//!             "search_url": {"type": "string"}
 //!           }
 //!         },
 //!         "results": {
@@ -68,56 +69,6 @@
 //!                   }
 //!                 }
 //!               }
-//!             }
-//!           }
-//!         }
-//!       }
-//!     }
-//!   }
-//! }
-//! ```
-//!
-//! The `to_api_response()` method serializes results to the following JSON schema:
-//!
-//! ```json
-//! {
-//!   "$schema": "http://json-schema.org/draft-07/schema#",
-//!   "type": "object",
-//!   "required": ["search_flights"],
-//!   "properties": {
-//!     "search_flights": {
-//!       "type": "object",
-//!       "required": ["total", "query", "results"],
-//!       "properties": {
-//!         "total": {"type": "integer", "minimum": 0},
-//!         "query": {
-//!           "type": "object",
-//!           "required": ["from", "to", "date"],
-//!           "properties": {
-//!             "from": {"type": "string"},
-//!             "to": {"type": "string"},
-//!             "date": {"type": "string"}
-//!           }
-//!         },
-//!         "results": {
-//!           "type": "array",
-//!           "items": {
-//!             "type": "object",
-//!             "required": ["price", "currency", "airlines", "route", "stops"],
-//!             "properties": {
-//!               "price": {"type": "integer", "minimum": 0},
-//!               "currency": {"type": "string"},
-//!               "airlines": {"type": "array", "items": {"type": "string"}},
-//!               "route": {
-//!                 "type": "object",
-//!                 "required": ["dep", "arr", "duration_hrs"],
-//!                 "properties": {
-//!                   "dep": {"type": "string"},
-//!                   "arr": {"type": "string"},
-//!                   "duration_hrs": {"type": "integer"}
-//!                 }
-//!               },
-//!               "stops": {"type": "array"}
 //!             }
 //!           }
 //!         }
@@ -166,6 +117,7 @@ pub struct McpQuery {
     pub date: String,
     pub curr: String,
     pub seat: String,
+    pub search_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -256,6 +208,7 @@ impl FlightSearchResult {
                     date: self.search_params.depart_date.clone(),
                     curr,
                     seat,
+                    search_url: self.search_params.get_search_url(),
                 },
                 results,
             },

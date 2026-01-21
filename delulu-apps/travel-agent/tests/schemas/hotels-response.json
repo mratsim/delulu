@@ -10,12 +10,13 @@
         "total": { "type": "integer", "minimum": 0 },
         "query": {
           "type": "object",
-          "required": ["loc", "in", "out", "curr"],
+          "required": ["loc", "in", "out", "curr", "search_url"],
           "properties": {
             "loc": { "type": "string" },
             "in": { "type": "string" },
             "out": { "type": "string" },
-            "curr": { "type": "string" }
+            "curr": { "type": "string" },
+            "search_url": { "type": "string" }
           }
         },
         "results": {

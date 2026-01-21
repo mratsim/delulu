@@ -21,6 +21,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};
+use delulu_travel_agent::{FlightSearchParams, HotelSearchParams};
 use serde_json::Value;
 use serde_json::json;
 use std::path::PathBuf;
@@ -376,22 +377,32 @@ async fn test_mcp_flights_stdio() -> Result<()> {
         .await
         .context("MCP initialize failed")?;
 
-    let depart_naive = today() + Months::new(2);
-    let return_naive = depart_naive + chrono::Duration::days(7);
-    let depart_date = depart_naive.format("%Y-%m-%d").to_string();
-    let return_date = return_naive.format("%Y-%m-%d").to_string();
+    let depart_date = today() + Months::new(2);
+    let depart_date_str = depart_date.format("%Y-%m-%d").to_string();
 
     let args = json!({
-        "from": "NRT",
-        "to": "JFK",
-        "date": depart_date,
-        "return_date": return_date,
+        "from": "LHR",
+        "to": "IST",
+        "date": depart_date_str,
         "seat": "economy",
         "adults": 2,
         "children_ages": [5, 8],
         "trip_type": "round_trip",
         "max_stops": 2
     });
+    let input_from = args["from"].as_str().unwrap().to_string();
+    let input_to = args["to"].as_str().unwrap().to_string();
+    let input_date = args["date"].as_str().unwrap().to_string();
+    let input_seat = args["seat"].as_str().unwrap().to_string();
+    let input_adults = args["adults"].as_u64().unwrap() as u32;
+    let input_children_ages: Vec<i32> = args["children_ages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_i64().unwrap() as i32)
+        .collect();
+    let input_trip = args["trip_type"].as_str().unwrap().to_string();
+    let input_max_stops = args["max_stops"].as_i64().unwrap() as i32;
 
     send_tool_call(&mut stdin, "search_flights", args)
         .await
@@ -446,11 +457,94 @@ async fn test_mcp_flights_stdio() -> Result<()> {
         "Result count should match total"
     );
 
+    let query = sf_obj["query"].as_object().unwrap();
+    let search_url = query["search_url"].as_str().unwrap();
+    assert!(
+        search_url.starts_with("https://www.google.com/travel/flights"),
+        "search_url should be a valid Google Flights URL, got: {}",
+        search_url
+    );
+    assert!(
+        search_url.contains("tfs="),
+        "search_url should contain tfs parameter"
+    );
+    let tfs_value = search_url
+        .split("tfs=")
+        .nth(1)
+        .and_then(|s| s.split('&').next())
+        .unwrap_or("");
+    assert!(
+        !tfs_value.is_empty(),
+        "search_url should have non-empty tfs value"
+    );
+    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, tfs_value)
+        .context("tfs parameter should be valid base64")?;
+    println!("✓ search_url present and valid: {} chars", search_url.len());
+
+    let decoded_params = FlightSearchParams::from_tfs(tfs_value)
+        .context("Failed to decode TFS parameter")?;
+    println!("✓ TFS decoded successfully");
+
+    assert_eq!(
+        decoded_params.from_airport, input_from,
+        "from airport should match"
+    );
+    assert_eq!(
+        decoded_params.to_airport, input_to,
+        "to airport should match"
+    );
+    assert_eq!(
+        decoded_params.depart_date, input_date,
+        "depart date should match"
+    );
+    assert_eq!(
+        decoded_params.cabin_class.as_str_name().to_lowercase(),
+        input_seat,
+        "seat should match"
+    );
+
+    let decoded_adults: u32 = decoded_params
+        .passengers
+        .iter()
+        .filter(|(t, _)| *t == delulu_travel_agent::Passenger::Adult)
+        .map(|(_, c)| *c)
+        .sum();
+    assert_eq!(decoded_adults, input_adults, "adults should match");
+
+    let decoded_children: u32 = decoded_params
+        .passengers
+        .iter()
+        .filter(|(t, _)| *t == delulu_travel_agent::Passenger::Child)
+        .map(|(_, c)| *c)
+        .sum();
+    assert_eq!(
+        decoded_children,
+        input_children_ages.len() as u32,
+        "children count should match"
+    );
+
+    assert_eq!(
+        decoded_params.trip_type.as_str_name().to_lowercase(),
+        input_trip,
+        "trip type should match"
+    );
+    assert_eq!(
+        decoded_params.max_stops,
+        Some(input_max_stops),
+        "max_stops should match"
+    );
+
+    println!("✓ TFS roundtrip validated - all parameters match input");
+
     println!("=== FLIGHTS REQUEST ===");
-    println!("SFO → JFK on {} (return {})", depart_date, return_date);
+    println!("{} → {} on {}", decoded_params.from_airport, decoded_params.to_airport, decoded_params.depart_date);
     println!("======================");
     println!("✓ Response validated against FLIGHTS_RESPONSE_SCHEMA");
     println!("✓ Found {} results (total: {})", results.len(), total);
+
+    println!("=== FIRST RESULT ===");
+    println!("{}", serde_json::to_string_pretty(&results[0]).unwrap());
+    println!("======================");
 
     Ok(())
 }
@@ -494,6 +588,25 @@ async fn test_mcp_hotels_stdio() -> Result<()> {
         "min_price": 100,
         "max_price": 500
     });
+    let _input_location = args["location"].as_str().unwrap().to_string();
+    let input_checkin = args["checkin_date"].as_str().unwrap().to_string();
+    let input_checkout = args["checkout_date"].as_str().unwrap().to_string();
+    let input_adults = args["adults"].as_u64().unwrap() as u32;
+    let input_children: Vec<i32> = args["children_ages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_i64().unwrap() as i32)
+        .collect();
+    let input_min_rating = args["min_guest_rating"].as_f64().unwrap();
+    let input_stars: Vec<i32> = args["stars"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_i64().unwrap() as i32)
+        .collect();
+    let input_min_price = args["min_price"].as_i64().unwrap() as i32;
+    let input_max_price = args["max_price"].as_i64().unwrap() as i32;
 
     send_tool_call(&mut stdin, "search_hotels", args)
         .await
@@ -545,11 +658,93 @@ async fn test_mcp_hotels_stdio() -> Result<()> {
         "Result count should match total"
     );
 
+    let query = sh_obj["query"].as_object().unwrap();
+    let search_url = query["search_url"].as_str().unwrap();
+    assert!(
+        search_url.starts_with("https://www.google.com/travel/search"),
+        "search_url should be a valid Google Hotels URL, got: {}",
+        search_url
+    );
+    assert!(
+        search_url.contains("q=Paris"),
+        "search_url should contain q=Paris, got: {}",
+        search_url
+    );
+    assert!(
+        search_url.contains("q="),
+        "search_url should contain q parameter"
+    );
+    assert!(
+        search_url.contains("ts="),
+        "search_url should contain ts parameter"
+    );
+    let ts_value = search_url
+        .split("ts=")
+        .nth(1)
+        .and_then(|s| s.split('&').next())
+        .unwrap_or("");
+    assert!(
+        !ts_value.is_empty(),
+        "search_url should have non-empty ts value"
+    );
+    println!("✓ search_url present and valid: {} chars", search_url.len());
+
+    let decoded_params = HotelSearchParams::from_ts(ts_value)
+        .context("Failed to decode ts parameter")?;
+    println!("✓ ts decoded successfully");
+
+    assert_eq!(
+        decoded_params.checkin_date, input_checkin,
+        "checkin date should match"
+    );
+    assert_eq!(
+        decoded_params.checkout_date, input_checkout,
+        "checkout date should match"
+    );
+    assert_eq!(decoded_params.adults, input_adults, "adults should match");
+    assert_eq!(
+        decoded_params.children_ages.len(),
+        input_children.len(),
+        "children count should match"
+    );
+    for (decoded_age, expected_age) in decoded_params
+        .children_ages
+        .iter()
+        .zip(input_children.iter())
+    {
+        assert_eq!(*decoded_age, *expected_age, "children ages should match");
+    }
+    assert_eq!(
+        decoded_params.min_guest_rating,
+        Some(input_min_rating),
+        "min_guest_rating should match"
+    );
+    assert_eq!(
+        decoded_params.hotel_stars, input_stars,
+        "hotel_stars should match"
+    );
+    assert_eq!(
+        decoded_params.min_price,
+        Some(input_min_price),
+        "min_price should match"
+    );
+    assert_eq!(
+        decoded_params.max_price,
+        Some(input_max_price),
+        "max_price should match"
+    );
+
+    println!("✓ ts roundtrip validated - all parameters match input");
+
     println!("=== HOTELS REQUEST ===");
-    println!("Paris, {} to {}", checkin, checkout);
+    println!("{}, {} to {}", decoded_params.loc_q_search, decoded_params.checkin_date, decoded_params.checkout_date);
     println!("===================");
     println!("✓ Response validated against HOTELS_RESPONSE_SCHEMA");
     println!("✓ Found {} results (total: {})", results.len(), total);
+
+    println!("=== FIRST RESULT ===");
+    println!("{}", serde_json::to_string_pretty(&results[0]).unwrap());
+    println!("======================");
 
     Ok(())
 }

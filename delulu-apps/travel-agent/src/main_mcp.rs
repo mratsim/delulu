@@ -139,7 +139,13 @@ impl TravelAgentServer {
     )]
     async fn search_flights(&self, params: Parameters<FlightsInput>) -> Result<String, String> {
         let input = params.0;
-        let passengers = vec![(delulu_travel_agent::Passenger::Adult, input.adults)];
+        let mut passengers = vec![(delulu_travel_agent::Passenger::Adult, input.adults)];
+        if !input.children_ages.is_empty() {
+            passengers.push((
+                delulu_travel_agent::Passenger::Child,
+                input.children_ages.len() as u32,
+            ));
+        }
         let params = FlightSearchParams {
             from_airport: input.from,
             to_airport: input.to,
@@ -199,11 +205,13 @@ impl TravelAgentServer {
             .await
             .map_err(|e| format!("Hotel search failed: {e}"))?;
 
+        let search_url = params.get_search_url();
         serde_json::to_string(&result.to_mcp_api_response(
             params.loc_q_search,
             params.checkin_date,
             params.checkout_date,
             params.currency,
+            search_url,
         ))
         .map_err(|e| e.to_string())
     }
