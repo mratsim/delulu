@@ -32,8 +32,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use proto::{
-    Airport as AirportProto, FlightData, ProtoFlightSearch, Passenger as PassengerProto, Seat as SeatProto,
-    Trip as TripProto,
+    Airport as AirportProto, FlightData, Passenger as PassengerProto, ProtoFlightSearch,
+    Seat as SeatProto, Trip as TripProto,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]

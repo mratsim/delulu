@@ -180,11 +180,23 @@ impl TravelAgentServer {
 
         let mut warnings: Vec<String> = Vec::new();
         if !invalid_amenities.is_empty() {
-            let valid_list = ["indoor_pool", "outdoor_pool", "pool", "spa", "kid_friendly", "air_conditioned", "ev_charger"]
-                .join(", ");
+            let valid_list = [
+                "indoor_pool",
+                "outdoor_pool",
+                "pool",
+                "spa",
+                "kid_friendly",
+                "air_conditioned",
+                "ev_charger",
+            ]
+            .join(", ");
             warnings.push(format!(
                 "Unknown amenity(s): {}. Valid amenities: {}.",
-                invalid_amenities.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "),
+                invalid_amenities
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 valid_list
             ));
         }

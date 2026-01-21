@@ -173,7 +173,12 @@ impl QueryQueue {
                 let available = tokens.load(Ordering::SeqCst);
                 if available > 0 {
                     if tokens
-                        .compare_exchange(available, available - 1, Ordering::SeqCst, Ordering::SeqCst)
+                        .compare_exchange(
+                            available,
+                            available - 1,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        )
                         .is_ok()
                     {
                         return;
@@ -182,7 +187,7 @@ impl QueryQueue {
                     self.refill_tokens().await;
                     time::sleep(*spin_delay).await;
                 }
-            }
+            },
         }
     }
 

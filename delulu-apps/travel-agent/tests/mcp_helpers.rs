@@ -38,7 +38,8 @@ pub async fn stream_stderr_to_console(mut stderr: tokio::process::ChildStderr) {
         }
         let output = String::from_utf8_lossy(&buf[..n]);
         eprint!("{}", output);
-        if output.contains("input stream terminated") { // rmcp magic string produced when stdin is dropped
+        if output.contains("input stream terminated") {
+            // rmcp magic string produced when stdin is dropped
             break;
         }
     }

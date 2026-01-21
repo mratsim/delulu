@@ -412,8 +412,8 @@ async fn test_mcp_flights_stdio() -> Result<()> {
         .context("tfs parameter should be valid base64")?;
     println!("✓ search_url present and valid: {} chars", search_url.len());
 
-    let decoded_params = FlightSearchParams::from_tfs(tfs_value)
-        .context("Failed to decode TFS parameter")?;
+    let decoded_params =
+        FlightSearchParams::from_tfs(tfs_value).context("Failed to decode TFS parameter")?;
     println!("✓ TFS decoded successfully");
 
     assert_eq!(
@@ -468,7 +468,10 @@ async fn test_mcp_flights_stdio() -> Result<()> {
     println!("✓ TFS roundtrip validated - all parameters match input");
 
     println!("=== FLIGHTS REQUEST ===");
-    println!("{} → {} on {}", decoded_params.from_airport, decoded_params.to_airport, decoded_params.depart_date);
+    println!(
+        "{} → {} on {}",
+        decoded_params.from_airport, decoded_params.to_airport, decoded_params.depart_date
+    );
     println!("======================");
     println!("✓ Response validated against FLIGHTS_RESPONSE_SCHEMA");
     println!("✓ Found {} results (total: {})", results.len(), total);
@@ -616,8 +619,8 @@ async fn test_mcp_hotels_stdio() -> Result<()> {
     );
     println!("✓ search_url present and valid: {} chars", search_url.len());
 
-    let decoded_params = HotelSearchParams::from_ts(ts_value)
-        .context("Failed to decode ts parameter")?;
+    let decoded_params =
+        HotelSearchParams::from_ts(ts_value).context("Failed to decode ts parameter")?;
     println!("✓ ts decoded successfully");
 
     assert_eq!(
@@ -664,7 +667,10 @@ async fn test_mcp_hotels_stdio() -> Result<()> {
     println!("✓ ts roundtrip validated - all parameters match input");
 
     println!("=== HOTELS REQUEST ===");
-    println!("{}, {} to {}", decoded_params.loc_q_search, decoded_params.checkin_date, decoded_params.checkout_date);
+    println!(
+        "{}, {} to {}",
+        decoded_params.loc_q_search, decoded_params.checkin_date, decoded_params.checkout_date
+    );
     println!("===================");
     println!("✓ Response validated against HOTELS_RESPONSE_SCHEMA");
     println!("✓ Found {} results (total: {})", results.len(), total);
@@ -751,7 +757,10 @@ async fn test_mcp_hotels_with_unknown_amenity_warning() -> Result<()> {
     let sh_obj = inner_obj["search_hotels"].as_object().unwrap();
     let warnings = sh_obj["warnings"].as_array().unwrap();
 
-    assert!(!warnings.is_empty(), "Should have warnings for misspelled amenity");
+    assert!(
+        !warnings.is_empty(),
+        "Should have warnings for misspelled amenity"
+    );
     let warning_text = warnings[0].as_str().unwrap();
     assert!(
         warning_text.contains("swiming_pool"),
@@ -764,7 +773,10 @@ async fn test_mcp_hotels_with_unknown_amenity_warning() -> Result<()> {
         warning_text
     );
 
-    println!("✓ Got expected warning for misspelled amenity: {}", warning_text);
+    println!(
+        "✓ Got expected warning for misspelled amenity: {}",
+        warning_text
+    );
 
     Ok(())
 }

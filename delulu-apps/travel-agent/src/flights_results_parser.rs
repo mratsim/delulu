@@ -24,7 +24,6 @@
 //!
 //! See [`schemas/flights-response.json`](schemas/flights-response.json) for the canonical JSON schema.
 
-
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;

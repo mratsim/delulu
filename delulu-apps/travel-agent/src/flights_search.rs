@@ -39,7 +39,12 @@ pub struct GoogleFlightsClient {
 }
 
 impl GoogleFlightsClient {
-    pub fn new(language: String, currency: String, timeout_secs: u64, queries_per_second: u32) -> Result<Self> {
+    pub fn new(
+        language: String,
+        currency: String,
+        timeout_secs: u64,
+        queries_per_second: u32,
+    ) -> Result<Self> {
         let client = wreq::Client::builder()
             .emulation(Emulation::Safari18_5)
             .redirect(Policy::default())
@@ -84,7 +89,10 @@ impl GoogleFlightsClient {
             })
             .await;
         let total_elapsed = queue_start.elapsed();
-        tracing::debug!("[fetch_raw] Query queue + HTTP execution time: {:?}", total_elapsed);
+        tracing::debug!(
+            "[fetch_raw] Query queue + HTTP execution time: {:?}",
+            total_elapsed
+        );
 
         let response = response.map_err(|e| anyhow!("Request failed: {:?}", e))?;
 

@@ -79,11 +79,7 @@ impl HotelSearchResult {
                     .and_then(|s| s.trim().parse().ok())
                     .filter(|&s| s > 0);
                 let rating = hotel.rating.unwrap_or(0.0);
-                let amenities: Vec<String> = hotel
-                    .amenities
-                    .iter()
-                    .cloned()
-                    .collect();
+                let amenities: Vec<String> = hotel.amenities.iter().cloned().collect();
 
                 McpHotel {
                     name: hotel.name.clone(),

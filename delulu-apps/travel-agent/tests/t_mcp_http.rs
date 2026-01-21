@@ -589,8 +589,8 @@ async fn test_mcp_flights_http() -> Result<()> {
         .context("tfs parameter should be valid base64")?;
     debug!("✓ search_url present and valid");
 
-    let decoded_params = FlightSearchParams::from_tfs(tfs_value)
-        .context("Failed to decode TFS parameter")?;
+    let decoded_params =
+        FlightSearchParams::from_tfs(tfs_value).context("Failed to decode TFS parameter")?;
     debug!("✓ TFS decoded successfully");
 
     assert_eq!(
@@ -645,7 +645,10 @@ async fn test_mcp_flights_http() -> Result<()> {
     debug!("✓ TFS roundtrip validated - all parameters match input");
 
     println!("=== FLIGHTS REQUEST ===");
-    println!("{} → {} on {}", decoded_params.from_airport, decoded_params.to_airport, decoded_params.depart_date);
+    println!(
+        "{} → {} on {}",
+        decoded_params.from_airport, decoded_params.to_airport, decoded_params.depart_date
+    );
     println!("======================");
     println!("✓ HTTP transport flight search successful");
     println!("✓ Found {} results (total: {})", results.len(), total);
@@ -842,8 +845,8 @@ async fn test_mcp_hotels_http() -> Result<()> {
     );
     debug!("✓ search_url present and valid");
 
-    let decoded_params = HotelSearchParams::from_ts(ts_value)
-        .context("Failed to decode ts parameter")?;
+    let decoded_params =
+        HotelSearchParams::from_ts(ts_value).context("Failed to decode ts parameter")?;
     debug!("✓ ts decoded successfully");
 
     assert_eq!(
@@ -890,7 +893,10 @@ async fn test_mcp_hotels_http() -> Result<()> {
     debug!("✓ ts roundtrip validated - all parameters match input");
 
     println!("=== HOTELS REQUEST ===");
-    println!("{}, {} to {}", decoded_params.loc_q_search, decoded_params.checkin_date, decoded_params.checkout_date);
+    println!(
+        "{}, {} to {}",
+        decoded_params.loc_q_search, decoded_params.checkin_date, decoded_params.checkout_date
+    );
     println!("===================");
     println!("✓ HTTP transport hotel search successful");
     println!("✓ Found {} results (total: {})", results.len(), total);
