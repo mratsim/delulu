@@ -106,6 +106,7 @@ impl Default for QueryQueue {
 impl QueryQueue {
     /// Create a new work queue with max concurrent requests
     pub fn with_concurrency_limit(max_concurrent: u64) -> Self {
+        let max_concurrent = max_concurrent.max(1);
         Self {
             semaphore: AsyncSemaphore::new(max_concurrent as usize),
             ..Default::default()
@@ -114,6 +115,7 @@ impl QueryQueue {
 
     /// Create a new work queue with QPS limit
     pub fn with_qps_limit(qps_limit: u64) -> Self {
+        let qps_limit = qps_limit.max(1);
         Self {
             semaphore: AsyncSemaphore::new(qps_limit as usize),
             rate_limit: RateLimit::Qps {
@@ -142,10 +144,13 @@ impl QueryQueue {
                 let now = Instant::now();
                 let elapsed = now.duration_since(*last);
                 if elapsed >= *refill_interval {
-                    let new_tokens = (elapsed.as_secs_f64() * self.qps_limit() as f64) as u64;
-                    let current = tokens.fetch_add(new_tokens, Ordering::SeqCst);
-                    let capped = current.saturating_add(new_tokens).min(self.qps_limit());
-                    tokens.store(capped, Ordering::SeqCst);
+                    let limit = self.qps_limit();
+                    let new_tokens = (elapsed.as_secs_f64() * limit as f64) as u64;
+                    if new_tokens > 0 {
+                        let _ = tokens.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |cur| {
+                            Some(cur.saturating_add(new_tokens).min(limit))
+                        });
+                    }
                     *last = now;
                 }
             }

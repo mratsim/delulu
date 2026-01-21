@@ -25,11 +25,14 @@
 //! See [`schemas/hotels-response.json`](schemas/hotels-response.json) for the canonical JSON schema.
 
 use anyhow::Result;
-use schemars::JsonSchema;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[cfg(feature = "mcp")]
+use schemars::JsonSchema;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct Hotel {
     pub name: String,
@@ -44,7 +47,8 @@ pub struct Hotel {
     pub address: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct HotelSearchResult {
     pub hotels: Vec<Hotel>,
@@ -79,7 +83,7 @@ impl HotelSearchResult {
                     .and_then(|s| s.trim().parse().ok())
                     .filter(|&s| s > 0);
                 let rating = hotel.rating.unwrap_or(0.0);
-                let amenities: Vec<String> = hotel.amenities.iter().cloned().collect();
+                let amenities: Vec<String> = hotel.amenities.clone();
 
                 McpHotel {
                     name: hotel.name.clone(),
@@ -108,13 +112,15 @@ impl HotelSearchResult {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct McpHotelResponse {
     pub search_hotels: McpHotelsResponse,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct McpHotelsResponse {
     pub total: usize,
@@ -124,7 +130,8 @@ pub struct McpHotelsResponse {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct McpHotelQuery {
     pub loc: String,
@@ -135,7 +142,8 @@ pub struct McpHotelQuery {
     pub search_url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct McpHotel {
     pub name: String,
@@ -143,7 +151,7 @@ pub struct McpHotel {
     pub rating: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stars: Option<i32>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub amenities: Vec<String>,
 }
 

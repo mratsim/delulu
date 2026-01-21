@@ -65,7 +65,8 @@ enum Command {
     },
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct FlightsInput {
     pub from: String,
@@ -88,7 +89,8 @@ pub struct FlightsInput {
     // pub currency: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct HotelsInput {
     pub location: String,
@@ -308,12 +310,22 @@ async fn main() -> Result<(), Error> {
 
     tracing::debug!("Creating flights client...");
     let flights_client = Arc::new(
-        GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)
-            .context("Failed to create flights client")?,
+        GoogleFlightsClient::new(
+            "en".into(),
+            "USD".into(),
+            5, // timeout_secs
+            2, // queries_per_second
+        )
+        .context("Failed to create flights client")?,
     );
     tracing::debug!("Creating hotels client...");
-    let hotels_client =
-        Arc::new(GoogleHotelsClient::new(5, 2).context("Failed to create hotels client")?);
+    let hotels_client = Arc::new(
+        GoogleHotelsClient::new(
+            5, // timeout_secs
+            2, // queries_per_second
+        )
+        .context("Failed to create hotels client")?,
+    );
     tracing::debug!("Clients created");
 
     match args.command {

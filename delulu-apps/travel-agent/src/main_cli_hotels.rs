@@ -280,7 +280,10 @@ async fn main() -> Result<()> {
 
     println!("\n🔗 Search URL: {}\n", search_url);
 
-    let client = GoogleHotelsClient::new(5, 2)?;
+    let client = GoogleHotelsClient::new(
+        5, // timeout_secs
+        2, // queries_per_second
+    )?;
     match client.search_hotels(&request).await {
         Ok(results) => {
             if results.hotels.is_empty() {

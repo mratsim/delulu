@@ -32,7 +32,7 @@ def validate_json_schema(instance: dict, schema: dict, schema_name: str) -> None
     errors = list(validator.iter_errors(instance))
     if errors:
         error_msgs = [f"{schema_name}: {e.message}" for e in errors]
-        raise ValidationError(f"Schema validation failed:\n" + "\n".join(error_msgs))
+        raise ValidationError("Schema validation failed:\n" + "\n".join(error_msgs))
 
 
 def kill_server_processes() -> None:
@@ -120,13 +120,13 @@ async def test_search_flights(session) -> bool:
     print(f"  Response length: {len(text)} chars")
 
     data = json.loads(text)
-    print(f"  Got valid JSON response")
+    print("  Got valid JSON response")
 
     assert "search_flights" in data, "Response should contain search_flights"
 
     try:
         validate_json_schema(data, FLIGHTS_RESPONSE_SCHEMA, "flights_response")
-        print(f"  JSON schema validated")
+        print("  JSON schema validated")
     except ValidationError as e:
         print(f"  Schema validation warning: {e}")
 
@@ -174,14 +174,20 @@ async def test_search_hotels(session) -> bool:
     text = content[0].text
     print(f"  Response length: {len(text)} chars")
 
-    data = json.loads(text)
-    print(f"  Got valid JSON response")
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"  Response is not valid JSON: {e}")
+        print(f"     ====\n    {text}\n====\n")
+        return False
+
+    print("  Got valid JSON response")
 
     assert "search_hotels" in data, "Response should contain search_hotels"
 
     try:
         validate_json_schema(data, HOTELS_RESPONSE_SCHEMA, "hotels_response")
-        print(f"  JSON schema validated")
+        print("  JSON schema validated")
     except ValidationError as e:
         print(f"  Schema validation warning: {e}")
 

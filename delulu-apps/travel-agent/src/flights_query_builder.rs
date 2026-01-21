@@ -28,15 +28,18 @@ use anyhow::{Context, Result, ensure};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "mcp")]
+use schemars::JsonSchema;
 
 use proto::{
     Airport as AirportProto, FlightData, Passenger as PassengerProto, ProtoFlightSearch,
     Seat as SeatProto, Trip as TripProto,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum Seat {
@@ -77,7 +80,7 @@ impl From<Seat> for i32 {
 
 impl TryFrom<i32> for Seat {
     type Error = ();
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
+    fn try_from(v: i32) -> std::result::Result<Self, Self::Error> {
         match v {
             v if v == Seat::Unknown as i32 => Ok(Seat::Unknown),
             v if v == Seat::Economy as i32 => Ok(Seat::Economy),
@@ -112,7 +115,8 @@ impl Seat {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum Trip {
@@ -147,7 +151,7 @@ impl From<Trip> for i32 {
 
 impl TryFrom<i32> for Trip {
     type Error = ();
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
+    fn try_from(v: i32) -> std::result::Result<Self, Self::Error> {
         match v {
             v if v == Trip::RoundTrip as i32 => Ok(Trip::RoundTrip),
             v if v == Trip::OneWay as i32 => Ok(Trip::OneWay),
@@ -176,7 +180,8 @@ impl Trip {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum Passenger {
@@ -205,7 +210,7 @@ impl From<Passenger> for i32 {
 
 impl TryFrom<i32> for Passenger {
     type Error = ();
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
+    fn try_from(v: i32) -> std::result::Result<Self, Self::Error> {
         match v {
             v if v == Passenger::Adult as i32 => Ok(Passenger::Adult),
             v if v == Passenger::Child as i32 => Ok(Passenger::Child),
@@ -237,7 +242,8 @@ impl Passenger {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct FlightSearchParams {
     pub from_airport: String,

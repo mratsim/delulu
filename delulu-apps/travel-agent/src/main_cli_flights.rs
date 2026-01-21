@@ -179,21 +179,17 @@ fn fmt_stops_and_layovers(layovers: &[delulu_travel_agent::Layover]) -> String {
             }
         }
         n => {
-            let layover_str = if layovers.is_empty() {
-                String::new()
-            } else {
-                let parts: Vec<String> = layovers
-                    .iter()
-                    .map(|l| {
-                        let dur = l
-                            .duration_minutes
-                            .map_or("??".to_string(), |m| fmt_duration(m));
-                        let name = l.airport_city.as_deref().unwrap_or("Unknown");
-                        format!("{}@{}", dur, name)
-                    })
-                    .collect();
-                format!(": {}", parts.join(", "))
-            };
+            let parts: Vec<String> = layovers
+                .iter()
+                .map(|l| {
+                    let dur = l
+                        .duration_minutes
+                        .map_or("??".to_string(), |m| fmt_duration(m));
+                    let name = l.airport_city.as_deref().unwrap_or("Unknown");
+                    format!("{}@{}", dur, name)
+                })
+                .collect();
+            let layover_str = format!(": {}", parts.join(", "));
             format!("{} stops{}", n, layover_str)
         }
     }
@@ -365,7 +361,12 @@ async fn main() -> Result<()> {
     tracing::debug!("Generated search URL ({} chars)", search_url.len());
 
     // Create client and execute search
-    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
+    let client = GoogleFlightsClient::new(
+        "en".into(),
+        "USD".into(),
+        5, // timeout_secs
+        2, // queries_per_second
+    )?;
 
     let result = if args.save_html {
         let url = params.get_search_url();

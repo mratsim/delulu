@@ -27,13 +27,16 @@
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use schemars::JsonSchema;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "mcp")]
+use schemars::JsonSchema;
+
 use crate::FlightSearchParams;
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct FlightSearchResult {
     pub search_params: FlightSearchParams,
@@ -41,13 +44,15 @@ pub struct FlightSearchResult {
     pub raw_response: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct McpFlightResponse {
     pub search_flights: McpFlightsResponse,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct McpFlightsResponse {
     pub total: usize,
@@ -57,7 +62,8 @@ pub struct McpFlightsResponse {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct McpQuery {
     pub from: String,
@@ -68,7 +74,8 @@ pub struct McpQuery {
     pub search_url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct McpItinerary {
     pub price: i32,
@@ -78,7 +85,8 @@ pub struct McpItinerary {
     pub layover: Option<Vec<McpStop>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct McpStop {
     pub city: String,
@@ -165,7 +173,8 @@ impl FlightSearchResult {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct Layover {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -176,7 +185,8 @@ pub struct Layover {
     pub duration_minutes: Option<i32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct Itinerary {
     pub id: String,
@@ -191,7 +201,8 @@ pub struct Itinerary {
     pub layovers: Vec<Layover>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct FlightSegment {
     #[serde(skip_serializing_if = "Option::is_none")]

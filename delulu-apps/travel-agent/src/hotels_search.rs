@@ -79,7 +79,10 @@ impl GoogleHotelsClient {
             })
             .await;
         let queue_elapsed = queue_start.elapsed();
-        tracing::debug!("[fetch_raw] Query queue wait time: {:?}", queue_elapsed);
+        tracing::debug!(
+            "[fetch_raw] Query queue + HTTP execution time: {:?}",
+            queue_elapsed
+        );
 
         let response = response.map_err(|e| anyhow!("Request failed: {:?}", e))?;
 
@@ -94,7 +97,7 @@ impl GoogleHotelsClient {
         let body = response.text().await.context("Read body")?;
         let body_elapsed = body_start.elapsed();
         tracing::debug!(
-            "[fetch_raw] Response body read in {:?}: {} chars",
+            "[fetch_raw] Response body read in {:?}: {} bytes",
             body_elapsed,
             body.len()
         );

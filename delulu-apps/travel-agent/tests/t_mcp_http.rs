@@ -18,6 +18,7 @@
 //! MCP server integration tests using HTTP transport.
 
 #![cfg(test)]
+#![cfg(feature = "mcp")]
 
 use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};
@@ -154,12 +155,7 @@ async fn mcp_http_initialize(stream: &mut TcpStream, port: u16) -> Result<String
     session_id.context("No session ID")
 }
 
-async fn mcp_http_send(
-    stream: &mut TcpStream,
-    session_id: &str,
-    request: &str,
-    _wait_for_id: Option<i32>,
-) -> Result<String> {
+async fn mcp_http_send(stream: &mut TcpStream, session_id: &str, request: &str) -> Result<String> {
     let headers = format!(
         "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nmcp-session-id: {}\r\nContent-Length: {}\r\n\r\n{}",
         session_id,
@@ -505,7 +501,7 @@ async fn test_mcp_flights_http() -> Result<()> {
     })
     .to_string();
 
-    let response_body = mcp_http_send(&mut stream, &session_id, &call_request, Some(2))
+    let response_body = mcp_http_send(&mut stream, &session_id, &call_request)
         .await
         .context("Failed to send tool call")?;
 
@@ -533,13 +529,8 @@ async fn test_mcp_flights_http() -> Result<()> {
         let error_obj = error.as_object().unwrap();
         let code = error_obj["code"].as_i64().unwrap_or(-1);
         let message = error_obj["message"].as_str().unwrap_or("unknown");
-        println!("⚠ API error: code={}, message={}", code, message);
         drop(stream);
-        let _ = child.kill().await;
-        let _ = child.wait().await;
-        let _ = stderr_task.await;
-        println!("⚠ Skipping validation due to API error");
-        return Ok(());
+        anyhow::bail!("API error: code={}, message={}", code, message);
     }
 
     let text_str = &obj["result"]["content"][0]["text"];
@@ -750,7 +741,7 @@ async fn test_mcp_hotels_http() -> Result<()> {
     })
     .to_string();
 
-    let response_body = mcp_http_send(&mut stream, &session_id, &call_request, Some(2))
+    let response_body = mcp_http_send(&mut stream, &session_id, &call_request)
         .await
         .context("Failed to send tool call")?;
 
@@ -773,11 +764,6 @@ async fn test_mcp_hotels_http() -> Result<()> {
         &sse_data[..sse_data.len().min(200)]
     ))?;
 
-    drop(stream);
-    let _ = child.kill().await;
-    let _ = child.wait().await;
-    let _ = stderr_task.await;
-
     assert!(response.is_object(), "Response should be an object");
     let obj = response.as_object().unwrap();
 
@@ -789,10 +775,18 @@ async fn test_mcp_hotels_http() -> Result<()> {
         let error_obj = error.as_object().unwrap();
         let code = error_obj["code"].as_i64().unwrap_or(-1);
         let message = error_obj["message"].as_str().unwrap_or("unknown");
-        println!("⚠ API error: code={}, message={}", code, message);
-        println!("⚠ Skipping validation due to API error");
-        return Ok(());
+        eprintln!("⚠ API error: code={}, message={}", code, message);
+        drop(stream);
+        let _ = child.kill().await;
+        let _ = child.wait().await;
+        let _ = stderr_task.await;
+        anyhow::bail!("API error: code={}, message={}", code, message);
     }
+
+    drop(stream);
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+    let _ = stderr_task.await;
 
     let text_str = &obj["result"]["content"][0]["text"];
     debug!("=== RAW RESPONSE ===");

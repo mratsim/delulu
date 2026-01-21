@@ -18,6 +18,7 @@
 //! MCP server integration tests using subprocess with stdio transport.
 
 #![cfg(test)]
+#![cfg(feature = "mcp")]
 
 use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};

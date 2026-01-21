@@ -28,12 +28,15 @@ use anyhow::{Context, Result, ensure};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "mcp")]
+use schemars::JsonSchema;
 
 use proto::{Amenity as AmenityProto, SortType as SortTypeProto};
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum Amenity {
@@ -66,7 +69,7 @@ impl From<Amenity> for i32 {
 
 impl TryFrom<i32> for Amenity {
     type Error = ();
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
+    fn try_from(v: i32) -> std::result::Result<Self, Self::Error> {
         match v {
             v if v == Amenity::IndoorPool as i32 => Ok(Amenity::IndoorPool),
             v if v == Amenity::OutdoorPool as i32 => Ok(Amenity::OutdoorPool),
@@ -105,7 +108,8 @@ impl Amenity {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
 pub enum SortType {
@@ -132,7 +136,7 @@ impl From<SortType> for i32 {
 
 impl TryFrom<i32> for SortType {
     type Error = ();
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
+    fn try_from(v: i32) -> std::result::Result<Self, Self::Error> {
         match v {
             v if v == SortType::LowestPrice as i32 => Ok(SortType::LowestPrice),
             v if v == SortType::HighestRating as i32 => Ok(SortType::HighestRating),
@@ -161,7 +165,8 @@ impl SortType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub struct HotelSearchParams {
     pub version: i32,
