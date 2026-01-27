@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use rand::Rng;
 use thiserror::Error;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use tokio::sync::Semaphore;
 use tokio::time;
 
@@ -37,6 +37,7 @@ enum RateLimit {
         last_refill: Arc<Mutex<Instant>>,
         refill_interval: Duration,
         spin_delay: Duration,
+        notify: Arc<tokio::sync::Notify>,
     },
 }
 
@@ -124,6 +125,7 @@ impl QueryQueue {
                 last_refill: Arc::new(Mutex::new(Instant::now())),
                 refill_interval: Duration::from_secs(1),
                 spin_delay: Duration::from_millis(10),
+                notify: Arc::new(Notify::new()),
             },
             ..Default::default()
         }
@@ -133,23 +135,18 @@ impl QueryQueue {
     async fn refill_tokens(&self) {
         match &self.rate_limit {
             RateLimit::ConcurrencyOnly => {}
-            RateLimit::Qps {
-                limit: _,
-                tokens,
-                last_refill,
-                refill_interval,
-                spin_delay: _,
-            } => {
+            RateLimit::Qps { limit, tokens, last_refill, refill_interval, notify, .. } => {
                 let mut last = last_refill.lock().await;
                 let now = Instant::now();
                 let elapsed = now.duration_since(*last);
                 if elapsed >= *refill_interval {
-                    let limit = self.qps_limit();
-                    let new_tokens = (elapsed.as_secs_f64() * limit as f64) as u64;
+                    let new_tokens = (elapsed.as_secs_f64() * *limit as f64) as u64;
                     if new_tokens > 0 {
                         let _ = tokens.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |cur| {
-                            Some(cur.saturating_add(new_tokens).min(limit))
+                            Some(cur.saturating_add(new_tokens).min(*limit))
                         });
+                        // Wake up any waiters that token is now available
+                        notify.notify_waiters();
                     }
                     *last = now;
                 }
@@ -157,42 +154,31 @@ impl QueryQueue {
         }
     }
 
-    fn qps_limit(&self) -> u64 {
-        match &self.rate_limit {
-            RateLimit::ConcurrencyOnly => 0,
-            RateLimit::Qps { limit, .. } => *limit,
-        }
-    }
-
-    /// Acquire a token for rate limiting
+    // Acquire a token for rate limiting using async notification
     async fn acquire_token(&self) {
         match &self.rate_limit {
             RateLimit::ConcurrencyOnly => {}
-            RateLimit::Qps {
-                limit: _,
-                tokens,
-                last_refill: _,
-                refill_interval: _,
-                spin_delay,
-            } => loop {
-                let available = tokens.load(Ordering::SeqCst);
-                if available > 0 {
-                    if tokens
-                        .compare_exchange(
-                            available,
-                            available - 1,
-                            Ordering::SeqCst,
-                            Ordering::SeqCst,
-                        )
-                        .is_ok()
-                    {
-                        return;
+            RateLimit::Qps { tokens, notify, .. } => {
+                loop {
+                    let available = tokens.load(Ordering::SeqCst);
+                    if available > 0 {
+                        if tokens
+                            .compare_exchange(
+                                available,
+                                available - 1,
+                                Ordering::SeqCst,
+                                Ordering::SeqCst,
+                            )
+                            .is_ok()
+                        {
+                            return;
+                        }
+                    } else {
+                        // Wait until notified that tokens may be available
+                        notify.notified().await;
                     }
-                } else {
-                    self.refill_tokens().await;
-                    time::sleep(*spin_delay).await;
                 }
-            },
+            }
         }
     }
 
