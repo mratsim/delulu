@@ -312,12 +312,12 @@ impl FlightSearchParams {
         self.validate()?;
 
         let depart_checkin = NaiveDate::parse_from_str(&self.depart_date, "%Y-%m-%d")
-            .context(format!("Invalid depart date: {}", self.depart_date))?;
+            .expect("depart_date already validated");
 
         let return_checkin = match &self.return_date {
             Some(rd) => Some(
                 NaiveDate::parse_from_str(rd, "%Y-%m-%d")
-                    .context(format!("Invalid return date: {}", rd))?,
+                    .expect("return_date already validated"),
             ),
             None => None,
         };
@@ -335,7 +335,7 @@ impl FlightSearchParams {
                 depart_checkin.month(),
                 depart_checkin.day()
             ),
-            max_stops: self.max_stops.filter(|&v| v != 0),
+            max_stops: self.max_stops,
             airlines: self.preferred_airlines.clone().unwrap_or_default(),
             from_flight: Some(AirportProto {
                 airport: self.from_airport.clone(),
@@ -349,7 +349,7 @@ impl FlightSearchParams {
             (Trip::RoundTrip, Some(ret)) => {
                 let return_flight = FlightData {
                     date: format!("{:04}-{:02}-{:02}", ret.year(), ret.month(), ret.day()),
-                    max_stops: self.max_stops.filter(|&v| v != 0),
+                    max_stops: self.max_stops,
                     airlines: self.preferred_airlines.clone().unwrap_or_default(),
                     from_flight: Some(AirportProto {
                         airport: self.to_airport.clone(),

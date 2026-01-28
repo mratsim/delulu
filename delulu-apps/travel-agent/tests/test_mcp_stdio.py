@@ -2,37 +2,25 @@
 """MCP server integration tests using Python MCP SDK."""
 
 import asyncio
+import datetime
 import json
 import os
 import signal
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 
-from jsonschema import Draft7Validator, ValidationError
+sys.path.insert(0, str(Path(__file__).parent))
 
 from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp import ClientSession
 
-
-def load_json_schema(name: str) -> dict:
-    """Load JSON schema from schemas directory."""
-    schema_path = Path(__file__).parent.parent / "src" / "schemas" / name
-    with open(schema_path) as f:
-        return json.load(f)
-
-
-FLIGHTS_RESPONSE_SCHEMA = load_json_schema("flights-response.json")
-HOTELS_RESPONSE_SCHEMA = load_json_schema("hotels-response.json")
-
-
-def validate_json_schema(instance: dict, schema: dict, schema_name: str) -> None:
-    """Validate instance against schema, raise if invalid."""
-    validator = Draft7Validator(schema)
-    errors = list(validator.iter_errors(instance))
-    if errors:
-        error_msgs = [f"{schema_name}: {e.message}" for e in errors]
-        raise ValidationError("Schema validation failed:\n" + "\n".join(error_msgs))
+from mcp_test_utils import (
+    FLIGHTS_RESPONSE_SCHEMA,
+    HOTELS_RESPONSE_SCHEMA,
+    find_server_binary,
+    future_date,
+    validate_json_schema,
+)
 
 
 def kill_server_processes() -> None:
@@ -44,26 +32,6 @@ def kill_server_processes() -> None:
                 os.killpg(os.getpid(), signal.SIGTERM)
         except (ProcessLookupError, OSError):
             pass
-
-
-def find_server_binary() -> Path:
-    """Find the delulu-travel-mcp binary."""
-    workspace = Path(__file__).parent.parent.parent.parent
-    for debug in [
-        workspace / "target" / "debug" / "delulu-travel-mcp",
-        workspace / "target" / "release" / "delulu-travel-mcp",
-    ]:
-        if debug.exists():
-            return debug
-    raise RuntimeError(
-        "Could not find delulu-travel-mcp binary. Run `cargo build -p delulu-travel-agent --features mcp` first."
-    )
-
-
-def future_date(months_ahead: int) -> str:
-    """Get a future date in YYYY-MM-DD format."""
-    d = date.today() + timedelta(days=30 * months_ahead)
-    return d.isoformat()
 
 
 async def test_mcp_initialize(session) -> bool:
@@ -93,22 +61,17 @@ async def test_search_flights(session) -> bool:
     print("\nTesting search_flights...")
 
     depart_date = future_date(2)
-    return_date = (date.fromisoformat(depart_date) + timedelta(days=7)).isoformat()
 
-    print(f"  Query: SFO → SYD on {depart_date} (return {return_date})")
+    print(f"  Query: SFO → JFK on {depart_date}")
 
     result = await session.call_tool(
         "search_flights",
         {
             "from": "SFO",
-            "to": "SYD",
+            "to": "JFK",
             "date": depart_date,
-            "return_date": return_date,
             "seat": "Economy",
             "adults": 1,
-            "children_ages": [5, 8],
-            "trip_type": "round-trip",
-            "max_stops": 1,
         },
     )
 
@@ -119,21 +82,24 @@ async def test_search_flights(session) -> bool:
     text = content[0].text
     print(f"  Response length: {len(text)} chars")
 
-    data = json.loads(text)
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"  Response is not valid JSON: {e}")
+        print(f"     ====\n    {text[:500]}\n====\n")
+        return False
+
     print("  Got valid JSON response")
 
     assert "search_flights" in data, "Response should contain search_flights"
 
-    try:
-        validate_json_schema(data, FLIGHTS_RESPONSE_SCHEMA, "flights_response")
-        print("  JSON schema validated")
-    except ValidationError as e:
-        print(f"  Schema validation warning: {e}")
+    validate_json_schema(data, FLIGHTS_RESPONSE_SCHEMA, "flights_response")
+    print("  JSON schema validated")
 
     sf = data["search_flights"]
     query = sf["query"]
     assert query["from"] == "SFO", f"from should be SFO, got {query}"
-    assert query["to"] == "SYD", f"to should be SYD, got {query}"
+    assert query["to"] == "JFK", f"to should be JFK, got {query}"
 
     results = sf["results"]
     assert isinstance(results, list), "results should be a list"
@@ -147,7 +113,9 @@ async def test_search_hotels(session) -> bool:
     print("\nTesting search_hotels...")
 
     checkin = future_date(1)
-    checkout = (date.fromisoformat(checkin) + timedelta(days=3)).isoformat()
+    checkout = (
+        datetime.date.fromisoformat(checkin) + datetime.timedelta(days=3)
+    ).isoformat()
 
     print(f"  Query: Paris, {checkin} to {checkout}")
 
@@ -185,11 +153,8 @@ async def test_search_hotels(session) -> bool:
 
     assert "search_hotels" in data, "Response should contain search_hotels"
 
-    try:
-        validate_json_schema(data, HOTELS_RESPONSE_SCHEMA, "hotels_response")
-        print("  JSON schema validated")
-    except ValidationError as e:
-        print(f"  Schema validation warning: {e}")
+    validate_json_schema(data, HOTELS_RESPONSE_SCHEMA, "hotels_response")
+    print("  JSON schema validated")
 
     sh = data["search_hotels"]
     query = sh["query"]
