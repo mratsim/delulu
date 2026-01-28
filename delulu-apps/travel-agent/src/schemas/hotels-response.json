@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["search_hotels"],
+  "properties": {
+    "search_hotels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "query", "results"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["loc", "in", "out", "curr", "search_url"],
+          "properties": {
+            "loc": { "type": "string" },
+            "in": { "type": "string" },
+            "out": { "type": "string" },
+            "curr": { "type": "string" },
+            "search_url": { "type": "string" }
+          }
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "price", "rating"],
+            "properties": {
+              "name": { "type": "string" },
+              "price": { "type": "integer", "minimum": 0 },
+              "rating": { "type": "number" },
+              "stars": { "type": "integer" },
+              "amenities": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

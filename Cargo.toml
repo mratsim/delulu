@@ -4,3 +4,6 @@ members = [
     "delulu-internals/query-queues",
 ]
 resolver = "2"
+
+[profile.release]
+lto = "thin"

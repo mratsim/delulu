@@ -25,7 +25,7 @@
 
 use std::path::Path;
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::NaiveDate;
 use serde::Deserialize;
 
@@ -124,6 +124,7 @@ fn params_from_json(json: &serde_json::Value) -> Result<FlightSearchParams, Stri
     let max_stops = obj
         .get("max_stops")
         .and_then(|v| v.as_i64())
+        .filter(|&v| v != 0)
         .map(|v| v as i32);
 
     let builder = FlightSearchParams::builder(from, to, date)

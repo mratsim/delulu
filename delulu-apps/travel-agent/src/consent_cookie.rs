@@ -17,7 +17,7 @@
 
 //! SOCS cookie generation for Google services.
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{Datelike, Local};
 
 // =============================================================================

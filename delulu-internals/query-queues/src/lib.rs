@@ -8,12 +8,14 @@
 //! delulu-internals/query-queues
 //! A simple work queue for rate limiting with backoff and jitter for external service calls
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rand::Rng;
 use thiserror::Error;
 use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Notify};
 use tokio::time;
 
 /// Custom error for the work queue
@@ -25,43 +27,22 @@ pub enum QueryQueueError {
     QueueClosed,
 }
 
-/// Configuration for a work queue
+/// Rate limiting mode
 #[derive(Clone, Debug)]
-struct QueryQueueConfig {
-    /// Maximum number of concurrent requests to the external service
-    max_concurrent: u64,
-    /// Initial delay for backoff in milliseconds
-    initial_delay_ms: u64,
-    /// Maximum delay for backoff in milliseconds
-    max_delay_ms: u64,
-    /// Maximum number of retries
-    max_retries: u32,
-    /// Jitter factor (0.0 to 1.0). 0.0 = no jitter, 1.0 = full jitter
-    jitter_factor: f64,
-    /// Whether to use exponential backoff
-    exponential: bool,
+enum RateLimit {
+    ConcurrencyOnly,
+    Qps {
+        limit: u64,
+        tokens: Arc<AtomicU64>,
+        last_refill: Arc<Mutex<Instant>>,
+        refill_interval: Duration,
+        notify: Arc<tokio::sync::Notify>,
+    },
 }
 
-impl Default for QueryQueueConfig {
+impl Default for RateLimit {
     fn default() -> Self {
-        Self {
-            max_concurrent: 4,
-            initial_delay_ms: 1000,
-            max_delay_ms: 30000,
-            max_retries: 3,
-            jitter_factor: 0.5,
-            exponential: true,
-        }
-    }
-}
-
-impl QueryQueueConfig {
-    /// Create a new config with the given max concurrent requests
-    fn new(max_concurrent: u64) -> Self {
-        Self {
-            max_concurrent,
-            ..Default::default()
-        }
+        Self::ConcurrencyOnly
     }
 }
 
@@ -72,14 +53,12 @@ struct AsyncSemaphore {
 }
 
 impl AsyncSemaphore {
-    /// Create a new semaphore with the given number of permits
     fn new(permits: usize) -> Self {
         Self {
             inner: Arc::new(Semaphore::new(permits)),
         }
     }
 
-    /// Acquire a permit, waiting asynchronously if necessary
     async fn acquire(&self) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
         self.inner.acquire().await
     }
@@ -88,14 +67,16 @@ impl AsyncSemaphore {
 /// A simple work queue that limits concurrent requests to an external service
 /// and uses exponential backoff with jitter for retries
 ///
-/// # Example
+/// # Examples
 ///
+/// Concurrency only (4 concurrent requests):
 /// ```ignore
-/// let queue = QueryQueue::with_max_concurrent(4);
-/// let result = queue.with_retry(|| async {
-///     // Your HTTP request here
-///     Ok(response)
-/// }).await;
+/// let queue = QueryQueue::with_concurrency_limit(4);
+/// ```
+///
+/// QPS limit (4 requests per second):
+/// ```ignore
+/// let queue = QueryQueue::with_qps_limit(4);
 /// ```
 #[derive(Clone, Debug)]
 pub struct QueryQueue {
@@ -105,25 +86,103 @@ pub struct QueryQueue {
     jitter_factor: f64,
     max_retries: u32,
     exponential: bool,
+    rate_limit: RateLimit,
+}
+
+impl Default for QueryQueue {
+    fn default() -> Self {
+        Self {
+            semaphore: AsyncSemaphore::new(4),
+            initial_delay: Duration::from_millis(100),
+            max_delay: Duration::from_millis(30000),
+            jitter_factor: 0.5,
+            max_retries: 3,
+            exponential: true,
+            rate_limit: RateLimit::ConcurrencyOnly,
+        }
+    }
 }
 
 impl QueryQueue {
-    /// Create a new work queue with the given config
-    fn new(config: &QueryQueueConfig) -> Self {
+    /// Create a new work queue with max concurrent requests
+    pub fn with_concurrency_limit(max_concurrent: u64) -> Self {
+        let max_concurrent = max_concurrent.max(1);
         Self {
-            semaphore: AsyncSemaphore::new(config.max_concurrent as usize),
-            initial_delay: Duration::from_millis(config.initial_delay_ms),
-            max_delay: Duration::from_millis(config.max_delay_ms),
-            jitter_factor: config.jitter_factor,
-            max_retries: config.max_retries,
-            exponential: config.exponential,
+            semaphore: AsyncSemaphore::new(max_concurrent as usize),
+            ..Default::default()
         }
     }
 
-    /// Create a new work queue with the given max concurrent requests
-    pub fn with_max_concurrent(max_concurrent: u64) -> Self {
-        let config = QueryQueueConfig::new(max_concurrent);
-        Self::new(&config)
+    /// Create a new work queue with QPS limit
+    pub fn with_qps_limit(qps_limit: u64) -> Self {
+        let qps_limit = qps_limit.max(1);
+        Self {
+            semaphore: AsyncSemaphore::new(qps_limit as usize),
+            rate_limit: RateLimit::Qps {
+                limit: qps_limit,
+                tokens: Arc::new(AtomicU64::new(qps_limit)),
+                last_refill: Arc::new(Mutex::new(Instant::now())),
+                refill_interval: Duration::from_secs(1),
+                notify: Arc::new(Notify::new()),
+            },
+            ..Default::default()
+        }
+    }
+
+    /// Refill tokens based on elapsed time
+    async fn refill_tokens(&self) {
+        match &self.rate_limit {
+            RateLimit::ConcurrencyOnly => {}
+            RateLimit::Qps {
+                limit,
+                tokens,
+                last_refill,
+                refill_interval,
+                notify,
+                ..
+            } => {
+                let mut last = last_refill.lock().await;
+                let now = Instant::now();
+                let elapsed = now.duration_since(*last);
+                if elapsed >= *refill_interval {
+                    let new_tokens = (elapsed.as_secs_f64() * *limit as f64) as u64;
+                    if new_tokens > 0 {
+                        let _ = tokens.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |cur| {
+                            Some(cur.saturating_add(new_tokens).min(*limit))
+                        });
+                        // Wake up any waiters that token is now available
+                        notify.notify_waiters();
+                    }
+                    *last = now;
+                }
+            }
+        }
+    }
+
+    // Acquire a token for rate limiting using async notification
+    async fn acquire_token(&self) {
+        match &self.rate_limit {
+            RateLimit::ConcurrencyOnly => {}
+            RateLimit::Qps { tokens, notify, .. } => loop {
+                self.refill_tokens().await;
+                let available = tokens.load(Ordering::SeqCst);
+                if available > 0 {
+                    if tokens
+                        .compare_exchange(
+                            available,
+                            available - 1,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        )
+                        .is_ok()
+                    {
+                        return;
+                    }
+                } else {
+                    let _ = time::timeout(Duration::from_millis(100), notify.notified()).await;
+                }
+            },
+        }
     }
 
     /// Execute a function with rate limiting and retry
@@ -135,12 +194,15 @@ impl QueryQueue {
         F: FnMut() -> Fut + Send,
         Fut: std::future::Future<Output = Result<T, anyhow::Error>> + Send,
     {
-        // Acquire a permit
+        // Acquire a permit (for concurrency control)
         let _permit = self
             .semaphore
             .acquire()
             .await
             .map_err(|_| QueryQueueError::QueueClosed)?;
+
+        // Acquire a token (for QPS rate limiting)
+        self.acquire_token().await;
 
         // Execute with backoff
         let mut retry_count = 0;

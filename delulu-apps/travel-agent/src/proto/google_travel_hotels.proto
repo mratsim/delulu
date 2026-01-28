@@ -18,7 +18,10 @@
 syntax = "proto3";
 package google_hotels_travel;
 
-message TravelSearchParams {
+// ProtoHotelSearch - Top-level container sent to Google Hotels
+// Contains complete search configuration including guests, location,
+// dates, and filters.
+message ProtoHotelSearch {
   int32 version = 1;
   Guests guests = 2;
   SearchParams search_params = 3;

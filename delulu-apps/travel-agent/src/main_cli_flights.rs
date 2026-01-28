@@ -23,7 +23,7 @@ use clap::Parser;
 use delulu_travel_agent::{
     FlightSearchParams, FlightSearchResult, GoogleFlightsClient, Passenger, Seat, Trip,
 };
-use std::cmp::{max, min};
+use std::cmp::max;
 use term_size;
 
 /// CLI arguments
@@ -163,10 +163,11 @@ fn first_seg<'a>(
 }
 
 /// Format stops and layovers combined: "2 stops: 5h09@Vancouver, 2h20@Brisbane"
-fn fmt_stops_and_layovers(stops: Option<i32>, layovers: &[delulu_travel_agent::Layover]) -> String {
+fn fmt_stops_and_layovers(layovers: &[delulu_travel_agent::Layover]) -> String {
+    let stops = layovers.len();
     match stops {
-        Some(0) => "direct".to_string(),
-        Some(1) => {
+        0 => "direct".to_string(),
+        1 => {
             if let Some(l) = layovers.first() {
                 let dur = l
                     .duration_minutes
@@ -177,25 +178,20 @@ fn fmt_stops_and_layovers(stops: Option<i32>, layovers: &[delulu_travel_agent::L
                 "1 stop".to_string()
             }
         }
-        Some(n) if n > 1 => {
-            let layover_str = if layovers.is_empty() {
-                String::new()
-            } else {
-                let parts: Vec<String> = layovers
-                    .iter()
-                    .map(|l| {
-                        let dur = l
-                            .duration_minutes
-                            .map_or("??".to_string(), |m| fmt_duration(m));
-                        let name = l.airport_city.as_deref().unwrap_or("Unknown");
-                        format!("{}@{}", dur, name)
-                    })
-                    .collect();
-                format!(": {}", parts.join(", "))
-            };
+        n => {
+            let parts: Vec<String> = layovers
+                .iter()
+                .map(|l| {
+                    let dur = l
+                        .duration_minutes
+                        .map_or("??".to_string(), |m| fmt_duration(m));
+                    let name = l.airport_city.as_deref().unwrap_or("Unknown");
+                    format!("{}@{}", dur, name)
+                })
+                .collect();
+            let layover_str = format!(": {}", parts.join(", "));
             format!("{} stops{}", n, layover_str)
         }
-        _ => "unknown".to_string(),
     }
 }
 
@@ -208,7 +204,6 @@ fn calc_column_widths(
     let mut max_times = 15;
     let mut max_duration = 10;
     let mut max_stops = 25;
-    let min_rank = 4;
 
     for itin in itins {
         if let Some(seg) = first_seg(itin) {
@@ -221,7 +216,7 @@ fn calc_column_widths(
                 max_duration,
                 fmt_duration(opt_i32(&itin.duration_minutes, 0)).len(),
             );
-            let stops_label = fmt_stops_and_layovers(itin.stops, &itin.layovers);
+            let stops_label = fmt_stops_and_layovers(&itin.layovers);
             max_stops = max(max_stops, stops_label.len());
         }
     }
@@ -260,7 +255,7 @@ fn render_results(result: &delulu_travel_agent::FlightSearchResult, search_url: 
     let best_price = result
         .itineraries
         .first()
-        .map(|i| opt_i32(&i.price, 0))
+        .and_then(|i| i.price)
         .unwrap_or(0);
 
     println!("💰 Best Price:  ${}", best_price);
@@ -288,7 +283,7 @@ fn render_results(result: &delulu_travel_agent::FlightSearchResult, search_url: 
     // Data rows with individual cell formatting
     for (i, itin) in result.itineraries.iter().take(5).enumerate() {
         if let Some(seg) = first_seg(itin) {
-            let stops_label = fmt_stops_and_layovers(itin.stops, &itin.layovers);
+            let stops_label = fmt_stops_and_layovers(&itin.layovers);
             let is_suspicious =
                 stops_label == "direct" && opt_i32(&itin.duration_minutes, 0) > 1080;
             let price = opt_i32(&itin.price, 0);
@@ -366,10 +361,16 @@ async fn main() -> Result<()> {
     tracing::debug!("Generated search URL ({} chars)", search_url.len());
 
     // Create client and execute search
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new(
+        "en".into(),
+        "USD".into(),
+        5, // timeout_secs
+        2, // queries_per_second
+    )?;
 
     let result = if args.save_html {
-        let html = client.fetch_raw(&params).await.context("Fetch failed")?;
+        let url = params.get_search_url();
+        let html = client.fetch_raw(&url).await.context("Fetch failed")?;
         let filename = format!("debug_{}_{}.html", args.from, args.to);
         std::fs::write(&filename, &html).context("Failed to write HTML file")?;
         tracing::info!("Saved HTML to {}", filename);

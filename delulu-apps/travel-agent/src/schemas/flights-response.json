@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["search_flights"],
+  "properties": {
+    "search_flights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "query", "results"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to", "date", "curr", "seat", "search_url"],
+          "properties": {
+            "from": { "type": "string" },
+            "to": { "type": "string" },
+            "date": { "type": "string" },
+            "curr": { "type": "string" },
+            "seat": { "type": "string" },
+            "search_url": { "type": "string" }
+          }
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["price", "airlines", "dur_min"],
+            "properties": {
+              "price": { "type": "integer", "minimum": 0 },
+              "airlines": { "type": "array", "items": { "type": "string" } },
+              "dur_min": { "type": "integer", "minimum": 0 },
+              "layover": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["city", "dur_min"],
+                  "properties": {
+                    "city": { "type": "string" },
+                    "dur_min": { "type": "integer", "minimum": 0 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

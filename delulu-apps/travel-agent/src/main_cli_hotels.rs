@@ -215,11 +215,9 @@ async fn main() -> Result<()> {
 
     let sort_order = match args.sort {
         Some(SortOption::Relevance) => None,
-        Some(SortOption::LowestPrice) => Some(delulu_travel_agent::SortType::LowestPrice as i32),
-        Some(SortOption::HighestRating) => {
-            Some(delulu_travel_agent::SortType::HighestRating as i32)
-        }
-        Some(SortOption::MostReviewed) => Some(delulu_travel_agent::SortType::MostReviewed as i32),
+        Some(SortOption::LowestPrice) => Some(delulu_travel_agent::SortType::LowestPrice),
+        Some(SortOption::HighestRating) => Some(delulu_travel_agent::SortType::HighestRating),
+        Some(SortOption::MostReviewed) => Some(delulu_travel_agent::SortType::MostReviewed),
         None => None,
     };
 
@@ -282,8 +280,10 @@ async fn main() -> Result<()> {
 
     println!("\n🔗 Search URL: {}\n", search_url);
 
-    const MAX_CONCURRENT_REQUESTS: u64 = 4;
-    let client = GoogleHotelsClient::new(MAX_CONCURRENT_REQUESTS)?;
+    let client = GoogleHotelsClient::new(
+        5, // timeout_secs
+        2, // queries_per_second
+    )?;
     match client.search_hotels(&request).await {
         Ok(results) => {
             if results.hotels.is_empty() {

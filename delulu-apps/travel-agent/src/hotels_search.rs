@@ -22,7 +22,7 @@
 use crate::consent_cookie::generate_cookie_header;
 use crate::hotels_query_builder::HotelSearchParams;
 use crate::hotels_results_parser::HotelSearchResult;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use delulu_query_queues::QueryQueue;
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,15 +36,15 @@ pub struct GoogleHotelsClient {
 }
 
 impl GoogleHotelsClient {
-    pub fn new(max_concurrent: u64) -> Result<Self> {
+    pub fn new(timeout_secs: u64, queries_per_second: u32) -> Result<Self> {
         let client = wreq::Client::builder()
             .emulation(Emulation::Safari18_5)
             .redirect(Policy::default())
-            .timeout(Duration::from_secs(5))
-            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(timeout_secs))
+            .connect_timeout(Duration::from_secs(timeout_secs))
             .build()
             .context("Failed to build HTTP client")?;
-        let query_queue = QueryQueue::with_max_concurrent(max_concurrent);
+        let query_queue = QueryQueue::with_qps_limit(queries_per_second as u64);
         Ok(Self {
             client: Arc::new(client),
             query_queue,
@@ -53,31 +53,54 @@ impl GoogleHotelsClient {
 }
 
 impl GoogleHotelsClient {
-    async fn fetch_raw(&self, request: &HotelSearchParams) -> Result<String> {
+    async fn fetch_raw(&self, url: &str) -> Result<String> {
         let cookie_header = generate_cookie_header();
         let client_inner = Arc::clone(&self.client);
 
+        let queue_start = std::time::Instant::now();
         let response = self
             .query_queue
             .with_retry(move || {
-                let url = request.get_search_url();
+                let url = url.to_string();
                 let cookie = cookie_header.clone();
                 let http_client = client_inner.clone();
                 async move {
-                    tracing::info!("Fetching Google Hotels URL: {}", url);
+                    let http_start = std::time::Instant::now();
+                    tracing::info!("[fetch_raw] Starting HTTP request to: {}", url);
                     let resp = http_client
-                        .get(&url)
+                        .get(url)
                         .header("Cookie", &cookie)
                         .send()
                         .await?;
+                    let http_elapsed = http_start.elapsed();
+                    tracing::info!("[fetch_raw] HTTP request completed in {:?}", http_elapsed);
                     Ok(resp)
                 }
             })
-            .await
-            .map_err(|e| anyhow!("Request failed: {:?}", e))?;
+            .await;
+        let queue_elapsed = queue_start.elapsed();
+        tracing::debug!(
+            "[fetch_raw] Query queue + HTTP execution time: {:?}",
+            queue_elapsed
+        );
+
+        let response = response.map_err(|e| anyhow!("Request failed: {:?}", e))?;
 
         let status = response.status();
+        tracing::debug!(
+            "[fetch_raw] HTTP Status: {} {}",
+            status.as_u16(),
+            status.canonical_reason().unwrap_or("Unknown")
+        );
+
+        let body_start = std::time::Instant::now();
         let body = response.text().await.context("Read body")?;
+        let body_elapsed = body_start.elapsed();
+        tracing::debug!(
+            "[fetch_raw] Response body read in {:?}: {} bytes",
+            body_elapsed,
+            body.len()
+        );
 
         if !status.is_success() {
             let body_preview = body.chars().take(500).collect::<String>();
@@ -92,8 +115,8 @@ impl GoogleHotelsClient {
             let body_preview = body.chars().take(300).collect::<String>();
             bail!(
                 "Consent wall detected - cookies not accepted. \
-                 Consider using a proxy or residential IP. \
-                 Body preview: {}",
+                  Consider using a proxy or residential IP. \
+                  Body preview: {}",
                 body_preview
             );
         }
@@ -105,27 +128,92 @@ impl GoogleHotelsClient {
             || body.contains("LtjZ2d");
 
         tracing::debug!(
-            "Response: {} chars, has_hotel_markers={}, status={}",
+            "[fetch_raw] Response: {} chars, has_hotel_markers={}",
             body_chars,
-            has_hotel_marker,
-            status
+            has_hotel_marker
         );
 
         if !has_hotel_marker && body_chars > 1000 {
-            tracing::warn!("Page may have changed - no hotel markers found");
+            tracing::warn!("[fetch_raw] Page may have changed - no hotel markers found");
         }
 
         Ok(body)
     }
 
     pub async fn search_hotels(&self, params: &HotelSearchParams) -> Result<HotelSearchResult> {
+        let overall_start = std::time::Instant::now();
         let today = chrono::Local::now().date_naive();
         let checkin = chrono::NaiveDate::parse_from_str(&params.checkin_date, "%Y-%m-%d")
             .context("Invalid checkin date")?;
         anyhow::ensure!(checkin >= today, "Check-in cannot be in the past");
 
-        let html = self.fetch_raw(params).await?;
-        let result = HotelSearchResult::from_html(&html)?;
-        Ok(result)
+        let url_build_start = std::time::Instant::now();
+        let url = params.get_search_url();
+        let url_build_elapsed = url_build_start.elapsed();
+        tracing::info!("🔗 Search URL built in {:?}: {}", url_build_elapsed, url);
+
+        let fetch_start = std::time::Instant::now();
+        tracing::info!("[search_hotels] Starting HTTP fetch to Google Hotels...");
+        let html = self.fetch_raw(&url).await?;
+        let fetch_elapsed = fetch_start.elapsed();
+        tracing::info!(
+            "[search_hotels] HTTP fetch completed in {:?}, got {} KB",
+            fetch_elapsed,
+            html.len() / 1024
+        );
+
+        let parse_start = std::time::Instant::now();
+        match HotelSearchResult::from_html(&html) {
+            Ok(result) => {
+                let parse_elapsed = parse_start.elapsed();
+                tracing::debug!(
+                    "[search_hotels] Parsed {} hotels in {:?}",
+                    result.hotels.len(),
+                    parse_elapsed
+                );
+                let total_elapsed = overall_start.elapsed();
+                tracing::info!(
+                    "[search_hotels] Total search_hotels time: {:?}",
+                    total_elapsed
+                );
+                Ok(result)
+            }
+            Err(e) => {
+                let parse_elapsed = parse_start.elapsed();
+                let preview = html.chars().take(2000).collect::<String>();
+                tracing::error!(
+                    "[search_hotels] Parse failed after {:?}: {:?}",
+                    parse_elapsed,
+                    e
+                );
+
+                let has_hotel_markers =
+                    html.contains("uaTTDe") || html.contains("BgYkof") || html.contains("KFi5wf");
+                let has_loading = html.contains("Loading") || html.contains("jsshadow");
+
+                if has_loading && !has_hotel_markers {
+                    tracing::warn!("[search_hotels] Detected loading spinner without hotel data.");
+                    tracing::warn!(
+                        "[search_hotels] Google may use JS lazy-loading for this location."
+                    );
+                } else if !has_hotel_markers {
+                    tracing::warn!("[search_hotels] No hotel markers found. This may indicate:");
+                    tracing::warn!("  - Location returned no hotels");
+                    tracing::warn!("  - Google using JS lazy-loading for this location");
+                    tracing::warn!("  - Request caching vs fresh request behavior differs");
+                }
+
+                tracing::error!(
+                    "[search_hotels] HTML preview (first 2000 chars):\n{}",
+                    preview
+                );
+                let total_elapsed = overall_start.elapsed();
+                tracing::info!(
+                    "[search_hotels] Total search_hotels time (failed): {:?}",
+                    total_elapsed
+                );
+                Err(e).context("Parse failed - see HTML preview above")
+            }
+        }
     }
 }

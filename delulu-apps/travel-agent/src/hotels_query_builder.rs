@@ -24,14 +24,152 @@ pub mod proto {
     include!("proto/google_travel_hotels.rs");
 }
 
-use anyhow::{bail, ensure, Context, Result};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use anyhow::{Context, Result, ensure};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Datelike, NaiveDate};
 use prost::Message;
+use serde::{Deserialize, Serialize};
 
-pub use proto::{Amenity, SortType};
+use proto::{Amenity as AmenityProto, SortType as SortTypeProto};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[repr(i32)]
+#[serde(rename_all = "snake_case")]
+pub enum Amenity {
+    IndoorPool = AmenityProto::IndoorPool as i32,
+    OutdoorPool = AmenityProto::OutdoorPool as i32,
+    Pool = AmenityProto::Pool as i32,
+    Spa = AmenityProto::Spa as i32,
+    KidFriendly = AmenityProto::KidFriendly as i32,
+    AirConditioned = AmenityProto::AirConditioned as i32,
+    EvCharger = AmenityProto::EvCharger as i32,
+}
+
+impl From<Amenity> for AmenityProto {
+    fn from(a: Amenity) -> AmenityProto {
+        match a {
+            Amenity::IndoorPool => AmenityProto::IndoorPool,
+            Amenity::OutdoorPool => AmenityProto::OutdoorPool,
+            Amenity::Pool => AmenityProto::Pool,
+            Amenity::Spa => AmenityProto::Spa,
+            Amenity::KidFriendly => AmenityProto::KidFriendly,
+            Amenity::AirConditioned => AmenityProto::AirConditioned,
+            Amenity::EvCharger => AmenityProto::EvCharger,
+        }
+    }
+}
+
+impl From<Amenity> for i32 {
+    fn from(a: Amenity) -> i32 {
+        a as i32
+    }
+}
+
+impl TryFrom<i32> for Amenity {
+    type Error = i32;
+    fn try_from(v: i32) -> std::result::Result<Self, Self::Error> {
+        match v {
+            x if x == Amenity::IndoorPool as i32 => Ok(Amenity::IndoorPool),
+            x if x == Amenity::OutdoorPool as i32 => Ok(Amenity::OutdoorPool),
+            x if x == Amenity::Pool as i32 => Ok(Amenity::Pool),
+            x if x == Amenity::Spa as i32 => Ok(Amenity::Spa),
+            x if x == Amenity::KidFriendly as i32 => Ok(Amenity::KidFriendly),
+            x if x == Amenity::AirConditioned as i32 => Ok(Amenity::AirConditioned),
+            x if x == Amenity::EvCharger as i32 => Ok(Amenity::EvCharger),
+            _ => Err(v),
+        }
+    }
+}
+
+impl Amenity {
+    pub fn from_str_name(s: &str) -> Option<Self> {
+        let lower = s.to_lowercase();
+        match lower.as_str() {
+            "indoor_pool" | "indoorpool" | "indoor" => Some(Amenity::IndoorPool),
+            "outdoor_pool" | "outdoorpool" | "outdoor" => Some(Amenity::OutdoorPool),
+            "pool" => Some(Amenity::Pool),
+            "spa" => Some(Amenity::Spa),
+            "kid_friendly" | "kidfriendly" | "kid" => Some(Amenity::KidFriendly),
+            "air_conditioned" | "airconditioned" | "ac" => Some(Amenity::AirConditioned),
+            "ev_charger" | "evcharger" | "ev" => Some(Amenity::EvCharger),
+            _ => None,
+        }
+    }
+
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Amenity::IndoorPool => "indoor_pool",
+            Amenity::OutdoorPool => "outdoor_pool",
+            Amenity::Pool => "pool",
+            Amenity::Spa => "spa",
+            Amenity::KidFriendly => "kid_friendly",
+            Amenity::AirConditioned => "air_conditioned",
+            Amenity::EvCharger => "ev_charger",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[repr(i32)]
+#[serde(rename_all = "snake_case")]
+pub enum SortType {
+    LowestPrice = SortTypeProto::LowestPrice as i32,
+    HighestRating = SortTypeProto::HighestRating as i32,
+    MostReviewed = SortTypeProto::MostReviewed as i32,
+}
+
+impl From<SortType> for SortTypeProto {
+    fn from(s: SortType) -> SortTypeProto {
+        match s {
+            SortType::LowestPrice => SortTypeProto::LowestPrice,
+            SortType::HighestRating => SortTypeProto::HighestRating,
+            SortType::MostReviewed => SortTypeProto::MostReviewed,
+        }
+    }
+}
+
+impl From<SortType> for i32 {
+    fn from(s: SortType) -> i32 {
+        s as i32
+    }
+}
+
+impl TryFrom<i32> for SortType {
+    type Error = ();
+    fn try_from(v: i32) -> std::result::Result<Self, Self::Error> {
+        match v {
+            v if v == SortType::LowestPrice as i32 => Ok(SortType::LowestPrice),
+            v if v == SortType::HighestRating as i32 => Ok(SortType::HighestRating),
+            v if v == SortType::MostReviewed as i32 => Ok(SortType::MostReviewed),
+            _ => Err(()),
+        }
+    }
+}
+
+impl SortType {
+    pub fn from_str_name(s: &str) -> Option<Self> {
+        match s {
+            "lowest_price" | "lowest" | "price" => Some(SortType::LowestPrice),
+            "highest_rating" | "highest" | "rating" => Some(SortType::HighestRating),
+            "most_reviewed" | "reviewed" | "reviews" => Some(SortType::MostReviewed),
+            _ => None,
+        }
+    }
+
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            SortType::LowestPrice => "lowest_price",
+            SortType::HighestRating => "highest_rating",
+            SortType::MostReviewed => "most_reviewed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
 pub struct HotelSearchParams {
     pub version: i32,
     pub adults: u32,
@@ -45,11 +183,16 @@ pub struct HotelSearchParams {
     pub nights: i32,
     pub used_guests_dropdown: i32,
     pub currency: String,
-    pub sort_order: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_order: Option<SortType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_guest_rating: Option<f64>,
     pub hotel_stars: Vec<i32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub amenities: Vec<Amenity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_price: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_price: Option<i32>,
 }
 
@@ -193,7 +336,7 @@ impl HotelSearchParams {
 
         let explicit_guests = self.adults > 2 || !self.children_ages.is_empty();
 
-        let params = proto::TravelSearchParams {
+        let params = proto::ProtoHotelSearch {
             version: 1,
             guests: Some(proto::Guests {
                 entries: guest_entries,
@@ -208,7 +351,7 @@ impl HotelSearchParams {
                     currency: self.currency.clone(),
                     amenity: self.amenities.iter().map(|&a| a as i32).collect(),
                     stars: self.hotel_stars.clone(),
-                    sort_type: self.sort_order.unwrap_or(0),
+                    sort_type: self.sort_order.map(|s| s as i32).unwrap_or(0),
                     padding: Some(proto::UnknownMessage { flags: 0 }),
                 }),
                 guest_rating: guest_rating_val,
@@ -237,7 +380,7 @@ impl HotelSearchParams {
         let ts_bytes = URL_SAFE_NO_PAD
             .decode(ts_base64)
             .map_err(|e| anyhow::anyhow!("Failed to decode base64: {}", e))?;
-        let params = proto::TravelSearchParams::decode(ts_bytes.as_slice())
+        let params = proto::ProtoHotelSearch::decode(ts_bytes.as_slice())
             .context("Failed to decode protobuf")?;
 
         let guests = params.guests.as_ref();
@@ -310,7 +453,7 @@ impl HotelSearchParams {
                 currency = f.currency.clone();
                 for &amenity in &f.amenity {
                     if amenity != 0 {
-                        if let Some(a) = Amenity::try_from(amenity).ok() {
+                        if let Ok(a) = Amenity::try_from(amenity) {
                             amenities.push(a);
                         }
                     }
@@ -319,7 +462,9 @@ impl HotelSearchParams {
                     hotel_stars.push(star);
                 }
                 if f.sort_type != 0 {
-                    sort_order = Some(f.sort_type);
+                    if let Ok(s) = SortType::try_from(f.sort_type) {
+                        sort_order = Some(s);
+                    }
                 }
             }
             if let Some(pd) = &fc.price_data {
@@ -378,7 +523,7 @@ pub struct HotelSearchParamsBuilder {
     amenities: Vec<Amenity>,
     min_price: Option<i32>,
     max_price: Option<i32>,
-    sort_order: Option<i32>,
+    sort_order: Option<SortType>,
 }
 
 impl HotelSearchParamsBuilder {
@@ -412,17 +557,12 @@ impl HotelSearchParamsBuilder {
         self
     }
 
-    pub fn sort_order(mut self, sort: Option<i32>) -> Self {
+    pub fn sort_order(mut self, sort: Option<SortType>) -> Self {
         self.sort_order = sort;
         self
     }
 
     pub fn build(self) -> Result<HotelSearchParams> {
-        if let Some(sort) = self.sort_order {
-            if proto::SortType::try_from(sort).is_err() {
-                bail!("Invalid sort_order value: {}", sort);
-            }
-        }
         let params = HotelSearchParams {
             version: 1,
             adults: self.adults,

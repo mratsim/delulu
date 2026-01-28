@@ -19,11 +19,11 @@
 //!
 //! Effectful (time, network) operations for Google Flights search.
 
+use crate::Trip;
 use crate::consent_cookie::generate_cookie_header;
 use crate::flights_query_builder::FlightSearchParams;
 use crate::flights_results_parser::FlightSearchResult;
-use crate::Trip;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use delulu_query_queues::QueryQueue;
 use std::sync::Arc;
 use std::time::Duration;
@@ -39,15 +39,20 @@ pub struct GoogleFlightsClient {
 }
 
 impl GoogleFlightsClient {
-    pub fn new(language: String, currency: String) -> Result<Self> {
+    pub fn new(
+        language: String,
+        currency: String,
+        timeout_secs: u64,
+        queries_per_second: u32,
+    ) -> Result<Self> {
         let client = wreq::Client::builder()
             .emulation(Emulation::Safari18_5)
             .redirect(Policy::default())
-            .timeout(Duration::from_secs(5))
-            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(timeout_secs))
+            .connect_timeout(Duration::from_secs(timeout_secs))
             .build()
             .context("Failed to build HTTP client")?;
-        let query_queue = QueryQueue::with_max_concurrent(1);
+        let query_queue = QueryQueue::with_qps_limit(queries_per_second as u64);
         Ok(Self {
             client: Arc::new(client),
             query_queue,
@@ -58,40 +63,55 @@ impl GoogleFlightsClient {
 }
 
 impl GoogleFlightsClient {
-    pub async fn fetch_raw(&self, request: &FlightSearchParams) -> Result<String> {
+    pub async fn fetch_raw(&self, url: &str) -> Result<String> {
         let cookie_header = generate_cookie_header();
         let client_inner = Arc::clone(&self.client);
-        let url = request.get_search_url();
 
+        let queue_start = std::time::Instant::now();
         let response = self
             .query_queue
             .with_retry(move || {
-                let url = url.clone();
+                let url = url.to_string();
                 let cookie = cookie_header.clone();
                 let http_client = client_inner.clone();
                 async move {
-                    tracing::trace!("Fetching Google Flights URL: {}", url);
+                    let http_start = std::time::Instant::now();
+                    tracing::trace!("[fetch_raw] Starting HTTP request to: {}", url);
                     let resp = http_client
-                        .get(&url)
+                        .get(url)
                         .header("Cookie", &cookie)
                         .send()
                         .await?;
+                    let http_elapsed = http_start.elapsed();
+                    tracing::trace!("[fetch_raw] HTTP request completed in {:?}", http_elapsed);
                     Ok(resp)
                 }
             })
-            .await
-            .map_err(|e| anyhow!("Request failed: {:?}", e))?;
+            .await;
+        let total_elapsed = queue_start.elapsed();
+        tracing::debug!(
+            "[fetch_raw] Query queue + HTTP execution time: {:?}",
+            total_elapsed
+        );
+
+        let response = response.map_err(|e| anyhow!("Request failed: {:?}", e))?;
 
         let status = response.status();
         tracing::debug!(
-            "HTTP Status: {} {}",
+            "[fetch_raw] HTTP Status: {} {}",
             status.as_u16(),
             status.canonical_reason().unwrap_or("Unknown")
         );
 
+        let body_start = std::time::Instant::now();
         let body = response.text().await.context("Read body")?;
+        let body_elapsed = body_start.elapsed();
         let body_len_kb = body.len() / 1024;
-        tracing::debug!("Response body: {} KB", body_len_kb);
+        tracing::debug!(
+            "[fetch_raw] Response body read in {:?}: {} KB",
+            body_elapsed,
+            body_len_kb
+        );
 
         if !status.is_success() {
             let body_preview = body.chars().take(500).collect::<String>();
@@ -116,6 +136,7 @@ impl GoogleFlightsClient {
     }
 
     pub async fn search_flights(&self, params: &FlightSearchParams) -> Result<FlightSearchResult> {
+        let overall_start = std::time::Instant::now();
         params.validate().context("Invalid search parameters")?;
 
         if params.trip_type == Trip::RoundTrip && params.return_date.is_none() {
@@ -124,8 +145,10 @@ impl GoogleFlightsClient {
             );
         }
 
+        let url_build_start = std::time::Instant::now();
         let url = params.get_search_url();
-        tracing::info!("🔗 Search URL:\n{}", url);
+        let url_build_elapsed = url_build_start.elapsed();
+        tracing::info!("🔗 Search URL built in {:?}: {}", url_build_elapsed, url);
 
         let today = chrono::Local::now().date_naive();
         let depart_date = chrono::NaiveDate::parse_from_str(&params.depart_date, "%Y-%m-%d")
@@ -138,16 +161,33 @@ impl GoogleFlightsClient {
             anyhow::ensure!(return_date >= today, "Return date cannot be in the past");
         }
 
-        let html = self.fetch_raw(params).await?;
+        let fetch_start = std::time::Instant::now();
+        tracing::info!("Starting HTTP fetch to Google Flights...");
+        let html = self.fetch_raw(&url).await?;
+        let fetch_elapsed = fetch_start.elapsed();
+        tracing::info!(
+            "HTTP fetch completed in {:?}, got {} KB",
+            fetch_elapsed,
+            html.len() / 1024
+        );
 
+        let parse_start = std::time::Instant::now();
         match FlightSearchResult::from_html(&html, params.clone()) {
             Ok(result) => {
-                tracing::debug!("Parsed {} itineraries", result.itineraries.len());
+                let parse_elapsed = parse_start.elapsed();
+                tracing::debug!(
+                    "Parsed {} itineraries in {:?}",
+                    result.itineraries.len(),
+                    parse_elapsed
+                );
+                let total_elapsed = overall_start.elapsed();
+                tracing::info!("Total search_flights time: {:?}", total_elapsed);
                 Ok(result)
             }
             Err(e) => {
+                let parse_elapsed = parse_start.elapsed();
                 let preview = html.chars().take(2000).collect::<String>();
-                tracing::error!("Parse failed: {:?}", e);
+                tracing::error!("Parse failed after {:?}: {:?}", parse_elapsed, e);
 
                 let has_flight_cards = html.contains("pIav2d") || html.contains("JMc5Xc");
                 let has_loading = html.contains("Loading results") || html.contains("jsshadow");
@@ -156,22 +196,30 @@ impl GoogleFlightsClient {
                 if has_consent {
                     tracing::error!("Consent wall detected - cookies not accepted");
                 } else if !has_flight_cards && has_loading {
-                    tracing::error!("Detected loading spinner without flight data.");
-                    tracing::error!("This often happens for sparse routes (small airports) or when Google loads results via JavaScript.");
-                    tracing::error!(
-                        "For YYD (Smithers), CDG (Paris), etc., Google may require JS rendering."
+                    tracing::warn!("Detected loading spinner without flight data.");
+                    tracing::warn!(
+                        "This often happens for sparse routes or when Google loads results via JavaScript."
+                    );
+                    tracing::warn!(
+                        "For NRT→JFK, this may indicate Google is using dynamic JS rendering."
+                    );
+                    tracing::warn!(
+                        "Consider using a headless browser or checking route popularity."
                     );
                 } else if !has_flight_cards {
-                    tracing::error!("No flight data in response. This may indicate:");
-                    tracing::error!("  - SOCS cookie expired or invalid");
-                    tracing::error!("  - Bot detection triggered");
-                    tracing::error!("  - Rate limiting applied");
-                    tracing::error!("  - Route has no available flights");
+                    tracing::warn!("No flight data in response. This may indicate:");
+                    tracing::warn!("  - Route returned no flights (might be sold out)");
+                    tracing::warn!("  - Google using JS lazy-loading for this route");
+                    tracing::warn!("  - Request caching vs fresh request behavior differs");
                 } else {
-                    tracing::error!("Flight HTML detected but parser failed to extract. Parser may need updating.");
+                    tracing::error!(
+                        "Flight HTML detected but parser failed to extract. Parser may need updating."
+                    );
                 }
 
                 tracing::error!("HTML preview (first 2000 chars):\n{}", preview);
+                let total_elapsed = overall_start.elapsed();
+                tracing::info!("Total search_flights time (failed): {:?}", total_elapsed);
                 Err(e).context("Parse failed - see HTML preview above")
             }
         }

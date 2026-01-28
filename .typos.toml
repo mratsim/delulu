@@ -1,2 +1,2 @@
 [files]
-extend-exclude = ["*.json", "*.jsonc"]
+extend-exclude = ["*.json", "*.jsonc", "**/t_mcp_stdio.rs", "**/t_mcp_http.rs"]

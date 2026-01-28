@@ -35,17 +35,22 @@ message Airport {
 // -----------------------------------------------------------------------------
 // FlightData - Core search parameters for a single leg
 //
-// Optional markers indicate fields that may be omitted from encoding:
-// - max_stops: When omitted/absent → treat as unrestricted stops
+// In proto3, all fields are optional (no required keyword exists).
+// However, the following fields are semantically REQUIRED for valid searches:
+// - date: Must be a valid ISO 8601 date string ("YYYY-MM-DD")
+// - from_flight: Must be Some with a non-empty airport code
+// - to_flight: Must be Some with a non-empty airport code
+//
+// Optional markers in this schema indicate:
+// - max_stops: When None → treat as unrestricted stops
 // - airlines: When empty → no airline filtering applied
-// - from_flight/to_flight: REQUIRED - searches won't work without airports
 // -----------------------------------------------------------------------------
 message FlightData {
   string date = 2; // REQUIRED: departure date (ISO 8601: "YYYY-MM-DD")
   optional int32 max_stops = 5; // OPTIONAL: 0=none, 1=1 stop, 2=2 stops; omit for unrestricted
   repeated string airlines = 6; // OPTIONAL: airline carrier codes (AA, UA, DL...); empty = no filter
-  Airport from_flight = 13; // REQUIRED: origin airport
-  Airport to_flight = 14; // REQUIRED: destination airport
+  Airport from_flight = 13; // REQUIRED: origin airport (must be present with valid code)
+  Airport to_flight = 14; // REQUIRED: destination airport (must be present with valid code)
 }
 
 // -----------------------------------------------------------------------------
@@ -79,14 +84,14 @@ enum Passenger {
 }
 
 // -----------------------------------------------------------------------------
-// Info - Top-level container sent to Google Flights
+// ProtoFlightSearch - Top-level container sent to Google Flights
 // Contains complete search configuration including multiple flight legs,
 // passenger breakdown, cabin class, and trip type.
 //
-// All top-level fields in Info are effectively optional per Google Flights'
+// All top-level fields are effectively optional per Google Flights'
 // TFS protocol - the service fills reasonable defaults for anything omitted.
 // -----------------------------------------------------------------------------
-message Info {
+message ProtoFlightSearch {
   repeated FlightData data = 3; // Multiple FlightData for multi-leg/multi-city trips
   repeated Passenger passengers = 8; // OPTIONAL: passenger mix; default assumed [Adult x 1]
   optional Seat seat = 9; // OPTIONAL: cabin class; default economy

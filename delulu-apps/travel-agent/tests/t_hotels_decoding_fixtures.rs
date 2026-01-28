@@ -35,7 +35,7 @@ struct TestVectorInput {
     hotel_stars: Option<Vec<i32>>,
     price_min: Option<f64>,
     price_max: Option<f64>,
-    sort_by: String,
+    sort_by: Option<String>,
     location_id: String,
     coordinates: String,
     used_guests_dropdown: bool,
@@ -163,16 +163,14 @@ fn test_validate_decoder_with_ui() {
                     .unwrap_or_default()
                     .iter()
                     .filter_map(|a| {
-                        delulu_travel_agent::Amenity::from_str_name(&a.to_uppercase())
-                            .map(|a| a as i32)
+                        delulu_travel_agent::Amenity::from_str_name(a).map(|a| a as i32)
                     })
                     .collect();
                 let expected_guest_rating = case.input.min_guest_rating;
 
-                let expected_sort = match case.input.sort_by.to_uppercase().as_str() {
-                    "RELEVANCE" => None,
-                    _ => SortType::from_str_name(&case.input.sort_by.to_uppercase())
-                        .map(|s| s as i32),
+                let expected_sort: Option<SortType> = match case.input.sort_by.as_deref() {
+                    Some("relevance") | None => None,
+                    Some(s) => SortType::from_str_name(s),
                 };
 
                 let actual_stars: Vec<i32> = decoded.hotel_stars.clone();
@@ -243,8 +241,8 @@ fn test_validate_decoder_with_ui() {
                 let sort_matches = match (&expected_sort, &actual_sort) {
                     (None, None) => true,
                     (None, Some(_)) => false,
-                    (Some(_), Some(_)) => expected_sort == actual_sort,
                     (Some(_), None) => false,
+                    (Some(e), Some(a)) => e == a,
                 };
                 if !sort_matches {
                     failures.push(format!(

@@ -19,19 +19,75 @@
 //!
 //! Side-effect free HTML parsing for Google Flights search results.
 //! Extracts flight information from the HTML response.
+//!
+//! ## MCP API Response Schema
+//!
+//! See [`schemas/flights-response.json`](schemas/flights-response.json) for the canonical JSON schema.
 
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
 
 use crate::FlightSearchParams;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
 pub struct FlightSearchResult {
     pub search_params: FlightSearchParams,
     pub itineraries: Vec<Itinerary>,
     pub raw_response: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct McpFlightResponse {
+    pub search_flights: McpFlightsResponse,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct McpFlightsResponse {
+    pub total: usize,
+    pub query: McpQuery,
+    pub results: Vec<McpItinerary>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct McpQuery {
+    pub from: String,
+    pub to: String,
+    pub date: String,
+    pub curr: String,
+    pub seat: String,
+    pub search_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct McpItinerary {
+    pub price: i32,
+    pub airlines: Vec<String>,
+    pub dur_min: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layover: Option<Vec<McpStop>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct McpStop {
+    pub city: String,
+    pub dur_min: i32,
 }
 
 impl FlightSearchResult {
@@ -50,44 +106,119 @@ impl FlightSearchResult {
         })
     }
 
-    pub fn len(&self) -> usize {
-        self.itineraries.len()
-    }
+    pub fn to_mcp_api_response(&self, warnings: Vec<String>) -> McpFlightResponse {
+        let curr = self
+            .itineraries
+            .first()
+            .and_then(|it| it.currency.clone())
+            .unwrap_or_else(|| "USD".to_string());
+        let seat = crate::Seat::as_str_name(&self.search_params.cabin_class).to_string();
 
-    pub fn is_empty(&self) -> bool {
-        self.itineraries.is_empty()
+        let results: Vec<McpItinerary> = self
+            .itineraries
+            .iter()
+            .map(|it| {
+                let price = it.price.unwrap_or(0);
+                let duration_minutes = it.duration_minutes.unwrap_or(0);
+
+                let airlines: Vec<String> = it
+                    .flights
+                    .iter()
+                    .filter_map(|f| f.airline.clone())
+                    .collect();
+
+                let layover: Option<Vec<McpStop>> = if it.layovers.is_empty() {
+                    None
+                } else {
+                    Some(
+                        it.layovers
+                            .iter()
+                            .filter_map(|l| {
+                                l.airport_city.as_ref().map(|city| McpStop {
+                                    city: city.clone(),
+                                    dur_min: l.duration_minutes.unwrap_or(0),
+                                })
+                            })
+                            .collect(),
+                    )
+                };
+
+                McpItinerary {
+                    price,
+                    airlines,
+                    dur_min: duration_minutes,
+                    layover,
+                }
+            })
+            .collect();
+
+        McpFlightResponse {
+            search_flights: McpFlightsResponse {
+                total: results.len(),
+                query: McpQuery {
+                    from: self.search_params.from_airport.clone(),
+                    to: self.search_params.to_airport.clone(),
+                    date: self.search_params.depart_date.clone(),
+                    curr,
+                    seat,
+                    search_url: self.search_params.get_search_url(),
+                },
+                results,
+                warnings,
+            },
+        }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
 pub struct Layover {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub _airport_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub airport_city: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_minutes: Option<i32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
 pub struct Itinerary {
     pub id: String,
     pub flights: Vec<FlightSegment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub price: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub currency: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_minutes: Option<i32>,
-    pub stops: Option<i32>,
     pub class: Option<String>,
     pub layovers: Vec<Layover>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
 pub struct FlightSegment {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub airline: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub flight_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub departure_airport: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub arrival_airport: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub departure_time: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub arrival_time: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub arrival_plus_days: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_minutes: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub aircraft: Option<String>,
 }
 
@@ -98,7 +229,6 @@ struct Flight {
     arr_time: String,
     arrive_plus_days: Option<String>,
     duration: String,
-    stops: i32,
     price: String,
     layovers: Vec<Layover>,
 }
@@ -112,7 +242,7 @@ struct FlightSelectors {
     _aircraft: Selector,
     times: Selector,
     duration: Selector,
-    stops: Selector,
+    _stops: Selector,
     stops_container: Selector,
     arrives_next_day: Selector,
     price: Selector,
@@ -128,7 +258,7 @@ impl FlightSelectors {
             _aircraft: Selector::parse(r#"span.Xsgmwe"#).unwrap(),
             times: Selector::parse(r#"span.mv1WYe div"#).unwrap(),
             duration: Selector::parse(r#"li div.Ak5kof div"#).unwrap(),
-            stops: Selector::parse(r#".BbR8Ec .ogfYpf"#).unwrap(),
+            _stops: Selector::parse(r#".BbR8Ec .ogfYpf"#).unwrap(),
             stops_container: Selector::parse(r#".BbR8Ec .sSHqwe"#).unwrap(),
             arrives_next_day: Selector::parse(r#"span.bOzv6"#).unwrap(),
             price: Selector::parse(r#".YMlIz.FpEdX"#).unwrap(),
@@ -189,21 +319,6 @@ fn parse_single_flight(card: scraper::ElementRef, _selectors: &FlightSelectors) 
     let dur_el = card.select(&_selectors.duration).next()?;
     let duration = dur_el.text().collect();
 
-    let stops_el = card.select(&_selectors.stops).next()?;
-    let stops_label: String = stops_el.text().collect();
-    let stops = if stops_label.contains("Nonstop") {
-        0
-    } else {
-        stops_label
-            .split_whitespace()
-            .next()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| {
-                tracing::warn!("Could not parse number of stops from: '{}'", stops_label);
-                1
-            })
-    };
-
     let layovers = parse_layovers_from_card(card, _selectors);
 
     let price_el = card.select(&_selectors.price).next()?;
@@ -215,7 +330,6 @@ fn parse_single_flight(card: scraper::ElementRef, _selectors: &FlightSelectors) 
         arr_time,
         arrive_plus_days,
         duration,
-        stops,
         price,
         layovers,
     })
@@ -304,7 +418,6 @@ fn convert_to_itineraries(
             price,
             currency: currency.clone(),
             duration_minutes: Some(duration),
-            stops: Some(flight.stops),
             class: None,
             layovers: flight.layovers,
         });

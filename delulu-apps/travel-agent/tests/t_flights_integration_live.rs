@@ -95,7 +95,7 @@ async fn rate_limited_query(
 #[tokio::test]
 #[ignore]
 async fn test_real_query_domestic_us_route() -> Result<()> {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
     println!("=== Domestic US Route Test ===");
 
     match rate_limited_query(&client, "SFO", "JFK", &dom_flight_date(), Seat::Economy, 0).await {
@@ -116,7 +116,7 @@ async fn test_real_query_domestic_us_route() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_real_query_international_longhaul() -> Result<()> {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
     println!("\n=== International Long-Haul Test ===");
 
     match rate_limited_query(&client, "SFO", "LHR", &intl_flight_date(), Seat::Economy, 1).await {
@@ -137,7 +137,7 @@ async fn test_real_query_international_longhaul() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_real_query_business_class() -> Result<()> {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
     println!("\n=== Business Class Test ===");
 
     match rate_limited_query(&client, "LAX", "ORD", &bus_flight_date(), Seat::Business, 1).await {
@@ -158,7 +158,7 @@ async fn test_real_query_business_class() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_real_query_different_dates() -> Result<()> {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
     println!("\n=== Different Dates Comparison Test ===");
 
     match rate_limited_query(&client, "SFO", "JFK", &next_month(), Seat::Economy, 0).await {
@@ -191,7 +191,7 @@ async fn test_real_query_different_dates() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_real_query_quick_smoke() -> Result<()> {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
     println!("Quick test: single SFO->JFK query");
     println!("Browser: Safari 18.5, Cookies: YES+ consented");
 
@@ -206,7 +206,7 @@ async fn test_real_query_quick_smoke() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_real_query_overnight_plus_two_days() -> Result<()> {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
     let date = (today() + Months::new(2)).format("%Y-%m-%d").to_string();
     println!("\n=== Overnight +2 Days Test ===");
     println!("Querying: SFO -> LHR on {} (testing +2 day arrival)", date);
@@ -240,7 +240,7 @@ async fn test_real_query_overnight_plus_two_days() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_real_query_premium_economy() -> Result<()> {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
     let date = intl_flight_date();
     println!("\n=== Premium Economy Test ===");
 
@@ -262,7 +262,7 @@ async fn test_real_query_premium_economy() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_real_query_first_class() -> Result<()> {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
     let date = intl_flight_date();
     println!("\n=== First Class Test ===");
 
@@ -284,7 +284,7 @@ async fn test_real_query_first_class() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_real_query_oneway() -> Result<()> {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
     let date = intl_flight_date();
     println!("\n=== One-Way Test ===");
 
@@ -315,7 +315,7 @@ async fn test_real_query_oneway() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn test_real_query_response_structure() -> Result<()> {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into())?;
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2)?;
     let date = dom_flight_date();
     println!("\n=== Response Structure Test ===");
 
@@ -382,7 +382,7 @@ async fn fetch_single_flight_fixture(
     println!("Fetching flight '{}': {}", name, url_display);
 
     let result = client.search_flights(params).await?;
-    let text = result.raw_response;
+    let text = result.raw_response.clone();
 
     println!(
         "Response size: {} bytes, itineraries: {}",
@@ -412,7 +412,7 @@ async fn fetch_single_flight_fixture(
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_sfo_jfk_nonstop() {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2).expect("client");
 
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(2);
@@ -442,7 +442,7 @@ async fn fetch_fixture_sfo_jfk_nonstop() {
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_lax_ord_business() {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2).expect("client");
 
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(2) + chrono::Duration::days(15);
@@ -472,7 +472,7 @@ async fn fetch_fixture_lax_ord_business() {
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_sfo_lhr_overnight() {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2).expect("client");
 
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(2);
@@ -501,7 +501,7 @@ async fn fetch_fixture_sfo_lhr_overnight() {
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_lax_syd_longhaul() {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2).expect("client");
 
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(3);
@@ -530,7 +530,7 @@ async fn fetch_fixture_lax_syd_longhaul() {
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_mad_nrt_layover() {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2).expect("client");
 
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(3);
@@ -559,7 +559,7 @@ async fn fetch_fixture_mad_nrt_layover() {
 #[tokio::test]
 #[ignore]
 async fn fetch_fixture_yyz_cdg_layover() {
-    let client = GoogleFlightsClient::new("en".into(), "USD".into()).expect("client");
+    let client = GoogleFlightsClient::new("en".into(), "USD".into(), 5, 2).expect("client");
 
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(2);

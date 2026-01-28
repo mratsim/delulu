@@ -17,10 +17,15 @@ pub struct Airport {
 /// -----------------------------------------------------------------------------
 /// FlightData - Core search parameters for a single leg
 ///
-/// Optional markers indicate fields that may be omitted from encoding:
-/// - max_stops: When omitted/absent → treat as unrestricted stops
+/// In proto3, all fields are optional (no required keyword exists).
+/// However, the following fields are semantically REQUIRED for valid searches:
+/// - date: Must be a valid ISO 8601 date string ("YYYY-MM-DD")
+/// - from_flight: Must be Some with a non-empty airport code
+/// - to_flight: Must be Some with a non-empty airport code
+///
+/// Optional markers in this schema indicate:
+/// - max_stops: When None → treat as unrestricted stops
 /// - airlines: When empty → no airline filtering applied
-/// - from_flight/to_flight: REQUIRED - searches won't work without airports
 /// -----------------------------------------------------------------------------
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FlightData {
@@ -33,23 +38,23 @@ pub struct FlightData {
     /// OPTIONAL: airline carrier codes (AA, UA, DL...); empty = no filter
     #[prost(string, repeated, tag = "6")]
     pub airlines: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    /// REQUIRED: origin airport
+    /// REQUIRED: origin airport (must be present with valid code)
     #[prost(message, optional, tag = "13")]
     pub from_flight: ::core::option::Option<Airport>,
-    /// REQUIRED: destination airport
+    /// REQUIRED: destination airport (must be present with valid code)
     #[prost(message, optional, tag = "14")]
     pub to_flight: ::core::option::Option<Airport>,
 }
 /// -----------------------------------------------------------------------------
-/// Info - Top-level container sent to Google Flights
+/// ProtoFlightSearch - Top-level container sent to Google Flights
 /// Contains complete search configuration including multiple flight legs,
 /// passenger breakdown, cabin class, and trip type.
 ///
-/// All top-level fields in Info are effectively optional per Google Flights'
+/// All top-level fields in ProtoFlightSearch are effectively optional per Google Flights'
 /// TFS protocol - the service fills reasonable defaults for anything omitted.
 /// -----------------------------------------------------------------------------
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Info {
+pub struct ProtoFlightSearch {
     /// Multiple FlightData for multi-leg/multi-city trips
     #[prost(message, repeated, tag = "3")]
     pub data: ::prost::alloc::vec::Vec<FlightData>,

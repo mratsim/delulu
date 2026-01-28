@@ -19,12 +19,18 @@
 //!
 //! Side-effect free HTML parsing for Google Hotels search results.
 //! Extracts hotel information from the HTML response.
+//!
+//! ## MCP API Response Schema
+//!
+//! See [`schemas/hotels-response.json`](schemas/hotels-response.json) for the canonical JSON schema.
 
 use anyhow::Result;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
 pub struct Hotel {
     pub name: String,
     pub price: String,
@@ -39,10 +45,111 @@ pub struct Hotel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
 pub struct HotelSearchResult {
     pub hotels: Vec<Hotel>,
     pub lowest_price: Option<String>,
     pub current_price: Option<String>,
+}
+
+impl HotelSearchResult {
+    pub fn to_mcp_api_response(
+        &self,
+        location: String,
+        checkin_date: String,
+        checkout_date: String,
+        currency: String,
+        search_url: String,
+        warnings: Vec<String>,
+    ) -> McpHotelResponse {
+        let results: Vec<McpHotel> = self
+            .hotels
+            .iter()
+            .map(|hotel| {
+                let price = hotel
+                    .price
+                    .chars()
+                    .filter(|c| c.is_ascii_digit())
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(0);
+                let stars = hotel
+                    .star_class
+                    .as_ref()
+                    .and_then(|s| s.trim().parse().ok())
+                    .filter(|&s| s > 0);
+                let rating = hotel.rating.unwrap_or(0.0);
+                let amenities: Vec<String> = hotel.amenities.clone();
+
+                McpHotel {
+                    name: hotel.name.clone(),
+                    price,
+                    rating,
+                    stars,
+                    amenities,
+                }
+            })
+            .collect();
+
+        McpHotelResponse {
+            search_hotels: McpHotelsResponse {
+                total: results.len(),
+                query: McpHotelQuery {
+                    loc: location,
+                    in_: checkin_date,
+                    out: checkout_date,
+                    curr: currency,
+                    search_url,
+                },
+                results,
+                warnings,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct McpHotelResponse {
+    pub search_hotels: McpHotelsResponse,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct McpHotelsResponse {
+    pub total: usize,
+    pub query: McpHotelQuery,
+    pub results: Vec<McpHotel>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct McpHotelQuery {
+    pub loc: String,
+    #[serde(rename = "in")]
+    pub in_: String,
+    pub out: String,
+    pub curr: String,
+    pub search_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct McpHotel {
+    pub name: String,
+    pub price: i32,
+    pub rating: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stars: Option<i32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub amenities: Vec<String>,
 }
 
 impl HotelSearchResult {
