@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use rand::Rng;
 use thiserror::Error;
-use tokio::sync::{Mutex, Notify};
 use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Notify};
 use tokio::time;
 
 /// Custom error for the work queue
@@ -135,7 +135,14 @@ impl QueryQueue {
     async fn refill_tokens(&self) {
         match &self.rate_limit {
             RateLimit::ConcurrencyOnly => {}
-            RateLimit::Qps { limit, tokens, last_refill, refill_interval, notify, .. } => {
+            RateLimit::Qps {
+                limit,
+                tokens,
+                last_refill,
+                refill_interval,
+                notify,
+                ..
+            } => {
                 let mut last = last_refill.lock().await;
                 let now = Instant::now();
                 let elapsed = now.duration_since(*last);
@@ -158,27 +165,25 @@ impl QueryQueue {
     async fn acquire_token(&self) {
         match &self.rate_limit {
             RateLimit::ConcurrencyOnly => {}
-            RateLimit::Qps { tokens, notify, .. } => {
-                loop {
-                    let available = tokens.load(Ordering::SeqCst);
-                    if available > 0 {
-                        if tokens
-                            .compare_exchange(
-                                available,
-                                available - 1,
-                                Ordering::SeqCst,
-                                Ordering::SeqCst,
-                            )
-                            .is_ok()
-                        {
-                            return;
-                        }
-                    } else {
-                        // Wait until notified that tokens may be available
-                        notify.notified().await;
+            RateLimit::Qps { tokens, notify, .. } => loop {
+                self.refill_tokens().await;
+                let available = tokens.load(Ordering::SeqCst);
+                if available > 0 {
+                    if tokens
+                        .compare_exchange(
+                            available,
+                            available - 1,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        )
+                        .is_ok()
+                    {
+                        return;
                     }
+                } else {
+                    notify.notified().await;
                 }
-            }
+            },
         }
     }
 

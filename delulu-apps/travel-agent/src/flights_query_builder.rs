@@ -282,11 +282,24 @@ impl FlightSearchParams {
             .map(|(_, count)| count)
             .sum();
 
+        let infants_in_seat: u32 = self
+            .passengers
+            .iter()
+            .filter(|(t, _)| *t == Passenger::InfantInSeat)
+            .map(|(_, count)| count)
+            .sum();
+
         ensure!(adults > 0, "At least one adult is required");
         ensure!(
             infants_on_lap <= adults,
             "Cannot have more infants on lap ({}) than adults ({})",
             infants_on_lap,
+            adults
+        );
+        ensure!(
+            infants_in_seat <= adults,
+            "Cannot have more infants in seat ({}) than adults ({})",
+            infants_in_seat,
             adults
         );
 
@@ -316,8 +329,7 @@ impl FlightSearchParams {
 
         let return_checkin = match &self.return_date {
             Some(rd) => Some(
-                NaiveDate::parse_from_str(rd, "%Y-%m-%d")
-                    .expect("return_date already validated"),
+                NaiveDate::parse_from_str(rd, "%Y-%m-%d").expect("return_date already validated"),
             ),
             None => None,
         };
@@ -458,6 +470,30 @@ impl FlightSearchParams {
                 trip_type = t;
             }
         }
+
+        ensure!(!from_airport.is_empty(), "from_airport is required");
+        ensure!(!to_airport.is_empty(), "to_airport is required");
+        let depart_parsed = NaiveDate::parse_from_str(&depart_date, "%Y-%m-%d")
+            .context("Invalid depart date format")?;
+        let return_parsed = return_date
+            .as_ref()
+            .map(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d"))
+            .transpose()
+            .context("Invalid return date format")?;
+        if let Some(ret) = return_parsed.as_ref() {
+            ensure!(
+                ret >= &depart_parsed,
+                "return_date ({}) must be on or after depart_date ({})",
+                ret,
+                depart_parsed
+            );
+        }
+        ensure!(
+            infants_on_lap <= adults,
+            "Cannot have more infants on lap ({}) than adults ({})",
+            infants_on_lap,
+            adults
+        );
 
         Ok(FlightSearchParams {
             from_airport,

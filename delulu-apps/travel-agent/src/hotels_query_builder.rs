@@ -70,7 +70,7 @@ impl From<Amenity> for i32 {
 }
 
 impl TryFrom<i32> for Amenity {
-    type Error = std::convert::Infallible;
+    type Error = i32;
     fn try_from(v: i32) -> std::result::Result<Self, Self::Error> {
         match v {
             x if x == Amenity::IndoorPool as i32 => Ok(Amenity::IndoorPool),
@@ -80,7 +80,7 @@ impl TryFrom<i32> for Amenity {
             x if x == Amenity::KidFriendly as i32 => Ok(Amenity::KidFriendly),
             x if x == Amenity::AirConditioned as i32 => Ok(Amenity::AirConditioned),
             x if x == Amenity::EvCharger as i32 => Ok(Amenity::EvCharger),
-            _ => unreachable!("Invalid amenity value: {}", v),
+            _ => Err(v),
         }
     }
 }
