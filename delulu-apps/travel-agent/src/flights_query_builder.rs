@@ -296,12 +296,6 @@ impl FlightSearchParams {
             infants_on_lap,
             adults
         );
-        ensure!(
-            infants_in_seat <= adults,
-            "Cannot have more infants in seat ({}) than adults ({})",
-            infants_in_seat,
-            adults
-        );
 
         let depart_date = NaiveDate::parse_from_str(&self.depart_date, "%Y-%m-%d")
             .context("Invalid depart date format")?;
