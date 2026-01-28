@@ -46,6 +46,7 @@ pub enum Amenity {
     Spa = AmenityProto::Spa as i32,
     KidFriendly = AmenityProto::KidFriendly as i32,
     AirConditioned = AmenityProto::AirConditioned as i32,
+    EvCharger = AmenityProto::EvCharger as i32,
 }
 
 impl From<Amenity> for AmenityProto {
@@ -57,6 +58,7 @@ impl From<Amenity> for AmenityProto {
             Amenity::Spa => AmenityProto::Spa,
             Amenity::KidFriendly => AmenityProto::KidFriendly,
             Amenity::AirConditioned => AmenityProto::AirConditioned,
+            Amenity::EvCharger => AmenityProto::EvCharger,
         }
     }
 }
@@ -68,16 +70,17 @@ impl From<Amenity> for i32 {
 }
 
 impl TryFrom<i32> for Amenity {
-    type Error = ();
+    type Error = std::convert::Infallible;
     fn try_from(v: i32) -> std::result::Result<Self, Self::Error> {
         match v {
-            v if v == Amenity::IndoorPool as i32 => Ok(Amenity::IndoorPool),
-            v if v == Amenity::OutdoorPool as i32 => Ok(Amenity::OutdoorPool),
-            v if v == Amenity::Pool as i32 => Ok(Amenity::Pool),
-            v if v == Amenity::Spa as i32 => Ok(Amenity::Spa),
-            v if v == Amenity::KidFriendly as i32 => Ok(Amenity::KidFriendly),
-            v if v == Amenity::AirConditioned as i32 => Ok(Amenity::AirConditioned),
-            _ => Err(()),
+            x if x == Amenity::IndoorPool as i32 => Ok(Amenity::IndoorPool),
+            x if x == Amenity::OutdoorPool as i32 => Ok(Amenity::OutdoorPool),
+            x if x == Amenity::Pool as i32 => Ok(Amenity::Pool),
+            x if x == Amenity::Spa as i32 => Ok(Amenity::Spa),
+            x if x == Amenity::KidFriendly as i32 => Ok(Amenity::KidFriendly),
+            x if x == Amenity::AirConditioned as i32 => Ok(Amenity::AirConditioned),
+            x if x == Amenity::EvCharger as i32 => Ok(Amenity::EvCharger),
+            _ => unreachable!("Invalid amenity value: {}", v),
         }
     }
 }
@@ -92,6 +95,7 @@ impl Amenity {
             "spa" => Some(Amenity::Spa),
             "kid_friendly" | "kidfriendly" | "kid" => Some(Amenity::KidFriendly),
             "air_conditioned" | "airconditioned" | "ac" => Some(Amenity::AirConditioned),
+            "ev_charger" | "evcharger" | "ev" => Some(Amenity::EvCharger),
             _ => None,
         }
     }
@@ -104,6 +108,7 @@ impl Amenity {
             Amenity::Spa => "spa",
             Amenity::KidFriendly => "kid_friendly",
             Amenity::AirConditioned => "air_conditioned",
+            Amenity::EvCharger => "ev_charger",
         }
     }
 }

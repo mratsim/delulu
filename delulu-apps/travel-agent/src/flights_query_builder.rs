@@ -433,11 +433,11 @@ impl FlightSearchParams {
         let mut adults: u32 = 0;
         let mut infants_on_lap: u32 = 0;
         let mut infants_in_seat: u32 = 0;
-        let mut children_ages: Vec<i32> = Vec::new();
+        let mut children: u32 = 0;
         for passenger_type in &info.passengers {
             match passenger_type {
                 p if *p == PassengerProto::Adult as i32 => adults += 1,
-                p if *p == PassengerProto::Child as i32 => children_ages.push(0),
+                p if *p == PassengerProto::Child as i32 => children += 1,
                 p if *p == PassengerProto::InfantOnLap as i32 => infants_on_lap += 1,
                 p if *p == PassengerProto::InfantInSeat as i32 => infants_in_seat += 1,
                 _ => {}
@@ -470,8 +470,8 @@ impl FlightSearchParams {
                 if adults > 0 {
                     passengers.push((Passenger::Adult, adults));
                 }
-                if !children_ages.is_empty() {
-                    passengers.push((Passenger::Child, children_ages.len() as u32));
+                if children > 0 {
+                    passengers.push((Passenger::Child, children));
                 }
                 if infants_on_lap > 0 {
                     passengers.push((Passenger::InfantOnLap, infants_on_lap));
