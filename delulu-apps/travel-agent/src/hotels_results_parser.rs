@@ -28,9 +28,6 @@ use anyhow::Result;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "mcp")]
-use schemars::JsonSchema;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]

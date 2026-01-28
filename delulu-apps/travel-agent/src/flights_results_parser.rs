@@ -30,9 +30,6 @@ use regex::Regex;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "mcp")]
-use schemars::JsonSchema;
-
 use crate::FlightSearchParams;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -30,9 +30,6 @@ use chrono::{Datelike, NaiveDate};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "mcp")]
-use schemars::JsonSchema;
-
 use proto::{Amenity as AmenityProto, SortType as SortTypeProto};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

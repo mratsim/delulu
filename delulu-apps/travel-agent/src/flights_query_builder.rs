@@ -30,9 +30,6 @@ use chrono::{Datelike, NaiveDate};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "mcp")]
-use schemars::JsonSchema;
-
 use proto::{
     Airport as AirportProto, FlightData, Passenger as PassengerProto, ProtoFlightSearch,
     Seat as SeatProto, Trip as TripProto,
