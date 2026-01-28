@@ -36,7 +36,6 @@ enum RateLimit {
         tokens: Arc<AtomicU64>,
         last_refill: Arc<Mutex<Instant>>,
         refill_interval: Duration,
-        spin_delay: Duration,
         notify: Arc<tokio::sync::Notify>,
     },
 }
@@ -124,7 +123,6 @@ impl QueryQueue {
                 tokens: Arc::new(AtomicU64::new(qps_limit)),
                 last_refill: Arc::new(Mutex::new(Instant::now())),
                 refill_interval: Duration::from_secs(1),
-                spin_delay: Duration::from_millis(10),
                 notify: Arc::new(Notify::new()),
             },
             ..Default::default()
@@ -181,7 +179,7 @@ impl QueryQueue {
                         return;
                     }
                 } else {
-                    notify.notified().await;
+                    let _ = time::timeout(Duration::from_millis(100), notify.notified()).await;
                 }
             },
         }

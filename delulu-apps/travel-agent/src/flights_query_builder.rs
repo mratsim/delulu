@@ -129,7 +129,7 @@ pub enum Trip {
 
 impl Default for Trip {
     fn default() -> Self {
-        Trip::OneWay
+        Trip::RoundTrip
     }
 }
 
@@ -279,13 +279,6 @@ impl FlightSearchParams {
             .passengers
             .iter()
             .filter(|(t, _)| *t == Passenger::InfantOnLap)
-            .map(|(_, count)| count)
-            .sum();
-
-        let infants_in_seat: u32 = self
-            .passengers
-            .iter()
-            .filter(|(t, _)| *t == Passenger::InfantInSeat)
             .map(|(_, count)| count)
             .sum();
 
@@ -581,6 +574,7 @@ impl FlightSearchParamsBuilder {
     }
 
     pub fn build(self) -> Result<FlightSearchParams> {
+        let max_stops = self.max_stops.filter(|&v| v != 0);
         let params = FlightSearchParams {
             from_airport: self.from_airport,
             to_airport: self.to_airport,
@@ -589,7 +583,7 @@ impl FlightSearchParamsBuilder {
             cabin_class: self.cabin_class,
             passengers: self.passengers,
             trip_type: self.trip_type,
-            max_stops: self.max_stops,
+            max_stops,
             preferred_airlines: self.preferred_airlines,
         };
         params.validate()?;
@@ -672,5 +666,30 @@ mod tests {
         .build();
 
         assert!(params.is_err());
+    }
+
+    #[test]
+    fn test_tfs_roundtrip() {
+        let original = FlightSearchParams::builder(
+            "LAX".to_string(),
+            "ORD".to_string(),
+            NaiveDate::from_ymd_opt(2025, 7, 20).unwrap(),
+        )
+        .return_date(NaiveDate::from_ymd_opt(2025, 7, 25).unwrap())
+        .passengers(vec![(Passenger::Adult, 2), (Passenger::Child, 1)])
+        .cabin_class(Seat::Business)
+        .trip_type(Trip::RoundTrip)
+        .build()
+        .unwrap();
+
+        let tfs = original.generate_tfs().unwrap();
+        let decoded = FlightSearchParams::from_tfs(&tfs).unwrap();
+
+        assert_eq!(original.from_airport, decoded.from_airport);
+        assert_eq!(original.to_airport, decoded.to_airport);
+        assert_eq!(original.depart_date, decoded.depart_date);
+        assert_eq!(original.return_date, decoded.return_date);
+        assert_eq!(original.cabin_class, decoded.cabin_class);
+        assert_eq!(original.trip_type, decoded.trip_type);
     }
 }
