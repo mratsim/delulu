@@ -1,0 +1,116 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  VERSION: ${{ github.ref_name }}
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target.platform }} (${{ matrix.target.arch }})
+    runs-on: ${{ matrix.target.os }}
+    strategy:
+      matrix:
+        target:
+          - { platform: Windows, arch: x86_64, os: windows-latest, target: x86_64-pc-windows-msvc }
+          - { platform: Windows, arch: arm64, os: windows-latest, target: aarch64-pc-windows-msvc }
+          - { platform: macOS, arch: arm64, os: macos-latest, target: aarch64-apple-darwin }
+          - { platform: Linux, arch: x86_64, os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { platform: Linux, arch: arm64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        target: ${{ matrix.target.target }}
+
+    - name: install protoc
+      uses: taiki-e/install-action@v2
+      with:
+        tool: protoc@3.25.3
+
+    - run: |
+        rustup target add ${{ matrix.target.target }}
+        cargo build --release --target ${{ matrix.target.target }} --features mcp
+
+    - name: Strip executable (Linux)
+      if: matrix.target.platform == 'Linux'
+      run: strip target/${{ matrix.target.target }}/release/delulu-travel-mcp
+
+    - name: Create Windows archive
+      if: matrix.target.platform == 'Windows'
+      run: |
+        cd target/${{ matrix.target.target }}/release
+        7z a ../../../delulu-travel-mcp-${{ matrix.target.arch }}-windows.zip delulu-travel-mcp.exe
+
+    - name: Create macOS/Linux archive
+      if: matrix.target.platform != 'Windows'
+      run: |
+        cd target/${{ matrix.target.target }}/release
+        tar -czvf ../../../delulu-travel-mcp-${{ matrix.target.arch }}-${{ matrix.target.platform }}.tar.gz delulu-travel-mcp
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: delulu-travel-mcp-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ env.VERSION }}
+        path: |
+          delulu-travel-mcp-${{ matrix.target.arch }}-windows.zip
+          delulu-travel-mcp-${{ matrix.target.arch }}-${{ matrix.target.platform }}.tar.gz
+        if-no-file-found: error
+
+  create-release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Download all artifact
+      uses: actions/download-artifact@v5
+      with:
+        path: artifact
+
+    - name: Create release archive
+      run: |
+        cd artifact
+        mkdir -p release
+        find . -type f \( -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} release/ \;
+        ls -la release/
+
+    - name: Create release notes
+      id: release-notes
+      run: |
+        VERSION="${GITHUB_REF#ref/tags/}"
+        echo "tag_name=${VERSION}" >> $GITHUB_OUTPUT
+        cat > release-notes.md << EOF
+        ## Release ${VERSION}
+
+        Prebuilt binaries for multiple platforms:
+
+        - **Windows x86-64**: delulu-travel-mcp-windows-x86_64.zip
+        - **Windows ARM64**: delulu-travel-mcp-windows-arm64.zip
+        - **macOS ARM64**: delulu-travel-mcp-macos-arm64.tar.gz
+        - **Linux x86-64**: delulu-travel-mcp-linux-x86_64.tar.gz
+        - **Linux ARM64**: delulu-travel-mcp-linux-arm64.tar.gz
+
+        All binaries are statically compiled and ready to use.
+        EOF
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.release-notes.outputs.tag_name }}
+        name: Release ${{ steps.release-notes.outputs.tag_name }}
+        body_path: release-notes.md
+        files: artifact/release/*
+        draft: true
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

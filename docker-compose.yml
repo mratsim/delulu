@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  travel-agent:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=info
+    # Use
+    # - host.containers.internal   for podman
+    # - host.docker.internal       for docker
+    # --host 0.0.0.0 allows connections from all clients
+    # --host 127.0.0.1 allows connections from local clients
+    command: ["--host", "5001", "--port", "8080"]
