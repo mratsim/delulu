@@ -35,9 +35,30 @@ jobs:
       with:
         tool: protoc@3.25.3
 
+    - name: Install build dependencies (Linux)
+      if: matrix.target.platform == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential libclang-dev git
+
+    - name: Cache cargo dependencies
+      if: matrix.target.platform == 'Linux'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/release/.fingerprint
+          target/release/deps
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
     - run: |
         rustup target add ${{ matrix.target.target }}
-        cargo build --release --target ${{ matrix.target.target }} --features mcp
+        cargo build --release --target ${{ matrix.target.target }} -p delulu-travel-agent --features mcp
 
     - name: Strip executable (Linux)
       if: matrix.target.platform == 'Linux'

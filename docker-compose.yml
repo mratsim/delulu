@@ -6,9 +6,11 @@ services:
       - "8080:8080"
     environment:
       - RUST_LOG=info
+    # Run MCP server over HTTP (vs stdio for Claude Desktop)
     # Use
-    # - host.containers.internal   for podman
-    # - host.docker.internal       for docker
-    # --host 0.0.0.0 allows connections from all clients
-    # --host 127.0.0.1 allows connections from local clients
-    command: ["--host", "5001", "--port", "8080"]
+    #   - host.containers.internal   for podman
+    #   - host.docker.internal       for docker
+    # --host 0.0.0.0 allows connection from all clients
+    # --host 127.0.0.1 allows connection from local clients
+    # --port 8080 sets the listening port
+    command: ["http", "--host", "0.0.0.0", "--port", "8080"]
