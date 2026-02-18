@@ -16,11 +16,11 @@ jobs:
     strategy:
       matrix:
         target:
-          - { platform: Windows, arch: x86_64, os: windows-latest, target: x86_64-pc-windows-msvc }
-          - { platform: Windows, arch: arm64, os: windows-latest, target: aarch64-pc-windows-msvc }
-          - { platform: macOS, arch: arm64, os: macos-latest, target: aarch64-apple-darwin }
-          - { platform: Linux, arch: x86_64, os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
-          - { platform: Linux, arch: arm64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+          - { platform: Windows, lower_platform: windows, arch: x86_64, os: windows-latest, target: x86_64-pc-windows-msvc }
+          - { platform: Windows, lower_platform: windows, arch: arm64, os: windows-latest, target: aarch64-pc-windows-msvc }
+          - { platform: macOS, lower_platform: macos, arch: arm64, os: macos-latest, target: aarch64-apple-darwin }
+          - { platform: Linux, lower_platform: linux, arch: x86_64, os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { platform: Linux, lower_platform: linux, arch: arm64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
 
     steps:
     - uses: actions/checkout@v5
@@ -30,11 +30,6 @@ jobs:
       with:
         target: ${{ matrix.target.target }}
 
-    - name: install protoc
-      uses: taiki-e/install-action@v2
-      with:
-        tool: protoc@3.25.3
-
     - name: Install build dependencies (Linux)
       if: matrix.target.platform == 'Linux'
       run: |
@@ -42,15 +37,16 @@ jobs:
         sudo apt-get install -y cmake build-essential libclang-dev git
 
     - name: Cache cargo dependency
-      uses: actions/cache@v4
+      uses: action/cache@v4
       with:
         path: |
           ~/.cargo/bin/
           ~/.cargo/registry/index/
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
-          target/release/.fingerprint
-          target/release/deps
+          target/**/.fingerprint
+          target/**/release/deps
+          target/**/deps
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-
@@ -73,15 +69,15 @@ jobs:
       if: matrix.target.platform != 'Windows'
       run: |
         cd target/${{ matrix.target.target }}/release
-        tar -czvf ../../../delulu-travel-mcp-${{ matrix.target.platform | toLower }}-${{ matrix.target.arch }}.tar.gz delulu-travel-mcp
+        tar -czvf ../../../delulu-travel-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}.tar.gz delulu-travel-mcp
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: delulu-travel-mcp-${{ matrix.target.platform | toLower }}-${{ matrix.target.arch }}-${{ env.VERSION }}
+        name: delulu-travel-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}-${{ env.VERSION }}
         path: |
           delulu-travel-mcp-windows-${{ matrix.target.arch }}.zip
-          delulu-travel-mcp-${{ matrix.target.platform | toLower }}-${{ matrix.target.arch }}.tar.gz
+          delulu-travel-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}.tar.gz
         if-no-files-found: error
 
   create-release:

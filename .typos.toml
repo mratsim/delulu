@@ -1,7 +1,25 @@
 [files]
-extend-exclude = ["*.json", "*.jsonc", "**/t_mcp_stdio.rs", "**/t_mcp_http.rs"]
+# Ignore entire files
+extend-exclude = [
+  "*.json",
+  "*.jsonc",
+  "**/t_mcp_stdio.rs",
+  "**/t_mcp_http.rs",
+]
 
-[default.extend-ignore]
-# Ignore "Iz" in CSS selectors like .YMlIz
-words = ["Iz"]
-path_pattern = "flights_results_parser\\.rs"
+[default]
+# Custom ignore regex patterns: https://github.com/crate-ci/typos/blob/master/docs/reference.md#example-configurations
+#
+# Usage: Add a comment like `// typos: ignore` or `# typos: ignore` on the same line or
+# use `// typos: ignore-next-line` to ignore the next line. Works with:
+#   - // typos: ignore
+#   - # typos: ignore
+#   - /* typos: ignore */
+#   - // typos: ignore-next-line
+extend-ignore-re = [
+  # Ignore line with inline comment: "typos: ignore" (same line)
+  # Handles: //, #, /* */ style comments
+  ".*(?:#|--|//|/\\*).*(?:typos):\\s?ignore[^\\n]*\\n",
+  # Ignore next line: "typos: ignore-next-line"
+  ".*(?:typos):\\s?ignore-next-line[^\\n]*\\n[^\\n]*",
+]
