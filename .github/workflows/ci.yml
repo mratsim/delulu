@@ -26,7 +26,7 @@ env:
   RUSTUP_MAX_RETRIES: 10
   # Don't emit giant backtraces in the CI logs.
   RUST_BACKTRACE: short
-  PROTOC_VERSION: '3.25.3'
+  # PROTOC_VERSION: '3.25.3'
 
 # Jobs launched for a PR event cancel the ongoing one for the same workflow + PR,
 # Only retries (of the same run) for a Push event cancel the prior one.
@@ -42,10 +42,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - name: install protoc
-        uses: taiki-e/install-action@v2
-        with:
-          tool: protoc@${{ env.PROTOC_VERSION }}
       - uses: Swatinem/rust-cache@v2
       - name: Build
         # This build will be reused by nextest,
@@ -76,10 +72,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: install protoc
-        uses: taiki-e/install-action@v2
-        with:
-          tool: protoc@${{ env.PROTOC_VERSION }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --verbose --release --tests --all-features
 

@@ -261,7 +261,7 @@ impl FlightSelectors {
             _stops: Selector::parse(r#".BbR8Ec .ogfYpf"#).unwrap(),
             stops_container: Selector::parse(r#".BbR8Ec .sSHqwe"#).unwrap(),
             arrives_next_day: Selector::parse(r#"span.bOzv6"#).unwrap(),
-            price: Selector::parse(r#".YMlIz.FpEdX"#).unwrap(),
+            price: Selector::parse(r#".YMlIz.FpEdX"#).unwrap(), // typos: ignore
         }
     }
 }
