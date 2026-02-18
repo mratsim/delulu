@@ -41,8 +41,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cmake build-essential libclang-dev git
 
-    - name: Cache cargo dependencies
-      if: matrix.target.platform == 'Linux'
+    - name: Cache cargo dependency
       uses: actions/cache@v4
       with:
         path: |
@@ -68,22 +67,22 @@ jobs:
       if: matrix.target.platform == 'Windows'
       run: |
         cd target/${{ matrix.target.target }}/release
-        7z a ../../../delulu-travel-mcp-${{ matrix.target.arch }}-windows.zip delulu-travel-mcp.exe
+        7z a ../../../delulu-travel-mcp-windows-${{ matrix.target.arch }}.zip delulu-travel-mcp.exe
 
     - name: Create macOS/Linux archive
       if: matrix.target.platform != 'Windows'
       run: |
         cd target/${{ matrix.target.target }}/release
-        tar -czvf ../../../delulu-travel-mcp-${{ matrix.target.arch }}-${{ matrix.target.platform }}.tar.gz delulu-travel-mcp
+        tar -czvf ../../../delulu-travel-mcp-${{ matrix.target.platform | toLower }}-${{ matrix.target.arch }}.tar.gz delulu-travel-mcp
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: delulu-travel-mcp-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ env.VERSION }}
+        name: delulu-travel-mcp-${{ matrix.target.platform | toLower }}-${{ matrix.target.arch }}-${{ env.VERSION }}
         path: |
-          delulu-travel-mcp-${{ matrix.target.arch }}-windows.zip
-          delulu-travel-mcp-${{ matrix.target.arch }}-${{ matrix.target.platform }}.tar.gz
-        if-no-file-found: error
+          delulu-travel-mcp-windows-${{ matrix.target.arch }}.zip
+          delulu-travel-mcp-${{ matrix.target.platform | toLower }}-${{ matrix.target.arch }}.tar.gz
+        if-no-files-found: error
 
   create-release:
     name: Create Release
@@ -107,10 +106,9 @@ jobs:
     - name: Create release notes
       id: release-notes
       run: |
-        VERSION="${GITHUB_REF#ref/tags/}"
-        echo "tag_name=${VERSION}" >> $GITHUB_OUTPUT
+        echo "tag_name=${{ env.VERSION }}" >> $GITHUB_OUTPUT
         cat > release-notes.md << EOF
-        ## Release ${VERSION}
+        ## Release ${{ env.VERSION }}
 
         Prebuilt binaries for multiple platforms:
 

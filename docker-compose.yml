@@ -1,9 +1,9 @@
-version: '3.8'
 services:
   travel-agent:
     build: .
     ports:
       - "8080:8080"
+    restart: unless-stopped
     environment:
       - RUST_LOG=info
     # Run MCP server over HTTP (vs stdio for Claude Desktop)

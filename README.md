@@ -27,11 +27,12 @@ The first tool released is a travel agent that can search on:
 
 - 🪄 **MCP Server:** Works with stdio transport (Claude Desktop) and HTTP transport
 - 💻 **CLI Tools:** Direct `flights` and `hotels` commands
-- 🚦 **Rate Limiting:** Configurable queries-per-minute with exponential backoff and jitter
-- 🍪 **Cookie Management:** Automatic consent cookie generation for Google travel searches
+- 🚦 **Rate Limiting:** Let's be good citizens.
+- 🍪 **Cookie Management:** Let's be crafty citizens.
 - 📦 **Prebuilt Binaries:** For those allergic to Docker
-- 🐳 **Container Ready:** Docker, Podman and Docker-Compose support with prebuilt images
+- 🐳 **Container Ready:** Docker, Podman and Docker-Compose support with prebuilt image
 - 🚀 **High Performance:** Built with Rust, Axum, and Tokio
+- ☁️ **Lightweight:** No browser, Selenium, or Playwright - direct queries via reverse-engineered Protobuf
 
 ## Installation
 
@@ -114,8 +115,8 @@ docker run -p 8080:8080 \
 ```
 
 ```bash
-# For stdio transport (e.g., Claude Desktop), use docker-compose instead
-# See Docker-compose section below
+# Stdio transport (for Claude Desktop) - requires interactive mode
+docker run -i --rm ghcr.io/mratsim/delulu/travel-agent:latest stdio
 ```
 
 ### 🐳 Option 4: Docker-compose

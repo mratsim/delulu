@@ -1,2 +1,7 @@
 [files]
 extend-exclude = ["*.json", "*.jsonc", "**/t_mcp_stdio.rs", "**/t_mcp_http.rs"]
+
+[default.extend-ignore]
+# Ignore "Iz" in CSS selectors like .YMlIz
+words = ["Iz"]
+path_pattern = "flights_results_parser\\.rs"

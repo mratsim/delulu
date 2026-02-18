@@ -55,9 +55,10 @@ RUN cargo build --release --features mcp --bin delulu-travel-mcp
 #############################################
 FROM debian:bookworm-slim
 
-# Install ca-certificates to allow HTTPS call
+# Install ca-certificates for HTTPS root CAs
+# Note: libssl3 is not needed - BoringSSL is statically linked via boring-sys2
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates libssl3 && \
+    apt-get install -y --no-install-recommends ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
@@ -65,8 +66,8 @@ RUN useradd -m appuser
 
 WORKDIR /app
 
-# Copy the binary from the builder stage
-COPY --from=builder /app/target/release/delulu-travel-mcp /app/delulu-travel-mcp
+# Copy the binary from the builder stage (owned by non-root user)
+COPY --chown=appuser:appuser --from=builder /app/target/release/delulu-travel-mcp /app/delulu-travel-mcp
 
 # Switch to the non-root user
 USER appuser
