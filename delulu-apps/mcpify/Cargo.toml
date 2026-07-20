@@ -9,7 +9,6 @@ description = "Turn OpenAPI spec into MCP server"
 default = ["mcp"]
 mcp = [
     "dep:rmcp",
-    "dep:schemars",
     "dep:axum",
     "tracing-subscriber/env-filter",
     "tokio/signal",
@@ -18,8 +17,8 @@ mcp = [
 ]
 
 [dependencies]
-wreq = { version = "6.0.0-rc.26", features = ["json", "tracing"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
+wreq = { version = "6.0.0-rc.26", features = ["json", "tracing", "brotli", "gzip", "zstd"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "net", "signal"] }
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -27,15 +26,13 @@ clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["time", "chrono"] }
 serde_yaml = "0.9"
-url = "2.5"
 urlencoding = "2"
 futures = "0.3"
-schemars = { version = "1.0", features = ["derive"], optional = true }
 axum = { version = "0.8", optional = true }
 rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
 
 [[bin]]
-name = "mcpify"
+name = "delulu-mcpify"
 path = "src/main.rs"
 required-features = ["mcp"]
 

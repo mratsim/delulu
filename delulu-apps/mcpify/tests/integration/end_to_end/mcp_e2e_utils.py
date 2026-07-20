@@ -19,13 +19,13 @@ def find_binary() -> Path:
         # Fallback: walk up from this file
         root = Path(__file__).resolve().parent.parent.parent.parent.parent
     for path in [
-        root / "target" / "debug" / "mcpify",
-        root / "target" / "release" / "mcpify",
+        root / "target" / "debug" / "delulu-mcpify",
+        root / "target" / "release" / "delulu-mcpify",
     ]:
         if path.exists():
             return path
     raise RuntimeError(
-        "mcpify binary not found. Run `cargo build -p delulu-mcpify --features mcp` first."
+        "delulu-mcpify binary not found. Run `cargo build -p delulu-mcpify --features mcp` first."
     )
 
 

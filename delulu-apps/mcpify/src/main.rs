@@ -11,12 +11,12 @@ use rmcp::service::serve_server;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
-#[command(name = "mcpify")]
+#[command(name = "delulu-mcpify")]
 #[command(
     author,
     version,
@@ -94,17 +94,21 @@ async fn main() -> Result<()> {
             let _running = serve_server(Arc::new(server), (stdin, stdout))
                 .await
                 .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
-            tokio::signal::ctrl_c().await.ok();
+            if let Err(e) = tokio::signal::ctrl_c().await {
+                tracing::warn!("Failed to install signal handler: {}", e);
+            }
             tracing::info!("Shutting down...");
         }
         Command::Http { host, port, .. } => {
             // SECURITY: Default bind is 0.0.0.0 which exposes the server to
             // all network interfaces with no authentication. Future: default
             // to 127.0.0.1 and document --host 0.0.0.0 for explicit remote access.
-            let addr: SocketAddr = format!("{}:{}", host, port)
-                .parse()
-                .context("Invalid host:port")?;
-            tracing::info!("Starting MCP server over HTTP on {}", addr);
+            let addr = format!("{}:{}", host, port)
+                .to_socket_addrs()
+                .context("Failed to resolve host")?
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("No addresses resolved for {}:{}", host, port))?;
+            tracing::info!("Starting MCP server over HTTP on {} (resolved to {})", host, addr);
             let session_manager = Arc::new(LocalSessionManager::default());
             let config = StreamableHttpServerConfig {
                 stateful_mode: false,
@@ -113,14 +117,18 @@ async fn main() -> Result<()> {
             let server = Arc::new(server);
             let service =
                 StreamableHttpService::new(move || Ok(server.clone()), session_manager, config);
-            let app = axum::Router::new().nest_service("/mcp", service);
+            let app = axum::Router::new()
+                .route("/health", axum::routing::get(|| async { "OK" }))
+                .nest_service("/mcp", service);
             let listener = tokio::net::TcpListener::bind(addr)
                 .await
                 .context("Failed to bind to address")?;
             tracing::debug!("Listening on {}", addr);
             axum::serve(listener, app)
                 .with_graceful_shutdown(async move {
-                    tokio::signal::ctrl_c().await.ok();
+                    if let Err(e) = tokio::signal::ctrl_c().await {
+                        tracing::warn!("Failed to install signal handler: {}", e);
+                    }
                     tracing::info!("Shutting down HTTP server...");
                 })
                 .await

@@ -14,10 +14,10 @@ pub const INIT_TIMEOUT: Duration = Duration::from_secs(10);
 pub fn find_binary() -> Result<PathBuf> {
     let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").map_err(|e| anyhow::anyhow!("CARGO_MANIFEST_DIR: {e}"))?)
         .parent().and_then(|p| p.parent()).ok_or_else(|| anyhow::anyhow!("no workspace root"))?.to_path_buf();
-    for p in [root.join("target/debug/mcpify"), root.join("target/release/mcpify")] {
+    for p in [root.join("target/debug/delulu-mcpify"), root.join("target/release/delulu-mcpify")] {
         if p.exists() { return Ok(p); }
     }
-    anyhow::bail!("mcpify binary not found; run `cargo build -p delulu-mcpify --features mcp`")
+    anyhow::bail!("delulu-mcpify binary not found; run `cargo build -p delulu-mcpify --features mcp`")
 }
 
 /// Bind to `127.0.0.1:0` and return the OS-assigned free port.
