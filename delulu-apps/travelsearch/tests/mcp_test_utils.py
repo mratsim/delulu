@@ -38,7 +38,7 @@ def find_server_binary() -> Path:
         if debug.exists():
             return debug
     raise RuntimeError(
-        "Could not find delulu-travel-mcp binary. Run `cargo build -p delulu-travel-agent --features mcp` first."
+        "Could not find delulu-travel-mcp binary. Run `cargo build -p delulu-travelsearch --features mcp` first."
     )
 
 

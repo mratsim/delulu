@@ -17,7 +17,7 @@
 
 use std::path::Path;
 
-use delulu_travel_agent::HotelSearchResult;
+use delulu_travelsearch::HotelSearchResult;
 
 fn decompress_zst(compressed: &[u8]) -> String {
     let decoder = zstd::stream::Decoder::new(compressed).expect("create zstd decoder");

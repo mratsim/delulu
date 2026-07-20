@@ -21,7 +21,7 @@
 
 use anyhow::{Context, Error, Result};
 use clap::{Parser, Subcommand};
-use delulu_travel_agent::{
+use delulu_travelsearch::{
     Amenity, FlightSearchParams, GoogleFlightsClient, GoogleHotelsClient, HotelSearchParams, Seat,
     Trip,
 };
@@ -139,10 +139,10 @@ impl TravelAgentServer {
     )]
     async fn search_flights(&self, params: Parameters<FlightsInput>) -> Result<String, String> {
         let input = params.0;
-        let mut passengers = vec![(delulu_travel_agent::Passenger::Adult, input.adults)];
+        let mut passengers = vec![(delulu_travelsearch::Passenger::Adult, input.adults)];
         if !input.children_ages.is_empty() {
             passengers.push((
-                delulu_travel_agent::Passenger::Child,
+                delulu_travelsearch::Passenger::Child,
                 input.children_ages.len() as u32,
             ));
         }

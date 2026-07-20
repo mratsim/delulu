@@ -110,13 +110,13 @@ cargo build --release --features mcp
 # HTTP transport (for remote clients)
 docker run -p 8080:8080 \
   --env RUST_LOG=info \
-  ghcr.io/mratsim/delulu/travel-agent:latest \
+  ghcr.io/mratsim/delulu/travelsearch:latest \
   http --host 0.0.0.0 --port 8080
 ```
 
 ```bash
 # Stdio transport (for Claude Desktop) - requires interactive mode
-docker run -i --rm ghcr.io/mratsim/delulu/travel-agent:latest stdio
+docker run -i --rm ghcr.io/mratsim/delulu/travelsearch:latest stdio
 ```
 
 ### 🐳 Option 4: Docker-compose
