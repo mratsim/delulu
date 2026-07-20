@@ -39,6 +39,7 @@ interface DiffResult {
    *  Returns 0.0 when both documents yield no words (BOTH_EMPTY guard overrides 1.0 to 0.0).
    *  Returns 0.0 when one document yields words but the other does not.
    *  Set to 0.0 when either runner fails to produce output.
+   */
   content_score: number;
   error?: string;
 }
@@ -170,8 +171,8 @@ function runDeluluFetch(html: string): string {
 
 async function main() {
   const fixtures = [
-    "dankrad-pcs-multiproofs.html.zst",
-    "ethresear-reed-solomon.html.zst",
+    "blog/dankrad.de/pcs-multiproofs.html.zst",
+    "forum-discourse/ethresear.ch/reed-solomon.html.zst",
   ];
 
   const results: DiffResult[] = [];
@@ -191,12 +192,8 @@ async function main() {
       } else if (code === 'ENOENT') {
         console.error(`FATAL: unzstd not found in PATH — is zstd installed? (${e.message})`);
         process.exit(1);
-      } else {
-        console.error(`FATAL: decompress failed: ${e.message}`);
-        process.exit(1);
       }
-        console.log(`DECOMPRESS_FAIL: ${e.message}`);
-      }
+      console.log(`DECOMPRESS_FAIL: ${e.message}`);
       results.push({
         fixture,
         rust_ok: false,

@@ -213,12 +213,7 @@ async def run_http_tests(port: int) -> int:
         traceback.print_exc()
         return 1
     finally:
-        child.terminate()
-        try:
-            child.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            child.kill()
-            child.wait()
+        kill_server_process(child)
         # MCP client logs "Session termination failed" during its own cleanup
         # because we killed the server first. Expected and harmless.
         logging.getLogger("mcp.client.streamable_http").warning(

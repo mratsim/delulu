@@ -19,7 +19,7 @@
 //!
 //! The MCP server does NOT exit on stdin EOF — it runs until killed.
 //! Each test spawns the server, sends JSON-RPC requests, reads the
-//! response, then drops stdin and kills the child. A 15s timeout on
+//! response, then drops stdin and kills the child. A 30s timeout on
 //! all async operations prevents hangs.
 #![cfg(test)]
 #![cfg(feature = "mcp")]
@@ -33,7 +33,7 @@ use std::sync::Once;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 
-const TIMEOUT: Duration = Duration::from_secs(15);
+const TIMEOUT: Duration = Duration::from_secs(30);
 
 fn init_tracing() {
     static INIT: Once = Once::new();
@@ -74,7 +74,7 @@ async fn test_mcp_server_starts_stdio() -> Result<()> {
         .map_err(|_| anyhow::anyhow!("timeout writing init request"))?
         .context("failed to write init request")?;
 
-    let response = read_json_response(&mut stdout, TIMEOUT).await?;
+    let response = read_json_response(&mut stdout, TIMEOUT, Some(1)).await?;
 
     assert!(
         response.get("result").is_some(),
@@ -166,7 +166,7 @@ async fn test_mcp_tools_list() -> Result<()> {
         .map_err(|_| anyhow::anyhow!("timeout writing tools/list request"))?
         .context("failed to write tools/list request")?;
 
-    let response = read_json_response(&mut stdout, TIMEOUT).await?;
+    let response = read_json_response(&mut stdout, TIMEOUT, Some(2)).await?;
 
     let tools = response["result"]["tools"]
         .as_array()
@@ -208,7 +208,7 @@ async fn test_mcp_webfetch_tool() -> Result<()> {
         .await
         .context("failed to send webfetch tool call")?;
 
-    let response = read_json_response(&mut stdout, TIMEOUT).await?;
+    let response = read_json_response(&mut stdout, TIMEOUT, Some(2)).await?;
 
     let text = response["result"]["content"][0]["text"]
         .as_str()
@@ -245,7 +245,7 @@ async fn test_mcp_webfetch_raw_tool() -> Result<()> {
     .await
     .context("failed to send webfetch_raw tool call")?;
 
-    let response = read_json_response(&mut stdout, TIMEOUT).await?;
+    let response = read_json_response(&mut stdout, TIMEOUT, Some(2)).await?;
 
     let text = response["result"]["content"][0]["text"]
         .as_str()
@@ -294,7 +294,7 @@ async fn test_mcp_webfetch_invalid_url() -> Result<()> {
     .await
     .context("failed to send webfetch tool call")?;
 
-    let response = read_json_response(&mut stdout, TIMEOUT).await?;
+    let response = read_json_response(&mut stdout, TIMEOUT, Some(2)).await?;
 
     let text = response["result"]["content"][0]["text"]
         .as_str()

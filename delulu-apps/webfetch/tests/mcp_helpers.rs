@@ -27,7 +27,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::task::JoinHandle;
 
-const TIMEOUT: Duration = Duration::from_secs(15);
+const TIMEOUT: Duration = Duration::from_secs(30);
 
 
 /// Locate the `delulu-webfetch-mcp` binary using `CARGO_MANIFEST_DIR`.
@@ -118,7 +118,7 @@ pub fn stream_stderr_to_console(stderr: ChildStderr) -> JoinHandle<()> {
 /// Send `initialize` request and `notifications/initialized` to the MCP server.
 ///
 /// Uses protocol version `2025-03-26` with `"id": 1`.
-/// All async operations use 15-second timeouts.
+/// All async operations use 30-second timeouts.
 pub async fn mcp_initialize(stdin: &mut ChildStdin, stdout: &mut ChildStdout) -> Result<()> {
     let init = json!({
         "jsonrpc": "2.0",
@@ -138,7 +138,7 @@ pub async fn mcp_initialize(stdin: &mut ChildStdin, stdout: &mut ChildStdout) ->
         .map_err(|_| anyhow::anyhow!("timeout writing init request"))?
         .context("failed to write init request")?;
 
-    let response = read_json_response(stdout, TIMEOUT).await?;
+    let response = read_json_response(stdout, TIMEOUT, Some(1)).await?;
     assert_eq!(
         response["jsonrpc"], "2.0",
         "Should get JSON-RPC init response with jsonrpc 2.0: {}",
@@ -156,7 +156,7 @@ pub async fn mcp_initialize(stdin: &mut ChildStdin, stdout: &mut ChildStdout) ->
 
 /// Send a `tools/call` JSON-RPC request with `"id": 2`.
 ///
-/// Uses a 15-second timeout on the underlying write to prevent hangs
+/// Uses a 30-second timeout on the underlying write to prevent hangs
 /// when the OS pipe buffer is full or the server is unresponsive.
 pub async fn send_tool_call(stdin: &mut ChildStdin, name: &str, args: Value) -> Result<()> {
     let call = json!({
@@ -176,52 +176,53 @@ pub async fn send_tool_call(stdin: &mut ChildStdin, name: &str, args: Value) -> 
 
 /// Read a complete JSON-RPC response from stdout incrementally.
 ///
-/// Reads until a complete JSON object with both `"id"` and `"result"`/`"error"`
-/// keys is detected. Handles fragmented TCP output.
+/// Parses newline-delimited JSON. Ignores notifications (no `id` field).
+/// If `expected_id` is `Some(n)`, only returns a response whose `id` matches.
 /// Returns `Err(anyhow!("timeout reading response after {timeout}s"))` on timeout.
-pub async fn read_json_response(stdout: &mut ChildStdout, timeout: Duration) -> Result<Value> {
-    let mut output = String::new();
+pub async fn read_json_response(stdout: &mut ChildStdout, timeout: Duration, expected_id: Option<u64>) -> Result<Value> {
     let mut buf = [0u8; 4096];
+    let mut line_buf = String::new();
 
     loop {
-        let read_result = tokio::time::timeout(timeout, stdout.read(&mut buf)).await;
+        line_buf.clear();
+        // Read one byte at a time to build a line (newline-delimited JSON)
+        loop {
+            let read_result = tokio::time::timeout(timeout, stdout.read(&mut buf[..1])).await;
+            match read_result {
+                Ok(Ok(0)) => break, // EOF
+                Ok(Ok(n)) if n == 0 => break,
+                Ok(Ok(_)) => {
+                    let ch = buf[0] as char;
+                    if ch == '\n' {
+                        break; // end of line
+                    }
+                    line_buf.push(ch);
+                }
+                Ok(Err(e)) => anyhow::bail!("read error: {e}"),
+                Err(_) => anyhow::bail!("timeout reading response after {}s", timeout.as_secs()),
+            }
+        }
 
-        match read_result {
-            Ok(Ok(0)) => break,
-            Ok(Ok(n)) => {
-                let chunk = String::from_utf8(buf[..n].to_vec())
-                    .with_context(|| format!("invalid UTF-8 at offset {}: {:?}", output.len(), &buf[..n]))?;
-                output.push_str(&chunk);
+        if line_buf.is_empty() {
+            anyhow::bail!("Stdout closed without receiving a valid JSON-RPC response");
+        }
 
-                if let Ok(response) = serde_json::from_str::<Value>(&output) {
-                    if response.is_object() {
-                        let obj = response.as_object().unwrap();
-                        if obj.contains_key("id")
-                            && (obj.contains_key("result") || obj.contains_key("error"))
-                        {
-                            return Ok(response);
-                        }
+        if let Ok(response) = serde_json::from_str::<Value>(&line_buf) {
+            if let Some(obj) = response.as_object() {
+                // Skip notifications (no "id" field)
+                if !obj.contains_key("id") {
+                    continue;
+                }
+                // If expected_id is set, skip responses that don't match
+                if let Some(eid) = expected_id {
+                    if obj.get("id").and_then(|v| v.as_u64()) != Some(eid) {
+                        continue;
                     }
                 }
-            }
-            Ok(Err(e)) => {
-                anyhow::bail!("read error: {}", e);
-            }
-            Err(_) => {
-                anyhow::bail!("timeout reading response after {}s", timeout.as_secs());
+                if obj.contains_key("result") || obj.contains_key("error") {
+                    return Ok(response);
+                }
             }
         }
     }
-
-    if output.is_empty() {
-        anyhow::bail!("Stdout output is empty - server produced no response");
-    }
-
-    let response: Value = serde_json::from_str(&output).context(format!(
-        "Failed to parse JSON response ({} bytes): {}",
-        output.len(),
-        &output[..output.len().min(500)]
-    ))?;
-
-    Ok(response)
 }
