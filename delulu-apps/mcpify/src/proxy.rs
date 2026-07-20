@@ -54,7 +54,8 @@ impl ProxyClient {
         path_param_names: &[String],
     ) -> ProxyResponse {
         // For POST, only pass path params to build_url (non-path params go in JSON body only)
-        let path_params_only: HashMap<String, Value> = params.clone()
+        let path_params_only: HashMap<String, Value> = params
+            .clone()
             .into_iter()
             .filter(|(k, _)| path_param_names.contains(k))
             .collect();
@@ -66,7 +67,11 @@ impl ProxyClient {
             .filter(|(k, _)| !path_param_names.contains(k))
             .collect();
 
-        tracing::debug!("Proxy POST: {} body={}", url, serde_json::to_string(&body).unwrap_or_default());
+        tracing::debug!(
+            "Proxy POST: {} body={}",
+            url,
+            serde_json::to_string(&body).unwrap_or_default()
+        );
 
         match self.client.post(url.as_str()).json(&body).send().await {
             Ok(mut response) => Self::process_response(&mut response).await,
@@ -80,9 +85,17 @@ impl ProxyClient {
         let status = response.status();
 
         // Limit response to ~1M tokens (conservative 512KB) to fit in LLM context windows
-        if let Some(cl) = response.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<usize>().ok()) {
+        if let Some(cl) = response
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<usize>().ok())
+        {
             if cl > 524_288 {
-                return ProxyResponse::error(format!("Response too large: {} bytes (max 512KB)", cl));
+                return ProxyResponse::error(format!(
+                    "Response too large: {} bytes (max 512KB)",
+                    cl
+                ));
             }
         }
 
@@ -105,15 +118,20 @@ impl ProxyClient {
 
         // Safety check even without Content-Length header
         if body_bytes.len() > 524_288 {
-            return ProxyResponse::error(format!("Response body too large: {} bytes (max 512KB)", body_bytes.len()));
+            return ProxyResponse::error(format!(
+                "Response body too large: {} bytes (max 512KB)",
+                body_bytes.len()
+            ));
         }
         let body = match String::from_utf8(body_bytes) {
             Ok(s) => s,
-            Err(e) => return ProxyResponse::error(format!(
-                "Response body is not valid UTF-8: {} at byte offset {}",
-                e.utf8_error(),
-                e.utf8_error().valid_up_to()
-            )),
+            Err(e) => {
+                return ProxyResponse::error(format!(
+                    "Response body is not valid UTF-8: {} at byte offset {}",
+                    e.utf8_error(),
+                    e.utf8_error().valid_up_to()
+                ));
+            }
         };
 
         if status.is_success() {
@@ -127,9 +145,7 @@ impl ProxyClient {
                     };
                     ProxyResponse::error(format!(
                         "Non-JSON response (HTTP {}): {} — parse error: {}",
-                        status,
-                        truncated,
-                        e
+                        status, truncated, e
                     ))
                 }
             }
@@ -142,7 +158,6 @@ impl ProxyClient {
             ProxyResponse::error(format!("HTTP {}: {}", status, truncated))
         }
     }
-
 }
 
 /// Convert a JSON value to its string representation for URL usage.

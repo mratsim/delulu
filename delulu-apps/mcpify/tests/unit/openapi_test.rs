@@ -50,8 +50,8 @@ servers:
 "#;
     let p = std::env::temp_dir().join("test_openapi_upper.YAML");
     std::fs::write(&p, yaml).unwrap();
-    let spec = OpenApiSpec::from_file(p.to_str().unwrap())
-        .expect(".YAML file should be parsed as YAML");
+    let spec =
+        OpenApiSpec::from_file(p.to_str().unwrap()).expect(".YAML file should be parsed as YAML");
     assert_eq!(spec.info.title, "YAML Test");
     std::fs::remove_file(&p).ok();
 }
@@ -69,8 +69,8 @@ servers:
 "#;
     let p = std::env::temp_dir().join("test_openapi_mixed.yml");
     std::fs::write(&p, yaml).unwrap();
-    let spec = OpenApiSpec::from_file(p.to_str().unwrap())
-        .expect(".yml file should be parsed as YAML");
+    let spec =
+        OpenApiSpec::from_file(p.to_str().unwrap()).expect(".yml file should be parsed as YAML");
     assert_eq!(spec.info.title, "Yml Test");
     std::fs::remove_file(&p).ok();
 }

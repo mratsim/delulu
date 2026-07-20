@@ -35,10 +35,16 @@ async fn test_e2e_http_transport() -> Result<()> {
         let start = std::time::Instant::now();
         let mut ready = false;
         while start.elapsed() < HEALTH_POLL_TIMEOUT {
-            if health_check(p).await { ready = true; break; }
+            if health_check(p).await {
+                ready = true;
+                break;
+            }
             tokio::time::sleep(HEALTH_POLL_INTERVAL).await;
         }
-        anyhow::ensure!(ready, "service {label} not healthy after {HEALTH_POLL_TIMEOUT:?}");
+        anyhow::ensure!(
+            ready,
+            "service {label} not healthy after {HEALTH_POLL_TIMEOUT:?}"
+        );
     }
 
     // Write OpenAPI spec files with the assigned ports
@@ -57,7 +63,14 @@ async fn test_e2e_http_transport() -> Result<()> {
     let mut seb: Option<tokio::task::JoinHandle<()>> = None;
 
     let mut c = Command::new(&binary)
-        .args(["http", "--host", "127.0.0.1", "--port", &pa2.to_string(), &spec_a])
+        .args([
+            "http",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &pa2.to_string(),
+            &spec_a,
+        ])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
@@ -66,7 +79,14 @@ async fn test_e2e_http_transport() -> Result<()> {
     ca = Some(c);
 
     let mut c = Command::new(&binary)
-        .args(["http", "--host", "127.0.0.1", "--port", &pb2.to_string(), &spec_b])
+        .args([
+            "http",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &pb2.to_string(),
+            &spec_b,
+        ])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
@@ -87,7 +107,13 @@ async fn test_e2e_http_transport() -> Result<()> {
         let start = std::time::Instant::now();
         let mut ready = false;
         while start.elapsed() < HEALTH_POLL_TIMEOUT {
-            if tokio::net::TcpStream::connect(("127.0.0.1", p)).await.is_ok() { ready = true; break; }
+            if tokio::net::TcpStream::connect(("127.0.0.1", p))
+                .await
+                .is_ok()
+            {
+                ready = true;
+                break;
+            }
             tokio::time::sleep(HEALTH_POLL_INTERVAL).await;
         }
         anyhow::ensure!(ready, "{label} not ready after {HEALTH_POLL_TIMEOUT:?}");
@@ -118,10 +144,18 @@ async fn test_e2e_http_transport() -> Result<()> {
     let stderr = String::from_utf8_lossy(&py_output.stderr);
 
     // Print Python output for debugging
-    if !stdout.is_empty() { print!("{}", stdout); }
-    if !stderr.is_empty() { eprint!("{}", stderr); }
+    if !stdout.is_empty() {
+        print!("{}", stdout);
+    }
+    if !stderr.is_empty() {
+        eprint!("{}", stderr);
+    }
 
-    anyhow::ensure!(py_output.status.success(), "Python tests failed (exit: {:?})", py_output.status.code());
+    anyhow::ensure!(
+        py_output.status.success(),
+        "Python tests failed (exit: {:?})",
+        py_output.status.code()
+    );
     Ok(())
 }
 

@@ -19,8 +19,7 @@ use serde_json::json;
 // ---------------------------------------------------------------------------
 
 fn make_spec(json_value: serde_json::Value) -> OpenApiSpec {
-    serde_json::from_value(json_value)
-        .expect("Test fixture is not a valid OpenApiSpec")
+    serde_json::from_value(json_value).expect("Test fixture is not a valid OpenApiSpec")
 }
 
 // ---------------------------------------------------------------------------
@@ -47,7 +46,10 @@ fn test_minimal_spec_registers_tool() {
     let tools = server.list_tools();
 
     assert_eq!(tools.len(), 1, "expected exactly 1 tool");
-    assert_eq!(tools[0].name, "listUsers", "tool name should match operationId");
+    assert_eq!(
+        tools[0].name, "listUsers",
+        "tool name should match operationId"
+    );
     assert_eq!(
         tools[0].description.as_deref(),
         Some("List all users"),
@@ -208,11 +210,13 @@ fn test_path_and_query_params_in_properties() {
 
     // Each property must be a schema object with a 'type' field
     for (name, prop) in properties {
-        let prop_obj = prop.as_object()
+        let prop_obj = prop
+            .as_object()
             .unwrap_or_else(|| panic!("property '{}' must be a JSON object", name));
         assert!(
             prop_obj.contains_key("type"),
-            "property '{}' must have a 'type' field", name
+            "property '{}' must have a 'type' field",
+            name
         );
     }
 }
@@ -245,8 +249,15 @@ fn test_operation_without_operation_id_skipped() {
     let server = McpifyServer::from_openapi(&spec).expect("Server should build");
     let tools = server.list_tools();
 
-    assert_eq!(tools.len(), 1, "only the operation WITH operationId should register");
-    assert_eq!(tools[0].name, "listUsers", "tool name should match the valid operationId");
+    assert_eq!(
+        tools.len(),
+        1,
+        "only the operation WITH operationId should register"
+    );
+    assert_eq!(
+        tools[0].name, "listUsers",
+        "tool name should match the valid operationId"
+    );
 }
 
 #[test]
@@ -274,7 +285,10 @@ fn test_operation_with_empty_operation_id_skipped() {
     let tools = server.list_tools();
 
     assert_eq!(tools.len(), 1, "empty operationId should be skipped");
-    assert_eq!(tools[0].name, "valid", "only the non-empty operationId should register");
+    assert_eq!(
+        tools[0].name, "valid",
+        "only the non-empty operationId should register"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +318,10 @@ fn test_missing_paths_key_empty_tools() {
         "info": { "title": "Test", "version": "1.0.0" },
         "servers": [{"url": "https://example.com"}]
     }));
-    assert!(result.is_err(), "missing paths key should cause deserialization error");
+    assert!(
+        result.is_err(),
+        "missing paths key should cause deserialization error"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -395,8 +412,15 @@ fn test_post_operation_registers_tool() {
     let server = McpifyServer::from_openapi(&spec).expect("Server should build");
     let tools = server.list_tools();
 
-    assert_eq!(tools.len(), 1, "POST operation should register exactly one tool");
-    assert_eq!(tools[0].name, "createResource", "tool name should match POST operationId");
+    assert_eq!(
+        tools.len(),
+        1,
+        "POST operation should register exactly one tool"
+    );
+    assert_eq!(
+        tools[0].name, "createResource",
+        "tool name should match POST operationId"
+    );
     assert_eq!(
         tools[0].input_schema["type"].as_str(),
         Some("object"),
@@ -438,9 +462,7 @@ fn test_unsupported_methods_produce_zero_tools() {
     let server = McpifyServer::from_openapi(&spec).expect("Server should build");
     let tools = server.list_tools();
 
-    assert_eq!(
-        tools.len(), 0,
-    );
+    assert_eq!(tools.len(), 0,);
 }
 
 // ---------------------------------------------------------------------------
@@ -487,10 +509,12 @@ fn test_post_with_request_body_includes_body_property() {
     let server = McpifyServer::from_openapi(&spec).expect("Server should build");
     let tools = server.list_tools();
 
-    assert_eq!(tools.len(), 1, "POST operation should register exactly one tool");
+    assert_eq!(
+        tools.len(),
+        1,
+        "POST operation should register exactly one tool"
+    );
     assert_eq!(tools[0].name, "createResource");
-
-
 
     let properties = tools[0].input_schema["properties"]
         .as_object()
@@ -502,7 +526,8 @@ fn test_post_with_request_body_includes_body_property() {
         "input schema properties must contain 'body' from requestBody"
     );
 
-    let body_prop = properties["body"].as_object()
+    let body_prop = properties["body"]
+        .as_object()
         .expect("'body' property must be a JSON object");
     assert_eq!(
         body_prop["type"].as_str(),
@@ -522,7 +547,5 @@ fn test_post_with_request_body_includes_body_property() {
         required_names.contains(&"body"),
         "required array must contain 'body' when requestBody.required is true"
     );
-    assert!(
-        required_names.contains(&"name"),
-    );
+    assert!(required_names.contains(&"name"),);
 }

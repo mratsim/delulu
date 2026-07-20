@@ -2,11 +2,11 @@ use crate::openapi::{OpenApiSpec, Operation, ParameterLocation};
 use crate::proxy::ProxyClient;
 use anyhow::Result;
 use futures::FutureExt;
-use rmcp::handler::server::tool::{ToolCallContext, DynCallToolHandler};
 use rmcp::handler::server::ServerHandler;
+use rmcp::handler::server::tool::{DynCallToolHandler, ToolCallContext};
 use rmcp::model::{CallToolRequestParam, CallToolResult, Tool};
 use rmcp::service::RequestContext;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -98,21 +98,20 @@ impl McpifyServer {
             .map(|p| p.name.clone())
             .collect();
 
-        let handler: Arc<DynCallToolHandler<McpifyServer>> = Arc::new(
-            move |ctx: ToolCallContext<'_, McpifyServer>| {
+        let handler: Arc<DynCallToolHandler<McpifyServer>> =
+            Arc::new(move |ctx: ToolCallContext<'_, McpifyServer>| {
                 let base_url = base_url.clone();
                 let path = path.clone();
                 let path_param_names = path_param_names.clone();
                 let proxy = proxy.clone();
                 async move {
-                    let params = ctx.arguments
-                        .ok_or_else(|| rmcp::ErrorData::invalid_params(
-                            "arguments are required for this tool", None
-                        ))?;
-                    let params_map: HashMap<String, Value> = params
-                        .into_iter()
-                        .map(|(k, v)| (k, v))
-                        .collect();
+                    let params = ctx.arguments.ok_or_else(|| {
+                        rmcp::ErrorData::invalid_params(
+                            "arguments are required for this tool",
+                            None,
+                        )
+                    })?;
+                    let params_map: HashMap<String, Value> = params.into_iter().collect();
 
                     let result = if method == "POST" {
                         proxy
@@ -134,13 +133,18 @@ impl McpifyServer {
                             json_str,
                         )]))
                     } else {
-                        let msg = result.error.unwrap_or_else(|| format!("Upstream request failed: {}", upstream));
-                        Err(rmcp::model::ErrorData::new(rmcp::model::ErrorCode::INTERNAL_ERROR, msg, None))
+                        let msg = result
+                            .error
+                            .unwrap_or_else(|| format!("Upstream request failed: {}", upstream));
+                        Err(rmcp::model::ErrorData::new(
+                            rmcp::model::ErrorCode::INTERNAL_ERROR,
+                            msg,
+                            None,
+                        ))
                     }
                 }
                 .boxed()
-            },
-        );
+            });
 
         Ok(Some(ToolEntry {
             name: operation_id,
@@ -213,9 +217,10 @@ fn build_input_schema(op: &Operation) -> Value {
     obj.insert("type".to_string(), Value::String("object".to_string()));
     obj.insert("properties".to_string(), Value::Object(properties));
     if !required.is_empty() {
-        obj.insert("required".to_string(), Value::Array(
-            required.into_iter().map(Value::String).collect()
-        ));
+        obj.insert(
+            "required".to_string(),
+            Value::Array(required.into_iter().map(Value::String).collect()),
+        );
     }
 
     Value::Object(obj)
@@ -268,9 +273,10 @@ fn param_schema_to_json_schema(schema: &crate::openapi::ParameterSchema) -> Valu
 
     // Object required fields
     if let Some(req) = &schema.required {
-        obj.insert("required".to_string(), Value::Array(
-            req.iter().map(|s| Value::String(s.clone())).collect()
-        ));
+        obj.insert(
+            "required".to_string(),
+            Value::Array(req.iter().map(|s| Value::String(s.clone())).collect()),
+        );
     }
 
     // Numeric constraints
@@ -300,10 +306,9 @@ impl ServerHandler for McpifyServer {
         &self,
         request: CallToolRequestParam,
         context: RequestContext<rmcp::RoleServer>,
-    ) -> impl Future<Output = Result<CallToolResult, rmcp::ErrorData>> + Send + '_
-    {
+    ) -> impl Future<Output = Result<CallToolResult, rmcp::ErrorData>> + Send + '_ {
         let name = request.name.to_string();
-        
+
         async move {
             let tool = self
                 .find_tool(&name)
@@ -311,7 +316,7 @@ impl ServerHandler for McpifyServer {
 
             let call_ctx = ToolCallContext::new(self, request, context);
             let result = (tool.handler)(call_ctx).await;
-            
+
             result
         }
     }

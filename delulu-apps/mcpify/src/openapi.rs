@@ -143,14 +143,20 @@ impl OpenApiSpec {
     }
 
     fn from_yaml(yaml: &str) -> Result<Self> {
-        let value: serde_json::Value = serde_yaml::from_str(yaml).context("Failed to parse YAML OpenAPI spec")?;
+        let value: serde_json::Value =
+            serde_yaml_neo::from_str(yaml).context("Failed to parse YAML OpenAPI spec")?;
         serde_json::from_value(value).context("Failed to convert YAML to OpenAPI spec")
     }
 
     pub fn from_file(path: &str) -> Result<Self> {
         let content = std::fs::read_to_string(path).context("Failed to read OpenAPI file")?;
         let p = Path::new(path);
-        match p.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() {
+        match p
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .as_deref()
+        {
             Some("yaml") | Some("yml") => Self::from_yaml(&content),
             _ => Self::from_json(&content),
         }

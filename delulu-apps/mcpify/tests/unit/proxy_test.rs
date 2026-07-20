@@ -5,7 +5,12 @@ use serde_json::json;
 fn test_path_param_substitution() {
     let params = HashMap::from([("userId".to_string(), json!("42"))]);
     let path_params = vec!["userId".to_string()];
-    let result = build_url("http://example.com", "/users/{userId}", params, &path_params);
+    let result = build_url(
+        "http://example.com",
+        "/users/{userId}",
+        params,
+        &path_params,
+    );
     assert_eq!(result, "http://example.com/users/42");
 }
 
@@ -16,8 +21,12 @@ fn test_multiple_path_params() {
         ("to".to_string(), json!("LAX")),
     ]);
     let path_params = vec!["from".to_string(), "to".to_string()];
-    let result =
-        build_url("http://example.com", "/flights/{from}/{to}", params, &path_params);
+    let result = build_url(
+        "http://example.com",
+        "/flights/{from}/{to}",
+        params,
+        &path_params,
+    );
     assert_eq!(result, "http://example.com/flights/JFK/LAX");
 }
 
@@ -28,12 +37,13 @@ fn test_mixed_path_and_query_params() {
         ("include".to_string(), json!("profile")),
     ]);
     let path_params = vec!["userId".to_string()];
-    let result =
-        build_url("http://example.com", "/users/{userId}", params, &path_params);
-    assert_eq!(
-        result,
-        "http://example.com/users/42?include=profile"
+    let result = build_url(
+        "http://example.com",
+        "/users/{userId}",
+        params,
+        &path_params,
     );
+    assert_eq!(result, "http://example.com/users/42?include=profile");
 }
 
 #[test]
@@ -92,12 +102,15 @@ fn test_path_param_no_placeholder_match() {
     // Param declared as path param but no matching {placeholder} in path template
     let params = HashMap::from([("unknown".to_string(), json!("val"))]);
     let path_params = vec!["unknown".to_string()];
-    let result =
-        build_url("http://example.com", "/users/{userId}", params, &path_params);
+    let result = build_url(
+        "http://example.com",
+        "/users/{userId}",
+        params,
+        &path_params,
+    );
     // The param is consumed (not in query string) but placeholder remains
     assert_eq!(result, "http://example.com/users/{userId}");
 }
-
 
 // ---------------------------------------------------------------------------
 // UTF-8 truncation helper tests
@@ -110,8 +123,15 @@ fn test_utf8_truncation_at_boundary() {
     let body = format!("{}{}", "a".repeat(499), "é");
     assert_eq!(body.len(), 501, "precondition: body is 501 bytes");
     let result = format!("{}...", truncate_error_body(&body, 500));
-    assert_eq!(result.len(), 502, "output should be 499 a's + ... = 502 bytes");
-    assert!(result.starts_with(&"a".repeat(499)), "should start with 499 a's");
+    assert_eq!(
+        result.len(),
+        502,
+        "output should be 499 a's + ... = 502 bytes"
+    );
+    assert!(
+        result.starts_with(&"a".repeat(499)),
+        "should start with 499 a's"
+    );
     assert!(result.ends_with("..."), "should end with ...");
     // Verify the content before ... is valid UTF-8 and ≤500 bytes
     let prefix = truncate_error_body(&body, 500);
@@ -125,7 +145,11 @@ fn test_ascii_truncation_at_500() {
     let body = "a".repeat(501);
     assert_eq!(body.len(), 501);
     let result = format!("{}...", truncate_error_body(&body, 500));
-    assert_eq!(result.len(), 503, "output should be 500 a's + ... = 503 bytes");
+    assert_eq!(
+        result.len(),
+        503,
+        "output should be 500 a's + ... = 503 bytes"
+    );
     assert!(result.starts_with(&"a".repeat(500)));
     assert!(result.ends_with("..."));
 }
@@ -141,7 +165,11 @@ fn test_utf8_truncation_multi_byte_heavy() {
     // The prefix should be 250 é's = 500 bytes
     let prefix = truncate_error_body(&body, 500);
     assert!(prefix.len() <= 500, "prefix must be ≤500 bytes");
-    assert_eq!(prefix.len(), 500, "prefix should be exactly 500 bytes (250 é's)");
+    assert_eq!(
+        prefix.len(),
+        500,
+        "prefix should be exactly 500 bytes (250 é's)"
+    );
     assert!(result.ends_with("..."));
     // Verify output is valid UTF-8 by converting back (no panic)
     let _ = String::from_utf8(result.into_bytes()).expect("output must be valid UTF-8");
@@ -156,7 +184,11 @@ fn test_utf8_truncation_4byte_char() {
     // Content before ... should be ≤500 bytes
     let prefix = truncate_error_body(&body, 500);
     assert!(prefix.len() <= 500, "prefix must be ≤500 bytes");
-    assert_eq!(prefix, &"a".repeat(499), "prefix should be 499 a's (emoji dropped)");
+    assert_eq!(
+        prefix,
+        &"a".repeat(499),
+        "prefix should be 499 a's (emoji dropped)"
+    );
     assert!(result.ends_with("..."));
     // Verify output is valid UTF-8
     let _ = String::from_utf8(result.into_bytes()).expect("output must be valid UTF-8");
@@ -191,18 +223,66 @@ fn test_utf8_truncation_table_driven() {
     }
 
     let cases: Vec<Case> = vec![
-        Case { name: "pure ascii >500", body: "b".repeat(600), expected_prefix_len: 500 },
-        Case { name: "pure ascii =501", body: "c".repeat(501), expected_prefix_len: 500 },
-        Case { name: "pure ascii =500", body: "d".repeat(500), expected_prefix_len: 500 },
-        Case { name: "pure ascii =499", body: "e".repeat(499), expected_prefix_len: 499 },
-        Case { name: "2-byte char heavy", body: "é".repeat(251), expected_prefix_len: 500 },
-        Case { name: "2-byte char at boundary", body: format!("{}{}", "f".repeat(499), "é"), expected_prefix_len: 499 },
-        Case { name: "3-byte char at boundary", body: format!("{}{}", "g".repeat(499), "€"), expected_prefix_len: 499 },
-        Case { name: "4-byte char at boundary", body: format!("{}{}", "h".repeat(499), "🔥"), expected_prefix_len: 499 },
-        Case { name: "empty string", body: String::new(), expected_prefix_len: 0 },
-        Case { name: "exactly 1 byte", body: "i".to_string(), expected_prefix_len: 1 },
-        Case { name: "mixed multi-byte", body: format!("{}{}{}", "a".repeat(100), "é".repeat(100), "🔥".repeat(50)), expected_prefix_len: 500 },
-        Case { name: "3-byte char heavy", body: "€".repeat(167), expected_prefix_len: 498 },
+        Case {
+            name: "pure ascii >500",
+            body: "b".repeat(600),
+            expected_prefix_len: 500,
+        },
+        Case {
+            name: "pure ascii =501",
+            body: "c".repeat(501),
+            expected_prefix_len: 500,
+        },
+        Case {
+            name: "pure ascii =500",
+            body: "d".repeat(500),
+            expected_prefix_len: 500,
+        },
+        Case {
+            name: "pure ascii =499",
+            body: "e".repeat(499),
+            expected_prefix_len: 499,
+        },
+        Case {
+            name: "2-byte char heavy",
+            body: "é".repeat(251),
+            expected_prefix_len: 500,
+        },
+        Case {
+            name: "2-byte char at boundary",
+            body: format!("{}{}", "f".repeat(499), "é"),
+            expected_prefix_len: 499,
+        },
+        Case {
+            name: "3-byte char at boundary",
+            body: format!("{}{}", "g".repeat(499), "€"),
+            expected_prefix_len: 499,
+        },
+        Case {
+            name: "4-byte char at boundary",
+            body: format!("{}{}", "h".repeat(499), "🔥"),
+            expected_prefix_len: 499,
+        },
+        Case {
+            name: "empty string",
+            body: String::new(),
+            expected_prefix_len: 0,
+        },
+        Case {
+            name: "exactly 1 byte",
+            body: "i".to_string(),
+            expected_prefix_len: 1,
+        },
+        Case {
+            name: "mixed multi-byte",
+            body: format!("{}{}{}", "a".repeat(100), "é".repeat(100), "🔥".repeat(50)),
+            expected_prefix_len: 500,
+        },
+        Case {
+            name: "3-byte char heavy",
+            body: "€".repeat(167),
+            expected_prefix_len: 498,
+        },
     ];
 
     for case in &cases {
@@ -210,7 +290,8 @@ fn test_utf8_truncation_table_driven() {
         assert!(
             prefix.len() <= 500,
             "case '{}': prefix length {} exceeds 500 bytes",
-            case.name, prefix.len()
+            case.name,
+            prefix.len()
         );
         if case.body.len() > 500 {
             // Prefix must be a valid prefix of the original body
@@ -227,11 +308,12 @@ fn test_utf8_truncation_table_driven() {
             );
         }
         assert_eq!(
-            prefix.len(), case.expected_prefix_len,
+            prefix.len(),
+            case.expected_prefix_len,
             "case '{}': expected prefix length {} but got {}",
-            case.name, case.expected_prefix_len, prefix.len()
+            case.name,
+            case.expected_prefix_len,
+            prefix.len()
         );
     }
-
-
 }

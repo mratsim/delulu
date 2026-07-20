@@ -132,7 +132,7 @@ async def run_tests(binary_path: str, port_a: int, port_b: int) -> int:
                     # SDK raises on MCP error response
                     is_error = True
                 assert is_error, "call_tool should have failed (backend is dead)"
-                print(f"  Upstream failure: got MCP error as expected")
+                print("  Upstream failure: got MCP error as expected")
                 tests_passed += 1
 
     except Exception as e:

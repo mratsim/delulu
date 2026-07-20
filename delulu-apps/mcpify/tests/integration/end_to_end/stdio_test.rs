@@ -35,10 +35,16 @@ async fn test_e2e_stdio_transport() -> Result<()> {
         let start = std::time::Instant::now();
         let mut ready = false;
         while start.elapsed() < HEALTH_POLL_TIMEOUT {
-            if health_check(p).await { ready = true; break; }
+            if health_check(p).await {
+                ready = true;
+                break;
+            }
             tokio::time::sleep(HEALTH_POLL_INTERVAL).await;
         }
-        anyhow::ensure!(ready, "service {label} not healthy after {HEALTH_POLL_TIMEOUT:?}");
+        anyhow::ensure!(
+            ready,
+            "service {label} not healthy after {HEALTH_POLL_TIMEOUT:?}"
+        );
     }
 
     // Write OpenAPI spec files with the assigned ports
@@ -69,10 +75,18 @@ async fn test_e2e_stdio_transport() -> Result<()> {
     let stderr = String::from_utf8_lossy(&py_output.stderr);
 
     // Print Python output for debugging
-    if !stdout.is_empty() { print!("{}", stdout); }
-    if !stderr.is_empty() { eprint!("{}", stderr); }
+    if !stdout.is_empty() {
+        print!("{}", stdout);
+    }
+    if !stderr.is_empty() {
+        eprint!("{}", stderr);
+    }
 
-    anyhow::ensure!(py_output.status.success(), "Python tests failed (exit: {:?})", py_output.status.code());
+    anyhow::ensure!(
+        py_output.status.success(),
+        "Python tests failed (exit: {:?})",
+        py_output.status.code()
+    );
     Ok(())
 }
 

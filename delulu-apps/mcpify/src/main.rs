@@ -16,11 +16,7 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-mcpify")]
-#[command(
-    author,
-    version,
-    about = "Turn OpenAPI spec into MCP server"
-)]
+#[command(author, version, about = "Turn OpenAPI spec into MCP server")]
 struct Args {
     #[command(subcommand)]
     command: Command,
@@ -29,9 +25,7 @@ struct Args {
 #[derive(Subcommand, Debug)]
 enum Command {
     /// Run MCP server over stdio (for Claude Desktop, etc.)
-    Stdio {
-        path: String,
-    },
+    Stdio { path: String },
 
     /// Run MCP server over HTTP
     ///
@@ -55,10 +49,10 @@ enum Command {
         /// WARNING: Binding to 0.0.0.0 exposes the MCP server to all
         /// network interfaces with no authentication. For production use,
         /// bind to 127.0.0.1 and put a reverse proxy with auth in front.
-#[arg(long, default_value = "0.0.0.0")]
+        #[arg(long, default_value = "0.0.0.0")]
         host: String,
 
-#[arg(long, default_value = "8080")]
+        #[arg(long, default_value = "8080")]
         port: u16,
     },
 }
@@ -107,7 +101,11 @@ async fn main() -> Result<()> {
                 .context("Failed to resolve host")?
                 .next()
                 .ok_or_else(|| anyhow::anyhow!("No addresses resolved for {}:{}", host, port))?;
-            tracing::info!("Starting MCP server over HTTP on {} (resolved to {})", host, addr);
+            tracing::info!(
+                "Starting MCP server over HTTP on {} (resolved to {})",
+                host,
+                addr
+            );
             let session_manager = Arc::new(LocalSessionManager::default());
             let config = StreamableHttpServerConfig {
                 stateful_mode: false,
