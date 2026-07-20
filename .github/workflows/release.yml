@@ -13,8 +13,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build ${{ matrix.target.platform }} (${{ matrix.target.arch }})
+  build-travel-agent:
+    name: Build travel-agent ${{ matrix.target.platform }} (${{ matrix.target.arch }})
     runs-on: ${{ matrix.target.os }}
     strategy:
       matrix:
@@ -84,7 +84,7 @@ jobs:
 
   create-release:
     name: Create Release
-needs: [build, build-webfetch]
+    needs: [build-travel-agent, build-webfetch]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
