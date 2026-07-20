@@ -20,7 +20,7 @@
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::Parser;
-use delulu_travelsearch::{
+use delulu_travel_search::{
     FlightSearchParams, FlightSearchResult, GoogleFlightsClient, Passenger, Seat, Trip,
 };
 use std::cmp::max;
@@ -157,13 +157,13 @@ fn get_terminal_width() -> usize {
 /// Get first flight segment
 #[allow(clippy::needless_lifetimes)] // Clippy is wrong about lifetimes
 fn first_seg<'a>(
-    itin: &'a delulu_travelsearch::Itinerary,
-) -> Option<&'a delulu_travelsearch::FlightSegment> {
+    itin: &'a delulu_travel_search::Itinerary,
+) -> Option<&'a delulu_travel_search::FlightSegment> {
     itin.flights.first()
 }
 
 /// Format stops and layovers combined: "2 stops: 5h09@Vancouver, 2h20@Brisbane"
-fn fmt_stops_and_layovers(layovers: &[delulu_travelsearch::Layover]) -> String {
+fn fmt_stops_and_layovers(layovers: &[delulu_travel_search::Layover]) -> String {
     let stops = layovers.len();
     match stops {
         0 => "direct".to_string(),
@@ -197,7 +197,7 @@ fn fmt_stops_and_layovers(layovers: &[delulu_travelsearch::Layover]) -> String {
 
 /// Calculate terminal-aware column widths
 fn calc_column_widths(
-    itins: &[delulu_travelsearch::Itinerary],
+    itins: &[delulu_travel_search::Itinerary],
     _show_rank: bool,
 ) -> (usize, usize, usize, usize, usize) {
     let mut max_airline = 7;
@@ -243,7 +243,7 @@ fn calc_column_widths(
 }
 
 /// Render results to stdout
-fn render_results(result: &delulu_travelsearch::FlightSearchResult, search_url: Option<&str>) {
+fn render_results(result: &delulu_travel_search::FlightSearchResult, search_url: Option<&str>) {
     let params = &result.search_params;
 
     let title_bar = format!(

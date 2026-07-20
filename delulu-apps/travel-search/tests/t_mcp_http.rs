@@ -22,7 +22,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};
-use delulu_travelsearch::{FlightSearchParams, HotelSearchParams};
+use delulu_travel_search::{FlightSearchParams, HotelSearchParams};
 use serde_json::Value;
 use serde_json::json;
 use std::process::Stdio;
@@ -605,7 +605,7 @@ async fn test_mcp_flights_http() -> Result<()> {
     let decoded_adults: u32 = decoded_params
         .passengers
         .iter()
-        .filter(|(t, _)| *t == delulu_travelsearch::Passenger::Adult)
+        .filter(|(t, _)| *t == delulu_travel_search::Passenger::Adult)
         .map(|(_, c)| *c)
         .sum();
     assert_eq!(decoded_adults, input_adults, "adults should match");
@@ -613,7 +613,7 @@ async fn test_mcp_flights_http() -> Result<()> {
     let decoded_children: u32 = decoded_params
         .passengers
         .iter()
-        .filter(|(t, _)| *t == delulu_travelsearch::Passenger::Child)
+        .filter(|(t, _)| *t == delulu_travel_search::Passenger::Child)
         .map(|(_, c)| *c)
         .sum();
     assert_eq!(

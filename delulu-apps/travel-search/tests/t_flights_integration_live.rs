@@ -24,7 +24,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{Months, NaiveDate};
-use delulu_travelsearch::{FlightSearchParams, GoogleFlightsClient, Seat, Trip};
+use delulu_travel_search::{FlightSearchParams, GoogleFlightsClient, Seat, Trip};
 
 fn today() -> NaiveDate {
     chrono::Local::now().date_naive()
@@ -65,8 +65,8 @@ async fn rate_limited_query(
     date: &str,
     cabin: Seat,
     delay_secs: u64,
-) -> Result<delulu_travelsearch::FlightSearchResult> {
-    let params = delulu_travelsearch::FlightSearchParams::builder(
+) -> Result<delulu_travel_search::FlightSearchResult> {
+    let params = delulu_travel_search::FlightSearchParams::builder(
         from.to_uppercase(),
         to.to_uppercase(),
         parse_date(date)?,
@@ -211,7 +211,7 @@ async fn test_real_query_overnight_plus_two_days() -> Result<()> {
     println!("\n=== Overnight +2 Days Test ===");
     println!("Querying: SFO -> LHR on {} (testing +2 day arrival)", date);
 
-    let params = delulu_travelsearch::FlightSearchParams::builder(
+    let params = delulu_travel_search::FlightSearchParams::builder(
         "SFO".to_uppercase(),
         "LHR".to_uppercase(),
         parse_date(&date)?,
@@ -288,7 +288,7 @@ async fn test_real_query_oneway() -> Result<()> {
     let date = intl_flight_date();
     println!("\n=== One-Way Test ===");
 
-    let params = delulu_travelsearch::FlightSearchParams::builder(
+    let params = delulu_travel_search::FlightSearchParams::builder(
         "LAX".to_uppercase(),
         "NRT".to_uppercase(),
         parse_date(&date)?,
@@ -417,7 +417,7 @@ async fn fetch_fixture_sfo_jfk_nonstop() {
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(2);
 
-    let params = delulu_travelsearch::FlightSearchParams::builder(
+    let params = delulu_travel_search::FlightSearchParams::builder(
         "SFO".to_uppercase(),
         "JFK".to_uppercase(),
         depart,
@@ -447,7 +447,7 @@ async fn fetch_fixture_lax_ord_business() {
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(2) + chrono::Duration::days(15);
 
-    let params = delulu_travelsearch::FlightSearchParams::builder(
+    let params = delulu_travel_search::FlightSearchParams::builder(
         "LAX".to_uppercase(),
         "ORD".to_uppercase(),
         depart,
@@ -477,7 +477,7 @@ async fn fetch_fixture_sfo_lhr_overnight() {
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(2);
 
-    let params = delulu_travelsearch::FlightSearchParams::builder(
+    let params = delulu_travel_search::FlightSearchParams::builder(
         "SFO".to_uppercase(),
         "LHR".to_uppercase(),
         depart,
@@ -506,7 +506,7 @@ async fn fetch_fixture_lax_syd_longhaul() {
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(3);
 
-    let params = delulu_travelsearch::FlightSearchParams::builder(
+    let params = delulu_travel_search::FlightSearchParams::builder(
         "LAX".to_uppercase(),
         "SYD".to_uppercase(),
         depart,
@@ -535,7 +535,7 @@ async fn fetch_fixture_mad_nrt_layover() {
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(3);
 
-    let params = delulu_travelsearch::FlightSearchParams::builder(
+    let params = delulu_travel_search::FlightSearchParams::builder(
         "MAD".to_uppercase(),
         "NRT".to_uppercase(),
         depart,
@@ -564,7 +564,7 @@ async fn fetch_fixture_yyz_cdg_layover() {
     let today = chrono::Local::now().date_naive();
     let depart = today + Months::new(2);
 
-    let params = delulu_travelsearch::FlightSearchParams::builder(
+    let params = delulu_travel_search::FlightSearchParams::builder(
         "YYZ".to_uppercase(),
         "CDG".to_uppercase(),
         depart,

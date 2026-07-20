@@ -29,7 +29,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::NaiveDate;
 use serde::Deserialize;
 
-use delulu_travelsearch::{FlightSearchParams, Passenger, Seat, Trip};
+use delulu_travel_search::{FlightSearchParams, Passenger, Seat, Trip};
 
 /// Test vector case from JSON file.
 #[derive(Deserialize, Debug)]

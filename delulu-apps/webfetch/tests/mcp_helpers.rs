@@ -1,6 +1,6 @@
 //! Shared MCP test helpers for streaming subprocess output.
 //!
-//! Modeled on the travelsearch `mcp_helpers.rs` pattern.
+//! Modeled on the travel-search `mcp_helpers.rs` pattern.
 //!
 //! Copyright (C) 2026  Mamy Ratsimbazafy
 //!

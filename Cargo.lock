@@ -664,7 +664,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "delulu-travelsearch"
+name = "delulu-travel-search"
 version = "0.1.0"
 dependencies = [
  "anyhow",

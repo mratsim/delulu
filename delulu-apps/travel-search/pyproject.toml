@@ -1,5 +1,5 @@
 [project]
-name = "delulu-travelsearch"
+name = "delulu-travel-search"
 version = "0.1.0"
 description = "CLI tools and MCP server for travel services"
 requires-python = ">=3.12"

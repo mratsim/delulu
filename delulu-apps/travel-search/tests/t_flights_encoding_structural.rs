@@ -29,7 +29,7 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::NaiveDate;
 
-use delulu_travelsearch::{FlightSearchParams, Passenger, Seat, Trip};
+use delulu_travel_search::{FlightSearchParams, Passenger, Seat, Trip};
 
 /// Verify nested Airport message encoding.
 /// The from_flight and to_flight fields MUST be nested Airport messages.

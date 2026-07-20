@@ -25,7 +25,7 @@ pub fn find_binary() -> Result<PathBuf> {
         }
     }
     anyhow::bail!(
-        "Could not find delulu-travel-mcp binary. Run `cargo build -p delulu-travelsearch --features mcp` first. Searched: {:?}",
+        "Could not find delulu-travel-mcp binary. Run `cargo build -p delulu-travel-search --features mcp` first. Searched: {:?}",
         paths
     )
 }

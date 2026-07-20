@@ -35,7 +35,7 @@ fn has_hotel_content(text: &str) -> bool {
 async fn test_flights_socs() -> Result<()> {
     println!("\n=== Flights + SOCS ===");
     let client = build_wreq_client();
-    let header = delulu_travelsearch::generate_cookie_header();
+    let header = delulu_travel_search::generate_cookie_header();
     let resp = client
         .get("https://www.google.com/travel/flights?q=sfo+to+lax")
         .header("Cookie", &header)
@@ -53,7 +53,7 @@ async fn test_flights_socs() -> Result<()> {
 async fn test_hotels_socs() -> Result<()> {
     println!("\n=== Hotels + SOCS ===");
     let client = build_wreq_client();
-    let header = delulu_travelsearch::generate_cookie_header();
+    let header = delulu_travel_search::generate_cookie_header();
     let resp = client
         .get("https://www.google.com/travel/search?q=tokyo")
         .header("Cookie", &header)

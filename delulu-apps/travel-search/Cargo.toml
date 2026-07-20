@@ -1,5 +1,5 @@
 [package]
-name = "delulu-travelsearch"
+name = "delulu-travel-search"
 version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0"
@@ -51,7 +51,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-
 jsonschema = "0.26"
 
 [package.metadata.mcp]
-name = "delulu-travelsearch"
+name = "delulu-travel-search"
 version = "0.1.0"
 description = "Travel search services for flights and hotels"
 

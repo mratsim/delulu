@@ -23,7 +23,7 @@
 
 use std::path::Path;
 
-use delulu_travelsearch::{FlightSearchParams, FlightSearchResult, Seat};
+use delulu_travel_search::{FlightSearchParams, FlightSearchResult, Seat};
 
 /// Fixture structure describing expected properties of parsed results.
 struct FixtureTestCase {
