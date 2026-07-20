@@ -131,4 +131,3 @@ fn test_source_type_round_trip() {
         assert_eq!(parsed, variant);
     }
 }
-

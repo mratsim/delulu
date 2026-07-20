@@ -18,7 +18,6 @@ fn test_filter_mozilla_readability_empty() {
     assert_eq!(len, 0, "empty input should produce empty output");
 }
 
-
 #[test]
 fn test_filter_mozilla_readability_large_tree_uses_level_1_only() {
     // Create a tree >10,000 nodes to trigger the performance guard
