@@ -9,7 +9,7 @@
 //! Combined with `t_hotels_codec_roundtrip.rs`, we can be more confident that our encoder matches Google's
 //! and so that our protobuf schema is correct.
 
-use delulu_travel_agent::{HotelSearchParams, SortType};
+use delulu_travelsearch::{HotelSearchParams, SortType};
 use std::fs;
 
 #[derive(serde::Deserialize)]
@@ -163,7 +163,7 @@ fn test_validate_decoder_with_ui() {
                     .unwrap_or_default()
                     .iter()
                     .filter_map(|a| {
-                        delulu_travel_agent::Amenity::from_str_name(a).map(|a| a as i32)
+                        delulu_travelsearch::Amenity::from_str_name(a).map(|a| a as i32)
                     })
                     .collect();
                 let expected_guest_rating = case.input.min_guest_rating;

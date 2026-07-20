@@ -13,8 +13,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-travel-agent:
-    name: Build travel-agent ${{ matrix.target.platform }} (${{ matrix.target.arch }})
+  build-travelsearch:
+    name: Build travelsearch ${{ matrix.target.platform }} (${{ matrix.target.arch }})
     runs-on: ${{ matrix.target.os }}
     strategy:
       matrix:
@@ -55,7 +55,7 @@ jobs:
 
     - run: |
         rustup target add ${{ matrix.target.target }}
-        cargo build --release --target ${{ matrix.target.target }} -p delulu-travel-agent --features mcp
+        cargo build --release --target ${{ matrix.target.target }} -p delulu-travelsearch --features mcp
 
     - name: Strip executable (Linux)
       if: matrix.target.platform == 'Linux'
@@ -84,7 +84,7 @@ jobs:
 
   create-release:
     name: Create Release
-    needs: [build-travel-agent, build-webfetch]
+    needs: [build-travelsearch, build-webfetch]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5

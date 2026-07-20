@@ -7,11 +7,11 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/travel-agent
+  IMAGE_NAME: ${{ github.repository }}/travelsearch
 
 jobs:
-  build-and-push-travel-agent:
-    name: Build travel-agent (${{ matrix.platform }})
+  build-and-push-travelsearch:
+    name: Build travelsearch (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -59,9 +59,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
 
-  create-manifest-travel-agent:
+  create-manifest-travelsearch:
     runs-on: ubuntu-latest
-    needs: [build-and-push-travel-agent]
+    needs: [build-and-push-travelsearch]
     permissions:
       contents: read
       packages: write

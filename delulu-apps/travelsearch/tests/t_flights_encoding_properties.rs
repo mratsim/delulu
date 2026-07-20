@@ -28,7 +28,7 @@
 use base64::Engine;
 use chrono::NaiveDate;
 
-use delulu_travel_agent::{FlightSearchParams, Passenger, Seat, Trip};
+use delulu_travelsearch::{FlightSearchParams, Passenger, Seat, Trip};
 
 /// Basic sanity check.
 #[test]

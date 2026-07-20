@@ -39,7 +39,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{Local, Months, NaiveDate};
-use delulu_travel_agent::{Amenity, GoogleHotelsClient, HotelSearchParams};
+use delulu_travelsearch::{Amenity, GoogleHotelsClient, HotelSearchParams};
 use tokio::time::sleep;
 
 fn today() -> NaiveDate {

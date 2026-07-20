@@ -1,5 +1,5 @@
 services:
-  travel-agent:
+  travelsearch:
     build:
       context: .
       target: delulu-travel-mcp-runtime

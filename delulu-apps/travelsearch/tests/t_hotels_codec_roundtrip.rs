@@ -1,8 +1,8 @@
 //! t_hotels_codec_roundtrip.rs
 //! This test validates internal consistency via an encoder->decoder roundtrip
 
-use delulu_travel_agent::HotelSearchParams;
-use delulu_travel_agent::SortType;
+use delulu_travelsearch::HotelSearchParams;
+use delulu_travelsearch::SortType;
 use std::fs;
 
 #[derive(serde::Deserialize)]
@@ -70,13 +70,13 @@ fn test_roundtrip_internal_codec() {
 
         let guest_rating = case.input.min_guest_rating;
         let star_values = case.input.hotel_stars.clone().unwrap_or_default();
-        let amenities: Vec<delulu_travel_agent::Amenity> = case
+        let amenities: Vec<delulu_travelsearch::Amenity> = case
             .input
             .amenities
             .as_deref()
             .unwrap_or_default()
             .iter()
-            .filter_map(|a| delulu_travel_agent::Amenity::from_str_name(a))
+            .filter_map(|a| delulu_travelsearch::Amenity::from_str_name(a))
             .collect();
         let sort_order = match case.input.sort_by.as_deref() {
             Some("relevance") | None => None,
@@ -150,7 +150,7 @@ fn test_roundtrip_internal_codec() {
                         if let Some(ref amenity_names) = case.input.amenities {
                             for name in amenity_names {
                                 if let Some(amenity) =
-                                    delulu_travel_agent::Amenity::from_str_name(name)
+                                    delulu_travelsearch::Amenity::from_str_name(name)
                                 {
                                     expected_filters.push(format!("amenity: {}", amenity as i32));
                                 }
