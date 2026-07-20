@@ -634,6 +634,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "delulu-mcpify"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "clap",
+ "futures",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "wreq",
+]
+
+[[package]]
 name = "delulu-query-queues"
 version = "0.1.0"
 dependencies = [
