@@ -42,3 +42,13 @@ required-features = ["mcp"]
 name = "pipeline_registration"
 path = "tests/integration/pipeline_registration.rs"
 required-features = ["mcp"]
+
+[[test]]
+name = "mcpify_e2e_http"
+path = "tests/integration/end_to_end/http_test.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "mcpify_e2e_stdio"
+path = "tests/integration/end_to_end/stdio_test.rs"
+required-features = ["mcp"]
