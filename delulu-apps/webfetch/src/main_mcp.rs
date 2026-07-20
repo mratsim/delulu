@@ -214,6 +214,9 @@ fn md_doc_to_string(result: ExtractionResult) -> String {
 
 /// Format a reddit comment recursively into markdown.
 fn format_reddit_comment(out: &mut String, comment: &RedditComment, depth: u32) {
+    // TODO: fuzz/hardening — unbounded recursion on attacker-controlled Reddit
+    // comment trees. Add MAX_DEPTH guard (e.g. 50) to prevent stack exhaustion.
+    // See https://github.com/mratsim/delulu/pull/7
     let prefix = "> ".repeat(depth as usize);
     out.push_str(&format!(
         "{}**{}** (score: {}): {}\n\n",

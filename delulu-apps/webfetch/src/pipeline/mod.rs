@@ -85,8 +85,10 @@ fn convert_node(
     total: &mut usize,
 ) -> Result<(), WebbfetchError> {
     *total += 1;
-    // TODO: Add fuzzing guard for large DOM trees
-
+    // TODO: fuzz/hardening — total is incremented but never enforced. Add a
+    // MAX_NODES check that returns Err when exceeded (DoS guard for deeply
+    // nested / massive HTML documents).
+    // See https://github.com/mratsim/delulu/pull/7
     if depth > MAX_DEPTH {
         tracing::warn!(
             "DOM recursion depth exceeded {} at tag depth {}, flattening further nesting",

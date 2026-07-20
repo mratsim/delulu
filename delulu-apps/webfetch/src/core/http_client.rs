@@ -78,7 +78,10 @@ impl HttpClient for WreqClient {
 
         let status = resp.status().as_u16();
 
-        // Read the response body, enforcing the size guard.
+        // TODO: fuzz/hardening — resp.text() buffers the entire body before the
+        // size check runs, creating an OOM vector on large responses. Should stream
+        // chunks with a running byte count and reject early via Content-Length.
+        // See https://github.com/mratsim/delulu/pull/7
         let body = resp
             .text()
             .await
