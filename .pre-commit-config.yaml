@@ -19,7 +19,7 @@ repos:
     rev: v2.2.0
     hooks:
       - id: rustfmt
-        args: ['--check', '--edition', '2021']
+        args: ['--check', '--edition', '2024']
 
   - repo: https://github.com/rust-lang/rust-clippy
     rev: v0.1.92

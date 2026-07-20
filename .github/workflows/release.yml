@@ -13,8 +13,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build ${{ matrix.target.platform }} (${{ matrix.target.arch }})
+  build-travel-agent:
+    name: Build travel-agent ${{ matrix.target.platform }} (${{ matrix.target.arch }})
     runs-on: ${{ matrix.target.os }}
     strategy:
       matrix:
@@ -84,7 +84,7 @@ jobs:
 
   create-release:
     name: Create Release
-    needs: build
+    needs: [build-travel-agent, build-webfetch]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
@@ -115,6 +115,8 @@ jobs:
         - **macOS ARM64**: delulu-travel-mcp-macos-arm64.tar.gz
         - **Linux x86-64**: delulu-travel-mcp-linux-x86_64.tar.gz
         - **Linux ARM64**: delulu-travel-mcp-linux-arm64.tar.gz
+        - **Webfetch Linux x86-64**: delulu-webfetch-mcp-linux-x86_64.tar.gz
+        - **Webfetch Linux ARM64**: delulu-webfetch-mcp-linux-arm64.tar.gz
 
         All binaries are statically compiled and ready to use.
         EOF
@@ -131,3 +133,58 @@ jobs:
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-webfetch:
+    name: Build webfetch ${{ matrix.target.platform }} (${{ matrix.target.arch }})
+    runs-on: ${{ matrix.target.os }}
+    strategy:
+      matrix:
+        target:
+          - { platform: Linux, lower_platform: linux, arch: x86_64, os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { platform: Linux, lower_platform: linux, arch: arm64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        target: ${{ matrix.target.target }}
+
+    - name: Install build dependencies (Linux)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential libclang-dev git
+
+    - name: Cache cargo dependency
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/**/.fingerprint
+          target/**/release/deps
+          target/**/deps
+        key: ${{ runner.os }}-${{ matrix.target.arch }}-cargo-webfetch-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.target.arch }}-cargo-webfetch-
+
+    - run: |
+        rustup target add ${{ matrix.target.target }}
+        cargo build --release --target ${{ matrix.target.target }} -p delulu-webfetch --features mcp
+
+    - name: Strip executable (Linux)
+      run: strip target/${{ matrix.target.target }}/release/delulu-webfetch-mcp
+
+    - name: Create archive
+      run: |
+        cd target/${{ matrix.target.target }}/release
+        tar -czvf ../../../delulu-webfetch-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}.tar.gz delulu-webfetch-mcp
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: delulu-webfetch-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}-${{ env.VERSION }}
+        path: |
+          delulu-webfetch-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}.tar.gz
+        if-no-files-found: error

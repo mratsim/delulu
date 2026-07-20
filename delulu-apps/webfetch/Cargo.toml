@@ -1,0 +1,72 @@
+[package]
+name = "delulu-webfetch"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0"
+description = "CLI tools and MCP server for web content fetching and markdown conversion"
+
+[features]
+default = ["cli", "mcp"]
+cli = ["dep:clap"]
+mcp = [
+    "dep:rmcp",
+    "dep:schemars",
+    "dep:axum",
+    "tracing-subscriber/env-filter",
+    "tokio/signal",
+    "rmcp/transport-io",
+    "rmcp/transport-streamable-http-server",
+  ]
+
+[dependencies]
+wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
+wreq-util = "3.0.0-rc.9"
+scraper = "0.17"
+ego-tree = "0.6"
+regex = { version = "1.10", default-features = false, features = ["unicode-perl", "unicode-case"] }
+delulu-query-queues = { path = "../../delulu-internals/query-queues" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util", "fs"] }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4", features = ["derive"], optional = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["time", "chrono"] }
+once_cell = "1.20"
+url = "2"
+rand = "0.8"
+schemars = { version = "1.0", features = ["derive"], optional = true }
+axum = { version = "0.7", optional = true }
+rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
+thiserror = "2"
+async-trait = "0.1"
+
+[dev-dependencies]
+zstd = "0.13"
+regex = { version = "1.10", default-features = false, features = ["unicode-perl", "unicode-case"] }
+rayon = "1.12"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util", "fs", "process"] }
+
+[package.metadata.mcp]
+name = "delulu-webfetch"
+version = "0.1.0"
+description = "Web content fetching and markdown conversion services"
+
+[[bin]]
+name = "delulu-fetch"
+path = "src/main_cli.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "delulu-webfetch-mcp"
+path = "src/main_mcp.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "diag_rd_pipeline"
+path = "tests/pipeline_readability/diag_rd_pipeline.rs"
+
+[[test]]
+name = "t_webfetch_mcp"
+path = "tests/t_webfetch_mcp.rs"
+required-features = ["mcp"]
