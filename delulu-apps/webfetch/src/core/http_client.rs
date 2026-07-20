@@ -127,6 +127,8 @@ pub struct WebbfetchClient {
     queues: Arc<Mutex<HashMap<String, Arc<QueryQueue>>>>,
     /// Default QPS for the top-level  method.
     default_qps: u64,
+    /// Default timeout for the top-level  method.
+    default_timeout_secs: u64,
 }
 
 impl WebbfetchClient {
@@ -140,6 +142,7 @@ impl WebbfetchClient {
             client: Arc::new(client),
             queues: Arc::new(Mutex::new(HashMap::new())),
             default_qps: qps,
+            default_timeout_secs: timeout_secs,
         }
     }
 
@@ -149,6 +152,7 @@ impl WebbfetchClient {
             client: Arc::new(client),
             queues: Arc::new(Mutex::new(HashMap::new())),
             default_qps: DEFAULT_QPS,
+            default_timeout_secs: DEFAULT_TIMEOUT_SECS,
         }
     }
 
@@ -163,7 +167,7 @@ impl WebbfetchClient {
     /// 6. Returns a `FetchResult` with URL info and extracted content
     pub async fn fetch(&self, url: &str) -> Result<FetchResult, WebbfetchError> {
         let config = FetchConfig {
-            timeout_secs: DEFAULT_TIMEOUT_SECS,
+            timeout_secs: self.default_timeout_secs,
             qps: self.default_qps,
         };
         self.fetch_with_config_inner(url, &config).await
@@ -237,6 +241,10 @@ impl WebbfetchClient {
     }
 
     /// Get an existing per-domain queue or create a new one with QPS limit.
+    /// TODO: fuzz/hardening — queues map grows unbounded with no eviction.
+    /// Long-running MCP server will leak memory over many distinct domains.
+    /// Replace HashMap with LRU cache or add idle-pruning.
+    /// See https://github.com/mratsim/delulu/pull/7
     async fn get_or_create_queue(&self, domain: &str, qps: u64) -> Arc<QueryQueue> {
         let mut queues = self.queues.lock().await;
         queues
@@ -299,7 +307,10 @@ impl WebbfetchClient {
             let response = match response {
                 Ok(r) => r,
                 Err(e) => {
-                    // Connection / transport error — treat as retryable
+                    // TODO: fuzz/hardening — all HTTP errors treated as transient.
+                    // MAX_BODY_SIZE and other deterministic Fetch errors get retried
+                    // unnecessarily. Distinguish transient vs permanent errors.
+                    // See https://github.com/mratsim/delulu/pull/7
                     retry_count_conn += 1;
                     if retry_count_conn > max_retries_conn {
                         return Err(WebbfetchError::Fetch(format!(
