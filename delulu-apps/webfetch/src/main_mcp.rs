@@ -247,7 +247,7 @@ async fn main() -> Result<(), Error> {
     tracing::debug!("Parsed args: {:?}", args);
 
     tracing::debug!("Creating webfetch client...");
-    let client = Arc::new(WebbfetchClient::new(30));
+    let client = Arc::new(WebbfetchClient::new(30, 2));
     tracing::debug!("Client created");
 
     match args.command {

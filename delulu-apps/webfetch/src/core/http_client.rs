@@ -126,6 +126,8 @@ pub struct WebbfetchClient {
     client: Arc<dyn HttpClient>,
     /// Per-domain rate-limit queues, keyed by domain name.
     queues: Arc<Mutex<HashMap<String, Arc<QueryQueue>>>>,
+    /// Default QPS for the top-level  method.
+    default_qps: u64,
 }
 
 impl WebbfetchClient {
@@ -133,11 +135,12 @@ impl WebbfetchClient {
     ///
     /// The client is configured with Safari 18.5 emulation, up to 5 redirects,
     /// and the specified timeout.
-    pub fn new(timeout_secs: u64) -> Self {
+    pub fn new(timeout_secs: u64, qps: u64) -> Self {
         let client = create_http_client(timeout_secs);
         Self {
             client: Arc::new(client),
             queues: Arc::new(Mutex::new(HashMap::new())),
+            default_qps: qps,
         }
     }
 
@@ -146,6 +149,7 @@ impl WebbfetchClient {
         Self {
             client: Arc::new(client),
             queues: Arc::new(Mutex::new(HashMap::new())),
+            default_qps: DEFAULT_QPS,
         }
     }
 
@@ -161,7 +165,7 @@ impl WebbfetchClient {
     pub async fn fetch(&self, url: &str) -> Result<FetchResult, WebbfetchError> {
         let config = FetchConfig {
             timeout_secs: DEFAULT_TIMEOUT_SECS,
-            qps: DEFAULT_QPS,
+            qps: self.default_qps,
         };
         self.fetch_with_config_inner(url, &config).await
     }

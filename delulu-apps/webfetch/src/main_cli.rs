@@ -4,7 +4,7 @@
 //! ```
 //! delulu-fetch -u <URL>
 //! delulu-fetch -i <FILE>
-//! delulu-fetch -u <URL> --output-format json
+//! delulu-fetch -u <URL> --output-format html
 //! delulu-fetch -i <FILE> --output-format html
 //! delulu-fetch -u <URL> --timeout 120
 //! echo '<html>...</html>' | delulu-fetch -i -
@@ -41,11 +41,11 @@ struct Args {
     #[arg(long, default_value = "2")]
     qps: u64,
 
-    /// Output format: markdown (default), html, or json.
+    /// Output format: markdown (default) or html.
     #[arg(long)]
     output_format: Option<String>,
 
-    /// [deprecated] Output raw JSON instead of Markdown. Use --output-format json.
+    /// [deprecated] Output raw JSON instead of Markdown.
     #[arg(long)]
     raw: bool,
 
@@ -185,7 +185,7 @@ async fn main() -> Result<(), Error> {
                 let out_html = delulu_webfetch::generators::gen_html::dom_nodes_to_html(&dom);
                 println!("{out_html}");
             }
-            Some("json") | None if args.raw => {
+            None if args.raw => {
                 let result = delulu_webfetch::ExtractionResult::GenericHtml {
                     content_md: MarkdownDocument {
                         frontmatter: String::new(),
@@ -196,7 +196,20 @@ async fn main() -> Result<(), Error> {
                 };
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
+            Some("markdown") | None => {
+                let result = delulu_webfetch::ExtractionResult::GenericHtml {
+                    content_md: MarkdownDocument {
+                        frontmatter: String::new(),
+                        body: delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(
+                            &dom, None,
+                        ),
+                    },
+                };
+                let md = md_doc_to_string(result);
+                println!("{md}");
+            }
             _ => {
+                tracing::warn!("unknown output format, falling back to markdown");
                 let result = delulu_webfetch::ExtractionResult::GenericHtml {
                     content_md: MarkdownDocument {
                         frontmatter: String::new(),
@@ -216,7 +229,7 @@ async fn main() -> Result<(), Error> {
             .as_deref()
             .context("Either -u <URL> or -i <FILE> is required")?;
 
-        let client = WebbfetchClient::new(args.timeout);
+        let client = WebbfetchClient::new(args.timeout, args.qps);
 
         match args.output_format.as_deref() {
             Some("html") => {
@@ -237,13 +250,21 @@ async fn main() -> Result<(), Error> {
                 let out_html = delulu_webfetch::generators::gen_html::dom_nodes_to_html(&dom);
                 println!("{out_html}");
             }
-            Some("json") | None if args.raw => {
+            None if args.raw => {
                 let result = fetch_and_extract(url, &client, select_pipeline(&args.pipeline))
                     .await
                     .context("Fetch and extract failed")?;
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
+            Some("markdown") | None => {
+                let result = fetch_and_extract(url, &client, select_pipeline(&args.pipeline))
+                    .await
+                    .context("Fetch and extract failed")?;
+                let md = md_doc_to_string(result);
+                println!("{md}");
+            }
             _ => {
+                tracing::warn!("unknown output format, falling back to markdown");
                 let result = fetch_and_extract(url, &client, select_pipeline(&args.pipeline))
                     .await
                     .context("Fetch and extract failed")?;
