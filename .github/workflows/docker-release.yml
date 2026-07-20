@@ -54,6 +54,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: delulu-travel-mcp-runtime
           platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -137,7 +138,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          target: delulu-webfetch-mcp
+          target: delulu-webfetch-mcp-runtime
           platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.meta-webfetch.outputs.tags }}

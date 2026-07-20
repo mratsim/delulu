@@ -1,6 +1,8 @@
 services:
   travel-agent:
-    build: .
+    build:
+      context: .
+      target: delulu-travel-mcp-runtime
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -18,7 +20,7 @@ services:
   webfetch-mcp:
     build:
       context: .
-      target: delulu-webfetch-mcp
+      target: delulu-webfetch-mcp-runtime
     ports:
       - "8081:8081"
     environment:

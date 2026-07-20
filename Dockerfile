@@ -53,7 +53,7 @@ RUN cargo build --release --features mcp --bin delulu-travel-mcp
 #           Stage 3: Runtime                #
 #                                           #
 #############################################
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS delulu-travel-mcp-runtime
 
 # Install ca-certificates for HTTPS root CAs
 # Note: libssl3 is not needed - BoringSSL is statically linked via boring-sys2
@@ -83,7 +83,7 @@ ENTRYPOINT ["/app/delulu-travel-mcp"]
 #           Stage 4: webfetch-mcp Builder   #
 #                                           #
 #############################################
-FROM rust:1.85-slim-bookworm AS delulu-webfetch-mcp
+FROM rust:1.85-slim-bookworm AS delulu-webfetch-mcp-builder
 WORKDIR /app
 COPY . .
 RUN cargo build --release -p delulu-webfetch --features mcp
@@ -94,7 +94,7 @@ RUN cargo build --release -p delulu-webfetch --features mcp
 #                                           #
 #############################################
 FROM gcr.io/distroless/cc-debian12 AS delulu-webfetch-mcp-runtime
-COPY --from=delulu-webfetch-mcp /app/target/release/delulu-webfetch-mcp /usr/local/bin/
+COPY --from=delulu-webfetch-mcp-builder /app/target/release/delulu-webfetch-mcp /usr/local/bin/
 USER 1000:1000
 EXPOSE 8081
 ENTRYPOINT ["delulu-webfetch-mcp"]
