@@ -9,7 +9,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use delulu_webfetch::generators::gen_html::dom_nodes_to_html;
-use delulu_webfetch::pipeline::{DomNode, parse_html};
+use delulu_webfetch::pipelines::{DomNode, parse_html};
 use regex::Regex;
 
 /// Resolve the path to the vendored Readability.js test-pages directory.

@@ -1,6 +1,6 @@
-use crate::pipeline::DomNode;
-use crate::pipeline::passes::rd_utils;
-use crate::pipeline::walkers::{WalkerAction, WalkerFilter, walk_post_acc_mut, walk_post_mut};
+use crate::pipelines::DomNode;
+use crate::pipelines::passes::rd_utils;
+use crate::pipelines::walkers::{WalkerAction, WalkerFilter, walk_post_acc_mut, walk_post_mut};
 
 struct ScoreAccumulator {
     subtree_max: f64,
@@ -488,7 +488,7 @@ pub(crate) fn mark_data_tables_inside_figures(node: &mut DomNode) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::parse_html;
+    use crate::pipelines::parse_html;
 
     /// Weight multiplier for hash links (fragment identifiers like `#section`).
     /// Used in `total_link_len` test helper.

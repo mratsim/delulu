@@ -1,4 +1,4 @@
-use crate::pipeline::DomNode;
+use crate::pipelines::DomNode;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;

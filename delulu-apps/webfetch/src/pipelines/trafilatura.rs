@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 
-use crate::pipeline::{DomNode, walk_pre_mut};
+use crate::pipelines::{DomNode, walk_pre_mut};
 
 use super::passes::tf_filters::{
     tf_isolate_content_container, tf_remove_cleaned, tf_remove_empty_cut, tf_remove_teaser,
@@ -156,7 +156,7 @@ fn count_text_chars(node: &DomNode) -> usize {
 /// Logs fallbacks with `tracing::info!`.
 pub fn filter_trafilatura(node: &mut DomNode) {
     // Run analysis passes first to populate metadata
-    crate::pipeline::passes::rd_analysis::mark_data_tables_by_structure(node);
+    crate::pipelines::passes::rd_analysis::mark_data_tables_by_structure(node);
 
     // TODO: Add fuzzing guard for large DOM trees
     let levels: &[&[PassFn]] = &[*TF_BALANCED, *TF_RECALL];

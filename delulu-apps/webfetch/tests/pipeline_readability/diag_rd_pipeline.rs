@@ -33,8 +33,8 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use delulu_webfetch::generators::gen_html::dom_nodes_to_html;
-use delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability;
-use delulu_webfetch::pipeline::parse_html;
+use delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability;
+use delulu_webfetch::pipelines::parse_html;
 
 /// Normalize HTML for comparison: strip whitespace between tags, collapse runs of whitespace.
 fn normalize_html(html: &str) -> String {
@@ -77,7 +77,7 @@ fn fixture_dir(fixtures_arg: &Option<PathBuf>) -> PathBuf {
 fn load_test_case(
     name: &str,
     fixtures_arg: &Option<PathBuf>,
-) -> (delulu_webfetch::pipeline::DomNode, String) {
+) -> (delulu_webfetch::pipelines::DomNode, String) {
     let dir = fixture_dir(fixtures_arg).join(name);
     let source_path = dir.join("source.html.zst");
     let expected_path = dir.join("expected.html.zst");

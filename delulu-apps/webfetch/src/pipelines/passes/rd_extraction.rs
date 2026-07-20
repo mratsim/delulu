@@ -1,8 +1,8 @@
-use crate::pipeline::DomNode;
-use crate::pipeline::passes::rd_filters::{CONTENT_CANDIDATE_RE, is_data_table};
-use crate::pipeline::passes::rd_utils::{get_inner_text, is_body_or_html, meta_get_f64};
-use crate::pipeline::walkers::walk_post_mut;
-use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut, walk_pre_mut};
+use crate::pipelines::DomNode;
+use crate::pipelines::passes::rd_filters::{CONTENT_CANDIDATE_RE, is_data_table};
+use crate::pipelines::passes::rd_utils::{get_inner_text, is_body_or_html, meta_get_f64};
+use crate::pipelines::walkers::walk_post_mut;
+use crate::pipelines::walkers::{WalkerAction, walk_post_acc_mut, walk_pre_mut};
 
 // ---------------------------------------------------------------------------
 // Sibling qualification constants
@@ -61,7 +61,7 @@ pub fn pass_prune_no_candidate(node: &mut DomNode) {
                             "pass_prune_no_candidate: node missing md_rd_subtree_acc_score — scoring must run before extraction"
                         );
                     }
-                    Some(raw) => match crate::pipeline::passes::rd_utils::meta_parse_f64(raw) {
+                    Some(raw) => match crate::pipelines::passes::rd_utils::meta_parse_f64(raw) {
                         Some(s) => s, // meta_parse_f64 already guarantees finite, non-NaN
                         None => {
                             // Present but invalid: scoring bug — crash-loudly
@@ -129,7 +129,7 @@ pub fn pass_splice_cutoff(node: &mut DomNode) {
             None => {
                 panic!("pass_splice_cutoff: node '{}' missing md_rd_subtree_acc_score — pipeline ordering bug", tag);
             }
-            Some(raw) => crate::pipeline::passes::rd_utils::meta_parse_f64(raw).unwrap_or_else(|| {
+            Some(raw) => crate::pipelines::passes::rd_utils::meta_parse_f64(raw).unwrap_or_else(|| {
                 panic!("pass_splice_cutoff: node '{}' has unparsable md_rd_subtree_acc_score: {:?} — scoring bug", tag, raw);
             }),
         };
@@ -177,7 +177,7 @@ pub fn pass_splice_cutoff(node: &mut DomNode) {
     };
     // walk_post_mut expects &mut [&mut dyn FnMut(...)].
     // Using vec! matching existing call sites (type annotation doesn't compile for unsized trait).
-    let mut filters: Vec<&mut crate::pipeline::walkers::WalkerFilter> = vec![&mut cutoff_filter];
+    let mut filters: Vec<&mut crate::pipelines::walkers::WalkerFilter> = vec![&mut cutoff_filter];
     // Use is_data_table as should_descend guard to protect data table subtrees.
     // Data tables are structural — splicing them would destroy their content.
     walk_post_mut(node, &mut filters, Some(is_data_table));
@@ -507,7 +507,7 @@ fn should_keep_sibling(
         let node_length = text.len();
         let link_density = metadata
             .get("link_density")
-            .and_then(|s| crate::pipeline::passes::rd_utils::meta_parse_f64(s))
+            .and_then(|s| crate::pipelines::passes::rd_utils::meta_parse_f64(s))
             .unwrap_or(0.0);
         // Long <p> heuristic: length > 80 AND link_density < 0.25
         if node_length > 80 && link_density < 0.25 {

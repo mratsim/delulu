@@ -134,7 +134,7 @@ async fn test_fetch_and_extract_reddit_from_fixture() {
     let result = fetch_and_extract(
         "https://www.reddit.com/r/test/comments/abc123/hello_world/",
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -175,7 +175,7 @@ async fn test_fetch_and_extract_reddit_replies_are_threaded() {
     let result = fetch_and_extract(
         "https://www.reddit.com/r/test/comments/abc123/hello_world/",
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -215,7 +215,7 @@ async fn test_fetch_and_extract_discourse_from_fixture() {
     let result = fetch_and_extract(
         original_url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -255,7 +255,7 @@ async fn test_fetch_and_extract_discourse_posts_have_raw_markdown() {
     let result = fetch_and_extract(
         original_url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -294,7 +294,7 @@ async fn test_fetch_and_extract_generic_html_from_fixture() {
     let result = fetch_and_extract(
         url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -353,7 +353,7 @@ async fn test_fetch_and_extract_generic_html_title_from_h1() {
     let result = fetch_and_extract(
         url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -399,7 +399,7 @@ async fn test_fetch_and_extract_empty_body_returns_generic_html() {
     let result = fetch_and_extract(
         url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -430,7 +430,7 @@ async fn test_fetch_and_extract_non_2xx_status_returns_error() {
     let err = fetch_and_extract(
         url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap_err();
@@ -458,7 +458,7 @@ async fn test_fetch_and_extract_reddit_with_trailing_slash() {
     let result = fetch_and_extract(
         url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -480,7 +480,7 @@ async fn test_fetch_and_extract_https_only_scheme_rejected() {
     let err = fetch_and_extract(
         url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap_err();
@@ -506,7 +506,7 @@ async fn test_fetch_and_extract_non_discourse_t_url_is_generic_html() {
     let result = fetch_and_extract(
         url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -558,7 +558,7 @@ async fn test_fetch_and_extract_discourse_detected_from_html_content() {
     let result = fetch_and_extract(
         original_url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -597,7 +597,7 @@ async fn test_fetch_and_extract_discourse_with_simple_fixture() {
     let result = fetch_and_extract(
         original_url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();
@@ -638,7 +638,7 @@ async fn test_fetch_and_extract_stale_discourse_markers_falls_back_to_generic_ht
     let result = fetch_and_extract(
         original_url,
         &client,
-        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
     .unwrap();

@@ -2,7 +2,7 @@ pub mod core;
 pub use crate::core::types;
 
 pub mod generators;
-pub mod pipeline;
+pub mod pipelines;
 pub mod sources;
 
 pub use crate::core::detect::detect_source_type;
@@ -10,8 +10,8 @@ pub use crate::core::http_client::WebbfetchClient;
 pub use crate::core::types::{ExtractionResult, MarkdownDocument, RedditComment};
 
 use crate::core::types::{SourceType, WebbfetchError};
-use crate::pipeline::DomNode;
-use crate::pipeline::PassFn;
+use crate::pipelines::DomNode;
+use crate::pipelines::PassFn;
 // ---------------------------------------------------------------------------
 // fetch_and_extract
 // ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ pub async fn extract(
     fetch_and_extract(
         url,
         client,
-        &[crate::pipeline::mozilla_readability::filter_mozilla_readability],
+        &[crate::pipelines::mozilla_readability::filter_mozilla_readability],
     )
     .await
 }
@@ -161,7 +161,7 @@ fn fallback_to_generic_html(
     body: String,
     pipeline: &[PassFn],
 ) -> Result<ExtractionResult, WebbfetchError> {
-    let mut dom = pipeline::parse_html(&body)?;
+    let mut dom = pipelines::parse_html(&body)?;
     for pass in pipeline {
         pass(&mut dom);
     }
@@ -245,7 +245,7 @@ mod tests {
     use super::*;
     use crate::core::http_client::WebbfetchClient;
     use crate::core::types::Response;
-    use crate::pipeline::parse_html;
+    use crate::pipelines::parse_html;
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -392,7 +392,7 @@ mod tests {
         let result = fetch_and_extract(
             "https://example.com/page",
             &client,
-            &[crate::pipeline::mozilla_readability::filter_mozilla_readability],
+            &[crate::pipelines::mozilla_readability::filter_mozilla_readability],
         )
         .await
         .unwrap();
@@ -459,7 +459,7 @@ mod tests {
         let result = fetch_and_extract(
             "https://www.reddit.com/r/test/comments/abc/reddit_post/",
             &client,
-            &[crate::pipeline::mozilla_readability::filter_mozilla_readability],
+            &[crate::pipelines::mozilla_readability::filter_mozilla_readability],
         )
         .await
         .unwrap();
@@ -517,7 +517,7 @@ mod tests {
         let result = fetch_and_extract(
             original_url,
             &client,
-            &[crate::pipeline::mozilla_readability::filter_mozilla_readability],
+            &[crate::pipelines::mozilla_readability::filter_mozilla_readability],
         )
         .await
         .unwrap();

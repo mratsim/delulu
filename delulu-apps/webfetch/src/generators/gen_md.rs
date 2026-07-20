@@ -1,4 +1,4 @@
-use crate::pipeline::DomNode;
+use crate::pipelines::DomNode;
 
 /// Maximum output size in bytes. Output exceeding this is truncated.
 const MAX_OUTPUT_SIZE: usize = 500 * 1024; // 500 KiB

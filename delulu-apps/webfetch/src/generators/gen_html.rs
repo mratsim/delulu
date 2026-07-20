@@ -1,4 +1,4 @@
-use crate::pipeline::DomNode;
+use crate::pipelines::DomNode;
 
 /// Reconstruct HTML from a DomNode tree (for webfetch_raw).
 pub fn dom_nodes_to_html(node: &DomNode) -> String {

@@ -1,5 +1,5 @@
-use crate::pipeline::DomNode;
-use crate::pipeline::walkers::{WalkerAction, WalkerFilter, walk_post_mut};
+use crate::pipelines::DomNode;
+use crate::pipelines::walkers::{WalkerAction, WalkerFilter, walk_post_mut};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -94,7 +94,7 @@ pub fn convert_div_containing_phrasing_to_paragraph(node: &mut DomNode) -> Walke
         && !children.is_empty()
         && children
             .iter()
-            .all(crate::pipeline::passes::rd_utils::is_phrasing)
+            .all(crate::pipelines::passes::rd_utils::is_phrasing)
     {
         *tag = "p".to_string();
     }
@@ -367,7 +367,7 @@ pub fn unwrap_single_cell_tables(node: &mut DomNode) -> WalkerAction {
 
     if let Some(content) = replacement {
         if let DomNode::Element { tag, children, .. } = node {
-            if crate::pipeline::passes::rd_utils::all_phrasing(&content) {
+            if crate::pipelines::passes::rd_utils::all_phrasing(&content) {
                 *tag = "p".to_string();
             } else {
                 *tag = "div".to_string();
@@ -710,7 +710,7 @@ pub fn wrap_readability_output(node: &mut DomNode) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::{parse_html, walk_pre_mut};
+    use crate::pipelines::{parse_html, walk_pre_mut};
 
     // ── 2. convert_double_br_to_paragraph ─────────────────────────────────
 

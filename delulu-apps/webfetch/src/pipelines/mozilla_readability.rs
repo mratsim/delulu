@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 
-use crate::pipeline::{DomNode, PassFn, walk_pre_mut};
+use crate::pipelines::{DomNode, PassFn, walk_pre_mut};
 
 use super::passes::rd_analysis::{
     rd_score_mozilla_readability, rd_score_mozilla_readability_no_class_weights,
@@ -224,9 +224,9 @@ fn inject_metadata_flag(root: &mut DomNode, key: &str, value: &str) {
 ///      on the root node indicating which level was selected.
 pub fn filter_mozilla_readability(node: &mut DomNode) {
     // Mark data tables by structure (walk tree, set is_data_table metadata)
-    crate::pipeline::passes::rd_analysis::mark_data_tables_by_structure(node);
+    crate::pipelines::passes::rd_analysis::mark_data_tables_by_structure(node);
     // Contextual: mark tables inside <figure> as data tables
-    crate::pipeline::passes::rd_analysis::mark_data_tables_inside_figures(node);
+    crate::pipelines::passes::rd_analysis::mark_data_tables_inside_figures(node);
 
     // TODO: Add fuzzing guard for large DOM trees
     let levels: &[&[PassFn]] = &[
@@ -288,7 +288,7 @@ pub fn filter_mozilla_readability(node: &mut DomNode) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::parse_html;
+    use crate::pipelines::parse_html;
 
     // -- filter_mozilla_readability retry orchestrator --------------------------
 

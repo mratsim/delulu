@@ -1,8 +1,8 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::pipeline::DomNode;
-use crate::pipeline::walkers::WalkerAction;
+use crate::pipelines::DomNode;
+use crate::pipelines::walkers::WalkerAction;
 
 // ---------------------------------------------------------------------------
 // MANUALLY_CLEANED tags — removed entirely
@@ -663,8 +663,8 @@ fn isolate_container_recursive(nodes: &mut Vec<DomNode>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::parse_html;
-    use crate::pipeline::walk_pre_mut;
+    use crate::pipelines::parse_html;
+    use crate::pipelines::walk_pre_mut;
     use std::collections::HashMap;
 
     // ── tf_remove_cleaned ────────────────────────────────────────────────

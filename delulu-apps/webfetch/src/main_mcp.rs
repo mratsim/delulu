@@ -73,7 +73,7 @@ impl WebfetchServer {
         match fetch_and_extract(
             &input.url,
             &self.client,
-            &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+            &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
         )
         .await
         {
@@ -91,7 +91,7 @@ impl WebfetchServer {
         match fetch_and_extract(
             &input.url,
             &self.client,
-            &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+            &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
         )
         .await
         {

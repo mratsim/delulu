@@ -164,7 +164,7 @@ fn test_readability_js_suite() {
 
 /// Convenience access to the readability pipeline orchestrator.
 /// Imported here to avoid pulling the full crate path into every test.
-use delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability;
+use delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability;
 
 // ---------------------------------------------------------------------------
 // Smoke tests — individual cases that should pass at minimum.

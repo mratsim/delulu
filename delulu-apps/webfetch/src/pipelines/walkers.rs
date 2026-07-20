@@ -1,4 +1,4 @@
-use crate::pipeline::DomNode;
+use crate::pipelines::DomNode;
 
 /// Action returned by a walker callback.
 #[derive(Debug, Clone, PartialEq, Eq)]

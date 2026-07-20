@@ -1,5 +1,5 @@
-use crate::pipeline::passes::rd_utils::{get_inner_text, meta_get_f64};
-use crate::pipeline::{DomNode, WalkerAction};
+use crate::pipelines::passes::rd_utils::{get_inner_text, meta_get_f64};
+use crate::pipelines::{DomNode, WalkerAction};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -560,7 +560,7 @@ pub fn clean_negative_headers(node: &mut DomNode) -> WalkerAction {
                 return WalkerAction::Continue;
             }
 
-            let weight = crate::pipeline::passes::rd_utils::get_class_weight(attrs);
+            let weight = crate::pipelines::passes::rd_utils::get_class_weight(attrs);
             if weight < 0 {
                 return WalkerAction::Remove;
             }
@@ -646,7 +646,7 @@ fn remove_high_link_density(node: &mut DomNode) {
         return;
     }
     if let DomNode::Element { children, .. } = node {
-        use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
+        use crate::pipelines::walkers::{WalkerAction, walk_post_acc_mut};
         walk_post_acc_mut::<(bool,)>(children, Some(is_data_table), &mut |n: &mut DomNode,
                                                                           child_counts: &[(
             bool,
@@ -724,7 +724,7 @@ fn remove_heading_heavy(node: &mut DomNode) {
         return;
     }
     if let DomNode::Element { children, .. } = node {
-        use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
+        use crate::pipelines::walkers::{WalkerAction, walk_post_acc_mut};
         walk_post_acc_mut::<(usize, usize, usize, bool)>(
             children,
             Some(is_data_table),
@@ -791,7 +791,7 @@ fn remove_media_heavy(node: &mut DomNode) {
         return;
     }
     if let DomNode::Element { children, .. } = node {
-        use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
+        use crate::pipelines::walkers::{WalkerAction, walk_post_acc_mut};
         walk_post_acc_mut::<(usize, usize, usize, bool)>(
             children,
             Some(is_data_table),
@@ -868,7 +868,7 @@ fn remove_form_heavy(node: &mut DomNode) {
         return;
     }
     if let DomNode::Element { children, .. } = node {
-        use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
+        use crate::pipelines::walkers::{WalkerAction, walk_post_acc_mut};
         walk_post_acc_mut::<(usize, usize, bool)>(
             children,
             Some(is_data_table),
@@ -933,7 +933,7 @@ fn remove_list_heavy(node: &mut DomNode) {
         return;
     }
     if let DomNode::Element { children, .. } = node {
-        use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
+        use crate::pipelines::walkers::{WalkerAction, walk_post_acc_mut};
         walk_post_acc_mut::<(usize, usize, bool)>(
             children,
             Some(is_data_table),
@@ -998,7 +998,7 @@ fn remove_embed_heavy(node: &mut DomNode) {
         return;
     }
     if let DomNode::Element { children, .. } = node {
-        use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
+        use crate::pipelines::walkers::{WalkerAction, walk_post_acc_mut};
         walk_post_acc_mut::<(usize, bool)>(
             children,
             Some(is_data_table),
@@ -1060,7 +1060,7 @@ fn remove_low_text_density(node: &mut DomNode) {
         return;
     }
     if let DomNode::Element { children, .. } = node {
-        use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
+        use crate::pipelines::walkers::{WalkerAction, walk_post_acc_mut};
         walk_post_acc_mut::<(usize, usize, bool)>(
             children,
             Some(is_data_table),
@@ -1152,7 +1152,7 @@ fn remove_short_content(node: &mut DomNode) {
         return;
     }
     if let DomNode::Element { children, .. } = node {
-        use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
+        use crate::pipelines::walkers::{WalkerAction, walk_post_acc_mut};
         walk_post_acc_mut::<(usize, usize, bool)>(
             children,
             Some(is_data_table),
@@ -1235,7 +1235,7 @@ fn remove_ad_content(node: &mut DomNode) {
         return;
     }
     if let DomNode::Element { children, .. } = node {
-        use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
+        use crate::pipelines::walkers::{WalkerAction, walk_post_acc_mut};
         walk_post_acc_mut::<(bool,)>(children, Some(is_data_table), &mut |n: &mut DomNode,
                                                                           child_counts: &[(
             bool,
@@ -1269,7 +1269,7 @@ fn remove_ad_content(node: &mut DomNode) {
                 // link_density always 0.0 (no child link-text accumulator)
                 let link_density = 0.0;
                 metadata.insert("link_density".into(), format!("{:.6}", link_density));
-                let weight = crate::pipeline::passes::rd_utils::get_class_weight(attrs);
+                let weight = crate::pipelines::passes::rd_utils::get_class_weight(attrs);
                 let has_ad_class = attrs.iter().any(|(name, val)| {
                     name == "class"
                         && (val.contains("ad-")
@@ -1330,7 +1330,7 @@ pub(crate) fn check_high_link_density(
 ) -> bool {
     let ld = metadata
         .get("link_density")
-        .and_then(|s| crate::pipeline::passes::rd_utils::meta_parse_f64(s))
+        .and_then(|s| crate::pipelines::passes::rd_utils::meta_parse_f64(s))
         .unwrap_or(0.0);
     ld > HIGH_LINK_DENSITY_THRESHOLD
 }
@@ -1363,7 +1363,7 @@ pub(crate) fn check_low_weight_link_density(
 ) -> bool {
     let ld = metadata
         .get("link_density")
-        .and_then(|s| crate::pipeline::passes::rd_utils::meta_parse_f64(s))
+        .and_then(|s| crate::pipelines::passes::rd_utils::meta_parse_f64(s))
         .unwrap_or(0.0);
     let threshold = if has_ad_class {
         LOW_WEIGHT_BASE_THRESHOLD * AD_CLASS_MULTIPLIER
@@ -1381,7 +1381,7 @@ pub(crate) fn check_high_weight_link_density(
 ) -> bool {
     let ld = metadata
         .get("link_density")
-        .and_then(|s| crate::pipeline::passes::rd_utils::meta_parse_f64(s))
+        .and_then(|s| crate::pipelines::passes::rd_utils::meta_parse_f64(s))
         .unwrap_or(0.0);
     let threshold = if has_ad_class {
         HIGH_WEIGHT_BASE_THRESHOLD * AD_CLASS_MULTIPLIER
@@ -1444,7 +1444,7 @@ pub(crate) fn check_short_content(
     }
     let ld = metadata
         .get("link_density")
-        .and_then(|s| crate::pipeline::passes::rd_utils::meta_parse_f64(s))
+        .and_then(|s| crate::pipelines::passes::rd_utils::meta_parse_f64(s))
         .unwrap_or(0.0);
     // text_len < 100: short content check
     // Use text_chars as a proxy for content length
@@ -1579,8 +1579,8 @@ pub fn clean_matched_nodes(node: &mut DomNode) -> WalkerAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::passes::rd_analysis::rd_score_mozilla_readability;
-    use crate::pipeline::{parse_html, walk_pre_mut};
+    use crate::pipelines::passes::rd_analysis::rd_score_mozilla_readability;
+    use crate::pipelines::{parse_html, walk_pre_mut};
 
     // ── 1. remove_style_elements ──────────────────────────────────────────
 
@@ -1812,7 +1812,7 @@ mod tests {
     #[test]
     fn test_remove_garbage_form() {
         let html = "<form><input name='q'></form><p>content</p>";
-        let mut nodes = crate::pipeline::parse_html(html).expect("valid HTML");
+        let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
         walk_pre_mut(&mut nodes, &|n| remove_garbage_interactive_elements(n));
 
         fn find_tag(node: &DomNode, tag: &str) -> bool {
@@ -1833,7 +1833,7 @@ mod tests {
     #[test]
     fn test_remove_garbage_embed() {
         let html = "<embed src='flash.swf'><p>text</p>";
-        let mut nodes = crate::pipeline::parse_html(html).expect("valid HTML");
+        let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
         walk_pre_mut(&mut nodes, &|n| remove_garbage_interactive_elements(n));
 
         fn find_tag(node: &DomNode, tag: &str) -> bool {
@@ -1851,7 +1851,7 @@ mod tests {
     fn test_remove_garbage_preserves_youtube() {
         // YouTube embed should be preserved
         let html = r#"<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>"#;
-        let mut nodes = crate::pipeline::parse_html(html).expect("valid HTML");
+        let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
         walk_pre_mut(&mut nodes, &|n| remove_garbage_interactive_elements(n));
 
         fn find_tag(node: &DomNode, tag: &str) -> bool {
@@ -1874,7 +1874,7 @@ mod tests {
     fn test_clean_negative_headers_removes_negative() {
         // H1 with negative class weight (sidebar) should be removed
         let html = r#"<h1 class="sidebar">nav</h1><h2>content</h2>"#;
-        let mut nodes = crate::pipeline::parse_html(html).expect("valid HTML");
+        let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
         walk_pre_mut(&mut nodes, &|n| clean_negative_headers(n));
 
         fn find_tag(node: &DomNode, tag: &str) -> bool {

@@ -131,13 +131,13 @@ fn format_reddit_comment(out: &mut String, comment: &RedditComment, depth: u32) 
 }
 
 /// Select pipeline based on CLI argument.
-fn select_pipeline(name: &str) -> &'static [delulu_webfetch::pipeline::PassFn] {
+fn select_pipeline(name: &str) -> &'static [delulu_webfetch::pipelines::PassFn] {
     match name {
-        "rd" | "" => &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
-        "tf" => &[delulu_webfetch::pipeline::trafilatura::filter_trafilatura],
+        "rd" | "" => &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
+        "tf" => &[delulu_webfetch::pipelines::trafilatura::filter_trafilatura],
         _ => {
             tracing::warn!("unknown pipeline '{}', falling back to default", name);
-            &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability]
+            &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability]
         }
     }
 }
@@ -171,7 +171,7 @@ async fn main() -> Result<(), Error> {
             std::fs::read_to_string(file).context(format!("Failed to read file '{file}'"))?
         };
 
-        let mut dom = delulu_webfetch::pipeline::parse_html(&html)
+        let mut dom = delulu_webfetch::pipelines::parse_html(&html)
             .map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
         let pipeline = select_pipeline(&args.pipeline);
         for pass in pipeline {
@@ -239,7 +239,7 @@ async fn main() -> Result<(), Error> {
                     ExtractionResult::GenericHtml { content_md } => content_md.body.clone(),
                     _ => anyhow::bail!("Unexpected content type from fetch"),
                 };
-                let mut dom = delulu_webfetch::pipeline::parse_html(&body)
+                let mut dom = delulu_webfetch::pipelines::parse_html(&body)
                     .map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
                 let pipeline = select_pipeline(&args.pipeline);
                 for pass in pipeline {
