@@ -474,7 +474,7 @@ pub const MIN_EXTRACTED_SIZE: usize = 250;
 /// Maps to Trafilatura's BODY_XPATH Pattern 0 (specific class/id selectors).
 static BODY_XPATH_PATTERN_0_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"(?i)^(?:
+        r#"(?ix)^(?:
             post|entry|text|cell|story|postarea|art-postcontent|
             post[-_]text|post-body|post-?entry|post[-_]?content|postContent|post_inner_wrapper|
             article-?text|articleText|(?:entry|page|text|article|art)-content|article__content|

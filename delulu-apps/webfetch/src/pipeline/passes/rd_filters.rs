@@ -691,9 +691,8 @@ fn remove_high_link_density(node: &mut DomNode) {
                             } else { None }
                         } else { None }
                     }).sum();
-                    let total_text = child_text_len + link_text_len;
-                    let link_density = if total_text > 0 {
-                        link_text_len as f64 / total_text as f64
+                    let link_density = if child_text_len > 0 {
+                        link_text_len as f64 / child_text_len as f64
                     } else {
                         0.0
                     };
