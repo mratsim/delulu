@@ -15,7 +15,7 @@
 //!  You should have received a copy of the GNU Affero General Public License
 //!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-// Library for delulu-travelsearch-mcp
+// Library for delulu-travelsearch
 // MCP server for travel services (flights, hotels)
 
 // Testing access - consent_cookie is re-exported for test modules
