@@ -114,10 +114,19 @@ impl McpifyServer {
                         .get(&base_url, &path, params_map, &path_param_names)
                         .await;
 
-                    let json = serde_json::to_value(&result).unwrap_or(json!({"error": "Serialization failed"}));
-                    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                        serde_json::to_string(&json).unwrap_or_default(),
-                    )]))
+                    let upstream = format!("{}{}", base_url, path);
+
+                    if result.success {
+                        // ProxyResponse only contains bool + Option<String> + Option<Value>,
+                        // all trivially serializable — unwrap is safe here.
+                        let json_str = serde_json::to_string(&result).unwrap();
+                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            json_str,
+                        )]))
+                    } else {
+                        let msg = result.error.unwrap_or_else(|| format!("Upstream request failed: {}", upstream));
+                        Err(rmcp::model::ErrorData::new(rmcp::model::ErrorCode::INTERNAL_ERROR, msg, None))
+                    }
                 }
                 .boxed()
             },
@@ -207,6 +216,35 @@ fn param_schema_to_json_schema(schema: &crate::openapi::ParameterSchema) -> Valu
 
     if schema.nullable == Some(true) {
         obj.insert("nullable".to_string(), Value::Bool(true));
+    }
+
+    // Array items schema
+    if let Some(items) = &schema.items {
+        obj.insert("items".to_string(), param_schema_to_json_schema(items));
+    }
+
+    // Object properties
+    if let Some(props) = &schema.properties {
+        let mut props_map = Map::new();
+        for (k, v) in props {
+            props_map.insert(k.clone(), param_schema_to_json_schema(v));
+        }
+        obj.insert("properties".to_string(), Value::Object(props_map));
+    }
+
+    // Object required fields
+    if let Some(req) = &schema.required {
+        obj.insert("required".to_string(), Value::Array(
+            req.iter().map(|s| Value::String(s.clone())).collect()
+        ));
+    }
+
+    // Numeric constraints
+    if let Some(min) = &schema.minimum {
+        obj.insert("minimum".to_string(), min.clone());
+    }
+    if let Some(max) = &schema.maximum {
+        obj.insert("maximum".to_string(), max.clone());
     }
 
     Value::Object(obj)

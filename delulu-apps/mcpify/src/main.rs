@@ -110,6 +110,7 @@ async fn main() -> Result<()> {
                 stateful_mode: false,
                 ..Default::default()
             };
+            let server = Arc::new(server);
             let service =
                 StreamableHttpService::new(move || Ok(server.clone()), session_manager, config);
             let app = axum::Router::new().nest_service("/mcp", service);

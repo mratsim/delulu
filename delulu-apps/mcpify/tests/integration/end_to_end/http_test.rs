@@ -80,9 +80,12 @@ async fn test_e2e_http_transport() -> Result<()> {
     // Run the Python MCP test suite
     let script = manifest_dir().join("tests/integration/end_to_end/test_mcp_http.py");
     let script_str = script.to_string_lossy().to_string();
+    let binary = find_binary()?;
+    let binary_str = binary.to_string_lossy().to_string();
     let py_handle = tokio::task::spawn_blocking(move || {
         Command::new("python3")
             .arg(&script_str)
+            .arg(&binary_str)
             .arg(pa2.to_string())
             .arg(pb2.to_string())
             .stdout(Stdio::piped())

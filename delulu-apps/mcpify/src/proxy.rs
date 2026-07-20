@@ -39,12 +39,32 @@ impl ProxyClient {
         match self.client.get(url.as_str()).send().await {
             Ok(response) => {
                 let status = response.status();
-                let body = response.text().await.unwrap_or_default();
 
-                if status.is_success() || status.is_redirection() {
+                // Limit response to ~1M tokens (conservative 512KB) to fit in LLM context windows
+                if let Some(cl) = response.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<usize>().ok()) {
+                    if cl > 524_288 {
+                        return ProxyResponse::error(format!("Response too large: {} bytes (max 512KB)", cl));
+                    }
+                }
+
+                let body = match response.text().await {
+                    Ok(b) => b,
+                    Err(e) => return ProxyResponse::error(format!("Body read failed: {}", e)),
+                };
+
+                // Safety check even without Content-Length header
+                if body.len() > 524_288 {
+                    return ProxyResponse::error(format!("Response body too large: {} bytes (max 512KB)", body.len()));
+                }
+
+                if status.is_success() {
                     match serde_json::from_str::<serde_json::Value>(&body) {
                         Ok(json) => ProxyResponse::success(json),
-                        Err(_) => ProxyResponse::success(Value::String(body)),
+                        Err(_) => ProxyResponse::error(format!(
+                            "Non-JSON response (HTTP {}): {}",
+                            status,
+                            truncate_error_body(&body, 500)
+                        )),
                     }
                 } else {
                     let truncated = if body.len() > 500 {
@@ -126,11 +146,11 @@ fn build_url(
 
 #[derive(Debug, serde::Serialize)]
 pub struct ProxyResponse {
-    success: bool,
+    pub(crate) success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<Value>,
+    pub(crate) data: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    pub(crate) error: Option<String>,
 }
 
 impl ProxyResponse {
