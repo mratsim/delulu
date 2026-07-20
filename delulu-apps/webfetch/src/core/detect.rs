@@ -39,18 +39,32 @@ pub fn detect_source_type(url: &str) -> SourceType {
 
 /// Transform a Reddit thread URL into its JSON API endpoint.
 ///
-/// Strips trailing slashes and appends `.json?raw_json=1`.
+/// Uses the `url` crate to safely manipulate path and query parameters.
 pub fn reddit_url_to_api_url(url: &str) -> String {
-    let trimmed = url.trim_end_matches('/');
-    format!("{}.json?raw_json=1", trimmed)
+    if let Ok(mut parsed) = url::Url::parse(url) {
+        let mut path = parsed.path().trim_end_matches('/').to_string();
+        path.push_str(".json");
+        parsed.set_path(&path);
+        parsed.set_query(Some("raw_json=1"));
+        parsed.to_string()
+    } else {
+        format!("{}.json?raw_json=1", url.trim_end_matches('/'))
+    }
 }
 
 /// Transform a Discourse topic URL into its JSON API endpoint.
 ///
-/// Strips trailing slashes and appends `.json`.
+/// Uses the `url` crate to safely manipulate path and query parameters.
 pub fn discourse_url_to_api_url(url: &str) -> String {
-    let trimmed = url.trim_end_matches('/');
-    format!("{}.json?raw_json=1&include_raw=1", trimmed)
+    if let Ok(mut parsed) = url::Url::parse(url) {
+        let mut path = parsed.path().trim_end_matches('/').to_string();
+        path.push_str(".json");
+        parsed.set_path(&path);
+        parsed.set_query(Some("raw_json=1&include_raw=1"));
+        parsed.to_string()
+    } else {
+        format!("{}.json?raw_json=1&include_raw=1", url.trim_end_matches('/'))
+    }
 }
 
 // ---------------------------------------------------------------------------
