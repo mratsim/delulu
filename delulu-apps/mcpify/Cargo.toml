@@ -37,3 +37,8 @@ rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
 name = "mcpify"
 path = "src/main.rs"
 required-features = ["mcp"]
+
+[[test]]
+name = "pipeline_registration"
+path = "tests/integration/pipeline_registration.rs"
+required-features = ["mcp"]

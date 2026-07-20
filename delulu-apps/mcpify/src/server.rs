@@ -64,8 +64,8 @@ impl McpifyServer {
         proxy: Arc<ProxyClient>,
     ) -> Result<Option<ToolEntry>> {
         let operation_id = match &op.operation_id {
-            Some(id) => id.clone(),
-            None => return Ok(None),
+            Some(id) if !id.is_empty() => id.clone(),
+            _ => return Ok(None),
         };
 
         let description = op
@@ -130,7 +130,9 @@ impl McpifyServer {
         self.tools.iter().find(|t| t.name == name)
     }
 
-    fn list_tools(&self) -> Vec<Tool> {
+    /// List all registered tools with their metadata and input schemas.
+    /// Used by integration tests to verify tool registration.
+    pub fn list_tools(&self) -> Vec<Tool> {
         self.tools.iter().map(|t| t.tool.clone()).collect()
     }
 }
