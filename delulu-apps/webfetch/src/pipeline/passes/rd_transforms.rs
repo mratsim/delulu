@@ -21,21 +21,18 @@ pub fn convert_double_br_to_paragraph(node: &mut DomNode) -> WalkerAction {
     {
         let mut buf: Vec<DomNode> = Vec::new();
         let mut new_children: Vec<DomNode> = Vec::new();
-        let mut i = 0;
         let old = std::mem::take(children);
-        while i < old.len() {
-            if is_br(&old[i]) && i + 1 < old.len() && is_br(&old[i + 1]) {
-                // Flush the accumulated content as a <p>.
+        let mut iter = old.into_iter().peekable();
+        while let Some(child) = iter.next() {
+            if is_br(&child) && iter.peek().map_or(false, is_br) {
+                iter.next(); // skip the second br
                 if !buf.is_empty() {
                     new_children.push(make_p_element(std::mem::take(&mut buf)));
                 }
-                i += 2; // skip both <br> elements
             } else {
-                buf.push(old[i].clone());
-                i += 1;
+                buf.push(child);
             }
         }
-        // Flush any trailing content.
         if !buf.is_empty() {
             new_children.push(make_p_element(std::mem::take(&mut buf)));
         }

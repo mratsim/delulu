@@ -306,7 +306,7 @@ fn format_comment(comment: &RedditComment, depth: u32, out: &mut String) {
     out.push_str(&comment.author);
     out.push_str("** (");
     // Push score as decimal string
-    write_score(comment.score, out);
+    out.push_str(&comment.score.to_string());
     out.push_str("): ");
     out.push_str(&comment.body);
     out.push('\n');
@@ -315,22 +315,6 @@ fn format_comment(comment: &RedditComment, depth: u32, out: &mut String) {
     for reply in &comment.replies {
         format_comment(reply, depth + 1, out);
     }
-}
-
-fn write_score(score: i64, out: &mut String) {
-    if score < 0 {
-        out.push('-');
-        write_score_unsigned((-score) as u64, out);
-    } else {
-        write_score_unsigned(score as u64, out);
-    }
-}
-
-fn write_score_unsigned(n: u64, out: &mut String) {
-    if n >= 10 {
-        write_score_unsigned(n / 10, out);
-    }
-    out.push(char::from(b'0' + (n % 10) as u8));
 }
 
 // ---------------------------------------------------------------------------

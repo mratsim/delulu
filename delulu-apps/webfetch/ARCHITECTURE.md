@@ -2,7 +2,7 @@
 
 ## Elevator Pitch
 
-delulu-webfetch is a **micropass compiler pipeline** for web content extraction. It parses HTML into a DOM tree, runs a sequence of small single-purpose passes (analysis → scoring → filtering → transformation → generation), and produces clean content output. Two extraction strategies are implemented: **Readability** (scoring-based, `rd_*`) and **Trafilatura** (tag-based, `tf_*`). All passes are plain `fn(&mut Vec<DomNode>)` — no traits, no `Box<dyn>`, no dynamic dispatch.
+delulu-webfetch is a **micropass compiler pipeline** for web content extraction. It parses HTML into a DOM tree, runs a sequence of small single-purpose passes (analysis → scoring → filtering → transformation → generation), and produces clean content output. Two extraction strategies are implemented: **Readability** (scoring-based, `rd_*`) and **Trafilatura** (tag-based, `tf_*`). All passes are plain `fn(&mut DomNode)` — no traits, no `Box<dyn>`, no dynamic dispatch.
 
 ## Diagram
 
