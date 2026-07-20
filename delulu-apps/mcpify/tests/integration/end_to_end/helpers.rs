@@ -21,9 +21,10 @@ pub fn find_binary() -> Result<PathBuf> {
     .and_then(|p| p.parent())
     .ok_or_else(|| anyhow::anyhow!("no workspace root"))?
     .to_path_buf();
+    let exe = format!("delulu-mcpify{}", std::env::consts::EXE_SUFFIX);
     for p in [
-        root.join("target/debug/delulu-mcpify"),
-        root.join("target/release/delulu-mcpify"),
+        root.join("target/debug").join(&exe),
+        root.join("target/release").join(&exe),
     ] {
         if p.exists() {
             return Ok(p);
@@ -45,15 +46,9 @@ pub fn get_free_port() -> u16 {
 /// Errors in the streaming task are intentionally swallowed (best-effort diagnostics).
 pub fn stream_stderr_to_console(stderr: std::process::ChildStderr) -> JoinHandle<()> {
     tokio::task::spawn_blocking(move || {
-        use std::io::Read;
         let mut r = stderr;
-        let mut buf = [0u8; 4096];
-        while let Ok(n) = r.read(&mut buf) {
-            if n == 0 {
-                break;
-            }
-            eprint!("{}", String::from_utf8_lossy(&buf[..n]));
-        }
+        let mut w = std::io::stderr();
+        let _ = std::io::copy(&mut r, &mut w);
     })
 }
 

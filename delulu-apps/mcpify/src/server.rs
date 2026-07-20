@@ -90,19 +90,39 @@ impl McpifyServer {
         let base_url = base_url.to_string();
         let path = path.to_string();
 
-        // Extract path parameter names from the operation definition
+        // Extract path and query parameter names from the operation definition
         let path_param_names: Vec<String> = op
             .parameters
             .iter()
             .filter(|p| matches!(p.location, ParameterLocation::Path))
             .map(|p| p.name.clone())
             .collect();
+        let query_param_names: Vec<String> = op
+            .parameters
+            .iter()
+            .filter(|p| matches!(p.location, ParameterLocation::Query))
+            .map(|p| p.name.clone())
+            .collect();
+
+        // Determine the body key (matches build_input_schema logic)
+        let has_body_param = op.parameters.iter().any(|p| p.name == "body");
+        let body_key: Option<&'static str> = if method == "POST" && op.request_body.is_some() {
+            Some(if has_body_param {
+                "_request_body"
+            } else {
+                "body"
+            })
+        } else {
+            None
+        };
 
         let handler: Arc<DynCallToolHandler<McpifyServer>> =
             Arc::new(move |ctx: ToolCallContext<'_, McpifyServer>| {
                 let base_url = base_url.clone();
                 let path = path.clone();
                 let path_param_names = path_param_names.clone();
+                let query_param_names = query_param_names.clone();
+                let body_key = body_key;
                 let proxy = proxy.clone();
                 async move {
                     let params = ctx.arguments.ok_or_else(|| {
@@ -115,7 +135,14 @@ impl McpifyServer {
 
                     let result = if method == "POST" {
                         proxy
-                            .post(&base_url, &path, params_map, &path_param_names)
+                            .post(
+                                &base_url,
+                                &path,
+                                params_map,
+                                &path_param_names,
+                                &query_param_names,
+                                body_key,
+                            )
                             .await
                     } else {
                         proxy

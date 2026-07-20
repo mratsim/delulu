@@ -9,12 +9,9 @@ pub struct ProxyClient {
 
 impl ProxyClient {
     pub fn new() -> Result<Self> {
-        // SECURITY: No redirect policy is set — wreq follows redirects by default.
-        // An upstream server can issue a 302 redirect to any internal address
-        // (localhost, cloud metadata, etc.), bypassing base_url restrictions.
-        // Future: add .redirect(wreq::redirect::Policy::none()) to disable following.
         let client = wreq::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
+            .redirect(wreq::redirect::Policy::none())
             .build()?;
         Ok(Self { client })
     }
@@ -45,35 +42,43 @@ impl ProxyClient {
     /// Execute an HTTP POST request against the constructed URL.
     ///
     /// Path parameters are substituted into `{paramName}` placeholders (same as GET).
-    /// Non-path parameters are serialized as a JSON body.
+    /// Query parameters are appended to the URL query string.
+    /// The designated `body_key` parameter (if present) is unwrapped and sent as JSON body.
     pub async fn post(
         &self,
         base_url: &str,
         path: &str,
         params: HashMap<String, Value>,
         path_param_names: &[String],
+        query_param_names: &[String],
+        body_key: Option<&str>,
     ) -> ProxyResponse {
-        // For POST, only pass path params to build_url (non-path params go in JSON body only)
-        let path_params_only: HashMap<String, Value> = params
-            .clone()
-            .into_iter()
-            .filter(|(k, _)| path_param_names.contains(k))
-            .collect();
-        let url = build_url(base_url, path, path_params_only, path_param_names);
+        let mut url_params = HashMap::new();
+        let mut json_body = None;
 
-        // Build JSON body from non-path parameters
-        let body: HashMap<String, Value> = params
-            .into_iter()
-            .filter(|(k, _)| !path_param_names.contains(k))
-            .collect();
+        for (k, v) in params {
+            if path_param_names.contains(&k) || query_param_names.contains(&k) {
+                url_params.insert(k, v);
+            } else if Some(k.as_str()) == body_key {
+                json_body = Some(v);
+            }
+        }
+
+        let url = build_url(base_url, path, url_params, path_param_names);
 
         tracing::debug!(
             "Proxy POST: {} body={}",
             url,
-            serde_json::to_string(&body).unwrap_or_default()
+            serde_json::to_string(&json_body).unwrap_or_default()
         );
 
-        match self.client.post(url.as_str()).json(&body).send().await {
+        let req = self.client.post(url.as_str());
+        let req = if let Some(b) = json_body {
+            req.json(&b)
+        } else {
+            req
+        };
+        match req.send().await {
             Ok(mut response) => Self::process_response(&mut response).await,
             Err(e) => ProxyResponse::error(format!("Request failed: {}", e)),
         }
