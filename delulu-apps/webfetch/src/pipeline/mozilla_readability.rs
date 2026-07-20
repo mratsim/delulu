@@ -1,29 +1,29 @@
 use once_cell::sync::Lazy;
 
-use crate::pipeline::{DomNode, walk_pre_mut, PassFn};
+use crate::pipeline::{DomNode, PassFn, walk_pre_mut};
 
 use super::passes::rd_analysis::{
     rd_score_mozilla_readability, rd_score_mozilla_readability_no_class_weights,
 };
-use super::passes::rd_filters::{
-    clean_matched_nodes, clean_negative_headers, filter_low_density_elements, is_probably_visible,
-    rd_strip_analytics, remove_empty_paragraphs, remove_empty_structural_elements,
-    remove_garbage_interactive_elements, remove_script_elements, remove_style_elements, strip_unlikely_candidates,
-};
 use super::passes::rd_extraction::{
-    pass_prune_no_candidate,
-    pass_splice_cutoff,
     pass_keep_alt_cluster,
     pass_keep_qualifying_siblings,
     // pass_promote_content_child,  // SLOP — does not exist in Readability.js. Keeps only 1 child at every level,
     //                             // recursively narrowing tree to a single leaf. Destroys text nodes.
     //                             // pass_keep_qualifying_siblings already handles sibling selection correctly.
+    pass_prune_no_candidate,
+    pass_splice_cutoff,
+};
+use super::passes::rd_filters::{
+    clean_matched_nodes, clean_negative_headers, filter_low_density_elements, is_probably_visible,
+    rd_strip_analytics, remove_empty_paragraphs, remove_empty_structural_elements,
+    remove_garbage_interactive_elements, remove_script_elements, remove_style_elements,
+    strip_unlikely_candidates,
 };
 use super::passes::rd_transforms::{
     clean_classes, clean_styles, collapse_single_child_elements,
     convert_div_containing_phrasing_to_paragraph, convert_double_br_to_paragraph,
-    convert_font_to_span, fix_lazy_loaded_images,
-    rd_strip_non_content,
+    convert_font_to_span, fix_lazy_loaded_images, rd_strip_non_content,
     rd_unwrap_structural_wrappers, remove_br_before_paragraph, replace_h1_with_h2,
     strip_heading_edit_suffixes, unwrap_single_cell_tables, wrap_readability_output,
 };
@@ -183,7 +183,6 @@ pub static READABILITY_LEVEL_4_NO_SCORE_FILTER: Lazy<&[PassFn]> = Lazy::new(|| {
     ]
 });
 
-
 // ---------------------------------------------------------------------------
 // Retry Orchestrator: filter_mozilla_readability
 // ---------------------------------------------------------------------------
@@ -260,7 +259,7 @@ pub fn filter_mozilla_readability(node: &mut DomNode) {
         if len >= MIN_OUTPUT_CHARS {
             *node = attempt;
             wrap_readability_output(node);
-            return;  // Early return — first level that meets threshold wins.
+            return; // Early return — first level that meets threshold wins.
         }
 
         if len > best_len {
@@ -323,7 +322,6 @@ mod tests {
         // After filtering, we may get some output or empty depending on scoring
         let _ = len;
     }
-
 
     #[test]
     fn test_filter_mozilla_readability_large_tree_uses_level_1_only() {
@@ -397,7 +395,9 @@ mod tests {
             eprintln!("Actual output:");
             eprintln!("{}", md);
             eprintln!("=== Copy the above into the `let expected = r#\"...\"#` literal ===");
-            panic!("UPDATE_EXPECTED=1: update expected string in source, then re-run without the env var");
+            panic!(
+                "UPDATE_EXPECTED=1: update expected string in source, then re-run without the env var"
+            );
         }
 
         // Snapshot comparison: update with UPDATE_EXPECTED=1
@@ -423,6 +423,9 @@ mod tests {
             eprintln!("--- END ACTUAL OUTPUT ---");
             eprintln!("To update snapshot, set UPDATE_EXPECTED=1");
         }
-        assert_eq!(md, expected, "Output does not match expected snapshot. See output above.");
+        assert_eq!(
+            md, expected,
+            "Output does not match expected snapshot. See output above."
+        );
     }
 }

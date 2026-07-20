@@ -11,7 +11,7 @@ pub mod passes;
 pub mod trafilatura;
 pub mod walkers;
 
-pub use self::walkers::{WalkerAction, walk_pre_mut, PassFn};
+pub use self::walkers::{PassFn, WalkerAction, walk_pre_mut};
 pub use error::PipelineError;
 // ---------------------------------------------------------------------------
 // Constants

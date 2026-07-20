@@ -2,7 +2,6 @@ use crate::pipeline::DomNode;
 use crate::pipeline::passes::rd_utils;
 use crate::pipeline::walkers::{WalkerAction, WalkerFilter, walk_post_acc_mut, walk_post_mut};
 
-
 struct ScoreAccumulator {
     subtree_max: f64,
     content: f64,
@@ -162,7 +161,7 @@ impl ScoreAccumulator {
     /// - `self.subtree_max` is finalized.
     ///
     /// # Panic-if
-    /// - Never (infallible). Missing/unparseable link_density silently defaults to 0.0.
+    /// - Never (infallible). Missing/unparsable link_density silently defaults to 0.0.
     fn apply_link_density(&mut self, node: &mut DomNode, children_subtree_max: f64) {
         let DomNode::Element {
             metadata, scores, ..
@@ -225,7 +224,10 @@ pub fn mark_data_tables_by_structure(node: &mut DomNode) {
             ..
         } = n
         {
-            if tag == "table" && !is_layout_table(attrs) && is_data_table_by_structure(attrs, children) {
+            if tag == "table"
+                && !is_layout_table(attrs)
+                && is_data_table_by_structure(attrs, children)
+            {
                 metadata.insert("is_data_table".into(), "true".into());
             }
         }
@@ -394,7 +396,7 @@ fn is_data_table_by_structure(attrs: &[(String, String)], children: &[DomNode]) 
 /// Post: Every Element node has scores["mozilla_readability"] and
 ///       metadata["md_rd_subtree_acc_score"] set (accumulated content score).
 ///       Also sets metadata["md_rd_subtree_max_score"] (single-element peak).
-/// Panic-if: Never panics. Missing or unparseable `link_density` metadata
+/// Panic-if: Never panics. Missing or unparsable `link_density` metadata
 ///            silently defaults to 0.0 (defensive fallback).
 pub fn rd_score_mozilla_readability(node: &mut DomNode) {
     let DomNode::Element { children, .. } = node else {
@@ -432,7 +434,7 @@ pub fn rd_score_mozilla_readability(node: &mut DomNode) {
 /// Post: Every Element node has scores["mozilla_readability"] and
 ///       metadata["md_rd_subtree_acc_score"] set.
 ///       Also sets metadata["md_rd_subtree_max_score"].
-/// Panic-if: Never panics. Missing or unparseable `link_density` metadata
+/// Panic-if: Never panics. Missing or unparsable `link_density` metadata
 ///            silently defaults to 0.0 (defensive fallback).
 pub fn rd_score_mozilla_readability_no_class_weights(node: &mut DomNode) {
     let DomNode::Element { children, .. } = node else {
@@ -979,7 +981,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn test_dt_layout_wins_over_data() {
         // role=presentation + summary → layout wins (no is_data_table)
@@ -1284,33 +1285,3 @@ mod tests {
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

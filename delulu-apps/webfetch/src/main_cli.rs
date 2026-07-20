@@ -131,9 +131,7 @@ fn format_reddit_comment(out: &mut String, comment: &RedditComment, depth: u32) 
 }
 
 /// Select pipeline based on CLI argument.
-fn select_pipeline(
-    name: &str,
-) -> &'static [delulu_webfetch::pipeline::PassFn] {
+fn select_pipeline(name: &str) -> &'static [delulu_webfetch::pipeline::PassFn] {
     match name {
         "rd" | "" => &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
         "tf" => &[delulu_webfetch::pipeline::trafilatura::filter_trafilatura],

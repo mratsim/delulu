@@ -1,9 +1,8 @@
 use crate::pipeline::DomNode;
-use crate::pipeline::walkers::{WalkerAction, walk_pre_mut, walk_post_acc_mut};
+use crate::pipeline::passes::rd_filters::{CONTENT_CANDIDATE_RE, is_data_table};
+use crate::pipeline::passes::rd_utils::{get_inner_text, is_body_or_html, meta_get_f64};
 use crate::pipeline::walkers::walk_post_mut;
-use crate::pipeline::passes::rd_utils::{meta_get_f64, is_body_or_html, get_inner_text};
-use crate::pipeline::passes::rd_filters::{is_data_table, CONTENT_CANDIDATE_RE};
-
+use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut, walk_pre_mut};
 
 // ---------------------------------------------------------------------------
 // Sibling qualification constants
@@ -32,7 +31,7 @@ const CUTOFF_SCORE_THRESHOLD: f64 = 20.0;
 /// - No Element node with score 0.0 or missing remains. Non-Element nodes pass through.
 /// # Panics
 /// Panics if `md_rd_subtree_acc_score` is missing (pipeline ordering bug) or
-/// unparseable (scoring bug).
+/// unparsable (scoring bug).
 /// Tags whose subtree scores are meaningful for content detection.
 /// Elements NOT in this set may have score 0.0 even when they contain
 /// content, because they have no paragraph-scored descendants.
@@ -63,15 +62,15 @@ pub fn pass_prune_no_candidate(node: &mut DomNode) {
                         );
                     }
                     Some(raw) => match crate::pipeline::passes::rd_utils::meta_parse_f64(raw) {
-                        Some(s) => s,  // meta_parse_f64 already guarantees finite, non-NaN
+                        Some(s) => s, // meta_parse_f64 already guarantees finite, non-NaN
                         None => {
                             // Present but invalid: scoring bug — crash-loudly
                             panic!(
-                                "pass_prune_no_candidate: unparseable md_rd_subtree_acc_score: {:?} — scoring bug",
+                                "pass_prune_no_candidate: unparsable md_rd_subtree_acc_score: {:?} — scoring bug",
                                 raw
                             );
                         }
-                    }
+                    },
                 };
                 // Only prune scored tags (p, td, pre, blockquote). Non-scored tags
                 // (span, a, div, article, etc.) have score 0.0 because they have no
@@ -85,7 +84,6 @@ pub fn pass_prune_no_candidate(node: &mut DomNode) {
         }
     });
 }
-
 
 // ---------------------------------------------------------------------------
 // pass_splice_cutoff — splice thin wrappers with low score
@@ -104,10 +102,16 @@ pub fn pass_prune_no_candidate(node: &mut DomNode) {
 ///       Body/html nodes are never spliced.
 /// # Panics
 /// Panics if `md_rd_subtree_acc_score` is missing (pipeline ordering bug) or
-/// unparseable (scoring bug), or if Element children exist but none have valid scores.
+/// unparsable (scoring bug), or if Element children exist but none have valid scores.
 pub fn pass_splice_cutoff(node: &mut DomNode) {
     let mut cutoff_filter = |n: &mut DomNode| -> WalkerAction {
-        let DomNode::Element { children, metadata, tag, .. } = n else {
+        let DomNode::Element {
+            children,
+            metadata,
+            tag,
+            ..
+        } = n
+        else {
             return WalkerAction::Continue;
         };
         if is_body_or_html(tag) {
@@ -119,45 +123,50 @@ pub fn pass_splice_cutoff(node: &mut DomNode) {
         }
         // Read this node's score:
         // - Missing metadata → panic (pipeline ordering bug)
-        // - Present but unparseable → panic (scoring bug)
+        // - Present but unparsable → panic (scoring bug)
         // - Present and valid → use it
         let my_score = match metadata.get("md_rd_subtree_acc_score") {
             None => {
                 panic!("pass_splice_cutoff: node '{}' missing md_rd_subtree_acc_score — pipeline ordering bug", tag);
             }
             Some(raw) => crate::pipeline::passes::rd_utils::meta_parse_f64(raw).unwrap_or_else(|| {
-                panic!("pass_splice_cutoff: node '{}' has unparseable md_rd_subtree_acc_score: {:?} — scoring bug", tag, raw);
+                panic!("pass_splice_cutoff: node '{}' has unparsable md_rd_subtree_acc_score: {:?} — scoring bug", tag, raw);
             }),
         };
         // Find best child's score from children's metadata
         // Check if there are any Element children first — having none is legitimate
         // (e.g., a <p> with only text content). Only panic if Element children exist but
         // none have valid scores (pipeline ordering bug: scoring must run before this pass).
-        let has_element_children = children.iter().any(|c| matches!(c, DomNode::Element { .. }));
+        let has_element_children = children
+            .iter()
+            .any(|c| matches!(c, DomNode::Element { .. }));
         let best_child_score = if has_element_children {
-            children.iter()
+            children
+                .iter()
                 .filter_map(|c| match c {
-                    DomNode::Element { metadata, .. } =>
-                        meta_get_f64(metadata, "md_rd_subtree_acc_score"),
+                    DomNode::Element { metadata, .. } => {
+                        meta_get_f64(metadata, "md_rd_subtree_acc_score")
+                    }
                     _ => None,
                 })
                 .max_by(f64::total_cmp)
                 .unwrap_or_else(|| {
-                    panic!("pass_splice_cutoff: no child with valid score — pipeline ordering bug?");
+                    panic!(
+                        "pass_splice_cutoff: no child with valid score — pipeline ordering bug?"
+                    );
                 })
         } else {
             0.0
         };
         // Cutoff check: my_score < best_child_score / 3.0
         // CUTOFF_SCORE_THRESHOLD (20.0) implicitly guards against best_child_score == 0.0.
-        if best_child_score >= CUTOFF_SCORE_THRESHOLD
-            && my_score < best_child_score / 3.0
-        {
+        if best_child_score >= CUTOFF_SCORE_THRESHOLD && my_score < best_child_score / 3.0 {
             // Don't splice if any direct child is a data table — would eject the table
             // from its container, causing it to be removed by sibling qualification.
             let has_data_table_child = children.iter().any(|c| match c {
-                DomNode::Element { metadata, .. } =>
-                    metadata.get("is_data_table").is_some_and(|v| v == "true"),
+                DomNode::Element { metadata, .. } => {
+                    metadata.get("is_data_table").is_some_and(|v| v == "true")
+                }
                 _ => false,
             });
             if !has_data_table_child {
@@ -191,9 +200,19 @@ pub fn pass_splice_cutoff(node: &mut DomNode) {
 /// Panics if `md_rd_subtree_acc_score` is missing (pipeline ordering bug) or
 /// invalid (NaN/Inf — scoring bug).
 pub fn pass_keep_alt_cluster(node: &mut DomNode) {
-    let DomNode::Element { children, .. } = node else { return };
-    walk_post_acc_mut::<()>(children, Some(is_data_table), &mut |n: &mut DomNode, _child_accs: &[()]| {
-        let DomNode::Element { children: my_children, metadata, tag, .. } = n else {
+    let DomNode::Element { children, .. } = node else {
+        return;
+    };
+    walk_post_acc_mut::<()>(children, Some(is_data_table), &mut |n: &mut DomNode,
+                                                                 _child_accs: &[(
+    )]| {
+        let DomNode::Element {
+            children: my_children,
+            metadata,
+            tag,
+            ..
+        } = n
+        else {
             return (WalkerAction::Continue, ());
         };
         // Read node's score — missing or invalid is a pipeline/scoring bug
@@ -202,16 +221,21 @@ pub fn pass_keep_alt_cluster(node: &mut DomNode) {
                 panic!("pass_keep_alt_cluster: node missing md_rd_subtree_acc_score — pipeline ordering bug");
             });
         // meta_get_f64 already filters NaN/Inf, but guard defensively
-        assert!(!my_score.is_nan() && !my_score.is_infinite(),
-            "pass_keep_alt_cluster: invalid score {} — scoring bug", my_score);
+        assert!(
+            !my_score.is_nan() && !my_score.is_infinite(),
+            "pass_keep_alt_cluster: invalid score {} — scoring bug",
+            my_score
+        );
         if my_score == 0.0 {
             return (WalkerAction::Continue, ());
         }
         // Find best non-body/html child score for alt_threshold
-        let top_child_score = my_children.iter()
+        let top_child_score = my_children
+            .iter()
             .filter_map(|c| match c {
-                DomNode::Element { tag, metadata, .. } if !is_body_or_html(tag) =>
-                    meta_get_f64(metadata, "md_rd_subtree_acc_score"),
+                DomNode::Element { tag, metadata, .. } if !is_body_or_html(tag) => {
+                    meta_get_f64(metadata, "md_rd_subtree_acc_score")
+                }
                 _ => None,
             })
             .filter(|s| *s > 0.0)
@@ -222,12 +246,15 @@ pub fn pass_keep_alt_cluster(node: &mut DomNode) {
         // Count qualifying children (score >= alt_threshold, exclude body/html)
         // Using Vec::retain for O(n) removal (see FC-MED-001)
         let is_alt_cluster = {
-            let qualifying_count = my_children.iter()
+            let qualifying_count = my_children
+                .iter()
                 .filter(|c| match c {
-                    DomNode::Element { tag, metadata, .. } if !is_body_or_html(tag) =>
-                        alt_threshold.is_some_and(|threshold|
+                    DomNode::Element { tag, metadata, .. } if !is_body_or_html(tag) => {
+                        alt_threshold.is_some_and(|threshold| {
                             meta_get_f64(metadata, "md_rd_subtree_acc_score")
-                                .is_some_and(|s| s >= threshold)),
+                                .is_some_and(|s| s >= threshold)
+                        })
+                    }
                     _ => false,
                 })
                 .count();
@@ -236,28 +263,38 @@ pub fn pass_keep_alt_cluster(node: &mut DomNode) {
         if is_alt_cluster {
             // Use retain for O(n) removal instead of O(n²) remove(i)
             my_children.retain(|c| match c {
-                DomNode::Element { tag, metadata, attrs, .. } if !is_body_or_html(tag) => {
+                DomNode::Element {
+                    tag,
+                    metadata,
+                    attrs,
+                    ..
+                } if !is_body_or_html(tag) => {
                     // Data tables: always preserve — their structure is meaningful.
                     if metadata.get("is_data_table").is_some_and(|v| v == "true") {
                         return true;
                     }
                     // Content-candidate check: preserve elements with content-indicating class/id
                     // (e.g., "MathJax", "content", "article"). Mirrors should_keep_sibling.
-                    let class_val = attrs.iter()
+                    let class_val = attrs
+                        .iter()
                         .find(|(k, _)| k == "class")
                         .map(|(_, v)| v.as_str())
                         .unwrap_or("");
-                    let id_val = attrs.iter()
+                    let id_val = attrs
+                        .iter()
                         .find(|(k, _)| k == "id")
                         .map(|(_, v)| v.as_str())
                         .unwrap_or("");
-                    if CONTENT_CANDIDATE_RE.is_match(class_val) || CONTENT_CANDIDATE_RE.is_match(id_val) {
+                    if CONTENT_CANDIDATE_RE.is_match(class_val)
+                        || CONTENT_CANDIDATE_RE.is_match(id_val)
+                    {
                         return true;
                     }
-                    alt_threshold.is_some_and(|threshold|
+                    alt_threshold.is_some_and(|threshold| {
                         meta_get_f64(metadata, "md_rd_subtree_acc_score")
-                            .is_some_and(|s| s >= threshold))
-                },
+                            .is_some_and(|s| s >= threshold)
+                    })
+                }
                 _ => true, // keep non-Element children and body/html
             });
         }
@@ -286,7 +323,12 @@ pub fn pass_keep_alt_cluster(node: &mut DomNode) {
 ///
 /// NOTE: Do NOT cache global_max in a static variable — each pass must be stateless.
 pub fn pass_keep_qualifying_siblings(node: &mut DomNode) {
-    let DomNode::Element { children, metadata, .. } = node else { return };
+    let DomNode::Element {
+        children, metadata, ..
+    } = node
+    else {
+        return;
+    };
     // Read global_max from root metadata (set by scoring pass).
     // This is O(1) — the scoring pass already computed md_rd_subtree_max_score.
     // Do NOT walk the tree to find max (see INV-019).
@@ -298,8 +340,16 @@ pub fn pass_keep_qualifying_siblings(node: &mut DomNode) {
             );
         });
 
-    walk_post_acc_mut::<()>(children, Some(is_data_table), &mut |n: &mut DomNode, _child_accs: &[()]| {
-        let DomNode::Element { children: my_children, metadata, tag: _, .. } = n else {
+    walk_post_acc_mut::<()>(children, Some(is_data_table), &mut |n: &mut DomNode,
+                                                                 _child_accs: &[(
+    )]| {
+        let DomNode::Element {
+            children: my_children,
+            metadata,
+            tag: _,
+            ..
+        } = n
+        else {
             return (WalkerAction::Continue, ());
         };
         let my_score = meta_get_f64(metadata, "md_rd_subtree_acc_score")
@@ -307,21 +357,26 @@ pub fn pass_keep_qualifying_siblings(node: &mut DomNode) {
                 panic!("pass_keep_qualifying_siblings: missing md_rd_subtree_acc_score — pipeline ordering bug");
             });
         // meta_get_f64 already filters NaN/Inf, but guard defensively
-        assert!(!my_score.is_nan() && !my_score.is_infinite(),
-            "pass_keep_qualifying_siblings: invalid score {} — scoring bug", my_score);
+        assert!(
+            !my_score.is_nan() && !my_score.is_infinite(),
+            "pass_keep_qualifying_siblings: invalid score {} — scoring bug",
+            my_score
+        );
         if my_score == 0.0 || my_children.is_empty() {
             return (WalkerAction::Continue, ());
         }
         // Find best child (highest score, exclude body/html)
-        let best_idx = my_children.iter().enumerate()
+        let best_idx = my_children
+            .iter()
+            .enumerate()
             .filter(|(_, c)| match c {
                 DomNode::Element { tag, .. } => !is_body_or_html(tag),
                 _ => false,
             })
             .filter_map(|(i, c)| match c {
-                DomNode::Element { metadata, .. } =>
-                    meta_get_f64(metadata, "md_rd_subtree_acc_score")
-                        .map(|s| (i, s)),
+                DomNode::Element { metadata, .. } => {
+                    meta_get_f64(metadata, "md_rd_subtree_acc_score").map(|s| (i, s))
+                }
                 _ => None,
             })
             .max_by(|(_, a), (_, b)| a.total_cmp(b))
@@ -332,7 +387,8 @@ pub fn pass_keep_qualifying_siblings(node: &mut DomNode) {
         // Get candidate's class for same-class bonus
         // class attribute is genuinely optional — empty string is the correct fallback
         let candidate_class = match &my_children[best_idx] {
-            DomNode::Element { attrs, .. } => attrs.iter()
+            DomNode::Element { attrs, .. } => attrs
+                .iter()
                 .find(|(k, _)| k == "class")
                 .map(|(_, v)| v.clone())
                 .unwrap_or_default(),
@@ -344,10 +400,13 @@ pub fn pass_keep_qualifying_siblings(node: &mut DomNode) {
             meta_get_f64(
                 match &my_children[best_idx] {
                     DomNode::Element { metadata, .. } => metadata,
-                    _ => { return (WalkerAction::Continue, ()); }
+                    _ => {
+                        return (WalkerAction::Continue, ());
+                    }
                 },
                 "md_rd_subtree_acc_score"
-            ).is_some(),
+            )
+            .is_some(),
             "pass_keep_qualifying_siblings: best child has no score — pipeline ordering bug"
         );
         let candidate_score = match &my_children[best_idx] {
@@ -360,7 +419,8 @@ pub fn pass_keep_qualifying_siblings(node: &mut DomNode) {
         debug_assert!(
             !candidate_score.is_nan() && candidate_score <= global_max,
             "pass_keep_qualifying_siblings: candidate_score ({}) > global_max ({}) or NaN — inconsistent scoring",
-            candidate_score, global_max
+            candidate_score,
+            global_max
         );
         // Compute sibling floor relative to candidate_score, not global_max.
         // This ensures siblings in different branches all get a fair threshold.
@@ -382,7 +442,12 @@ pub fn pass_keep_qualifying_siblings(node: &mut DomNode) {
             {
                 continue;
             }
-            let keep = should_keep_sibling(&my_children[i], candidate_score, &candidate_class, sibling_floor);
+            let keep = should_keep_sibling(
+                &my_children[i],
+                candidate_score,
+                &candidate_class,
+                sibling_floor,
+            );
             if !keep {
                 my_children.remove(i);
             }
@@ -401,7 +466,13 @@ fn should_keep_sibling(
     candidate_class: &str,
     sibling_floor: f64,
 ) -> bool {
-    let DomNode::Element { tag, metadata, attrs, .. } = sibling else {
+    let DomNode::Element {
+        tag,
+        metadata,
+        attrs,
+        ..
+    } = sibling
+    else {
         return false;
     };
     // Use f64::MAX as fallback to preserve sibling on missing score in release mode.
@@ -416,7 +487,8 @@ fn should_keep_sibling(
         });
     // Same-class bonus: +20% if same class as candidate
     // class attribute is genuinely optional — empty string means no bonus
-    let sibling_class = attrs.iter()
+    let sibling_class = attrs
+        .iter()
         .find(|(k, _)| k == "class")
         .map(|(_, v)| v.as_str())
         .unwrap_or("");
@@ -443,7 +515,9 @@ fn should_keep_sibling(
         }
         // Short sentence heuristic: length > 0 AND length ≤ 80 AND link_density == 0.0
         // AND (text contains ". " or ends with '.')
-        if node_length > 0 && node_length <= 80 && link_density == 0.0
+        if node_length > 0
+            && node_length <= 80
+            && link_density == 0.0
             && (text.contains(". ") || text.ends_with('.'))
         {
             return true;
@@ -454,8 +528,10 @@ fn should_keep_sibling(
     // Also check data-src/data-original for lazy-loaded images that may not have src set.
     if tag == "img" {
         let has_src = attrs.iter().any(|(k, v)| {
-            matches!(k.as_str(), "src" | "data-src" | "data-original" | "data-lazy-src")
-                && !v.is_empty()
+            matches!(
+                k.as_str(),
+                "src" | "data-src" | "data-original" | "data-lazy-src"
+            ) && !v.is_empty()
         });
         if has_src {
             return true;
@@ -467,11 +543,13 @@ fn should_keep_sibling(
     // Without this, elements like <mjx-container class="MathJax ..."> survive
     // strip_unlikely_candidates but get removed here because they have score 0.0
     // (not a scored tag like p/td/pre/blockquote).
-    let class_val = attrs.iter()
+    let class_val = attrs
+        .iter()
         .find(|(k, _)| k == "class")
         .map(|(_, v)| v.as_str())
         .unwrap_or("");
-    let id_val = attrs.iter()
+    let id_val = attrs
+        .iter()
         .find(|(k, _)| k == "id")
         .map(|(_, v)| v.as_str())
         .unwrap_or("");
@@ -510,18 +588,20 @@ pub fn pass_promote_content_child(node: &mut DomNode) {
         }
         // Find best non-body/html Element child
         // Non-Element children (Text, Comment, Doctype) are excluded — they cannot be promoted
-        let best_idx = children.iter().enumerate()
+        let best_idx = children
+            .iter()
+            .enumerate()
             .filter(|(_, c)| match c {
                 DomNode::Element { tag, .. } => !is_body_or_html(tag),
-                _ => false,  // Non-Element children excluded (FC-CRIT-004)
+                _ => false, // Non-Element children excluded (FC-CRIT-004)
             })
             .filter_map(|(i, c)| match c {
-                DomNode::Element { metadata, .. } =>
-                    meta_get_f64(metadata, "md_rd_subtree_acc_score")
-                        .map(|s| (i, s)),
+                DomNode::Element { metadata, .. } => {
+                    meta_get_f64(metadata, "md_rd_subtree_acc_score").map(|s| (i, s))
+                }
                 _ => None,
             })
-            .filter(|(_, s)| *s > 0.0)  // Only positive scores qualify (zero-score → cleared)
+            .filter(|(_, s)| *s > 0.0) // Only positive scores qualify (zero-score → cleared)
             .max_by(|(_, a), (_, b)| a.total_cmp(b))
             .map(|(i, _)| i);
         match best_idx {
@@ -540,7 +620,7 @@ pub fn pass_promote_content_child(node: &mut DomNode) {
                 children.clear();
             }
         }
-        WalkerAction::Continue  // Returns Continue, not Remove (FC-HIGH-008)
+        WalkerAction::Continue // Returns Continue, not Remove (FC-HIGH-008)
     });
 }
 // ---------------------------------------------------------------------------
@@ -580,7 +660,6 @@ mod tests {
     // ── pass_keep_qualifying_siblings ─────────────────────────────────────
 
     #[test]
-
     #[test]
     fn test_qualifying_sibling_candidate_relative_floor() {
         // Best child score = 50, sibling score = 12.
@@ -589,30 +668,30 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "parent".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("best child with some text for scoring".into())],
-                            scores: [("mozilla_readability".into(), 50.0)].into(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "50".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("sibling with some text for scoring".into())],
-                            scores: [("mozilla_readability".into(), 12.0)].into(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "12".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "60".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "parent".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text(
+                            "best child with some text for scoring".into(),
+                        )],
+                        scores: [("mozilla_readability".into(), 50.0)].into(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "50".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("sibling with some text for scoring".into())],
+                        scores: [("mozilla_readability".into(), 12.0)].into(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "12".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "60".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_max_score".into(), "100".into())].into(),
         };
@@ -623,7 +702,11 @@ mod tests {
             _ => panic!("root should be Element"),
         };
         if let DomNode::Element { children, .. } = &root_children[0] {
-            assert_eq!(children.len(), 2, "both children should survive with candidate-relative floor");
+            assert_eq!(
+                children.len(),
+                2,
+                "both children should survive with candidate-relative floor"
+            );
         } else {
             panic!("parent should be Element");
         }
@@ -645,7 +728,9 @@ mod tests {
                         DomNode::Element {
                             tag: "p".into(),
                             attrs: vec![],
-                            children: vec![DomNode::Text("best child with enough text for scoring".into())],
+                            children: vec![DomNode::Text(
+                                "best child with enough text for scoring".into(),
+                            )],
                             scores: [("mozilla_readability".into(), 50.0)].into(),
                             metadata: [("md_rd_subtree_acc_score".into(), "50".into())].into(),
                         },
@@ -663,15 +748,15 @@ mod tests {
                 DomNode::Element {
                     tag: "parent2".into(),
                     attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("other branch with lots of content for scoring here".into())],
-                            scores: [("mozilla_readability".into(), 100.0)].into(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100".into())].into(),
-                        },
-                    ],
+                    children: vec![DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text(
+                            "other branch with lots of content for scoring here".into(),
+                        )],
+                        scores: [("mozilla_readability".into(), 100.0)].into(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100".into())].into(),
+                    }],
                     scores: Default::default(),
                     metadata: [("md_rd_subtree_acc_score".into(), "100".into())].into(),
                 },
@@ -686,7 +771,11 @@ mod tests {
             _ => panic!("root should be Element"),
         };
         if let DomNode::Element { children, .. } = &root_children[0] {
-            assert_eq!(children.len(), 2, "parent1 should keep both children with candidate-relative floor");
+            assert_eq!(
+                children.len(),
+                2,
+                "parent1 should keep both children with candidate-relative floor"
+            );
         } else {
             panic!("parent1 should be Element");
         }
@@ -704,30 +793,28 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "parent".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("best child text for scoring".into())],
-                            scores: [("mozilla_readability".into(), 50.0)].into(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "50".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "span".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("sibling content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "15".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "60".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "parent".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("best child text for scoring".into())],
+                        scores: [("mozilla_readability".into(), 50.0)].into(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "50".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "span".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("sibling content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "15".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "60".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_max_score".into(), "100".into())].into(),
         };
@@ -738,7 +825,11 @@ mod tests {
             _ => panic!("root should be Element"),
         };
         if let DomNode::Element { children, .. } = &root_children[0] {
-            assert_eq!(children.len(), 2, "sibling with score 15 should survive (floor 50*0.2=10)");
+            assert_eq!(
+                children.len(),
+                2,
+                "sibling with score 15 should survive (floor 50*0.2=10)"
+            );
         } else {
             panic!("parent should be Element");
         }
@@ -750,30 +841,28 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "parent".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("best child text for scoring".into())],
-                            scores: [("mozilla_readability".into(), 100.0)].into(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("low sibling".into())],
-                            scores: [("mozilla_readability".into(), 5.0)].into(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "5".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "100".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "parent".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("best child text for scoring".into())],
+                        scores: [("mozilla_readability".into(), 100.0)].into(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("low sibling".into())],
+                        scores: [("mozilla_readability".into(), 5.0)].into(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "5".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "100".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_max_score".into(), "100".into())].into(),
         };
@@ -797,47 +886,61 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "section".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "25.0".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "section".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "25.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
-            metadata: [
-                ("md_rd_subtree_max_score".into(), "100.0".into()),
-            ].into(),
+            metadata: [("md_rd_subtree_max_score".into(), "100.0".into())].into(),
         };
         pass_keep_qualifying_siblings(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "parent should remain");
-                assert_eq!(inner.len(), 2, "both best child and floor-qualified sibling should be kept");
-                let tags: Vec<&str> = inner.iter().filter_map(|c| match c {
-                    DomNode::Element { tag, .. } => Some(tag.as_str()),
-                    _ => None,
-                }).collect();
-                assert!(tags.contains(&"article"), "article (best child) should be kept");
-                assert!(tags.contains(&"section"), "section (floor-qualified) should be kept");
+                assert_eq!(
+                    inner.len(),
+                    2,
+                    "both best child and floor-qualified sibling should be kept"
+                );
+                let tags: Vec<&str> = inner
+                    .iter()
+                    .filter_map(|c| match c {
+                        DomNode::Element { tag, .. } => Some(tag.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    tags.contains(&"article"),
+                    "article (best child) should be kept"
+                );
+                assert!(
+                    tags.contains(&"section"),
+                    "section (floor-qualified) should be kept"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -855,39 +958,40 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "span".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "5.0".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "span".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "5.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
-            metadata: [
-                ("md_rd_subtree_max_score".into(), "100.0".into()),
-            ].into(),
+            metadata: [("md_rd_subtree_max_score".into(), "100.0".into())].into(),
         };
         pass_keep_qualifying_siblings(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "parent should remain");
                 assert_eq!(inner.len(), 1, "only best child should remain");
                 if let DomNode::Element { tag: ct, .. } = &inner[0] {
@@ -912,47 +1016,61 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![("class".into(), "content".into())],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "div".into(),
-                            attrs: vec![("class".into(), "content".into())],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "5.0".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![("class".into(), "content".into())],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "div".into(),
+                        attrs: vec![("class".into(), "content".into())],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "5.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
-            metadata: [
-                ("md_rd_subtree_max_score".into(), "100.0".into()),
-            ].into(),
+            metadata: [("md_rd_subtree_max_score".into(), "100.0".into())].into(),
         };
         pass_keep_qualifying_siblings(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "parent should remain");
-                assert_eq!(inner.len(), 2, "both best child and same-class sibling should be kept");
-                let tags: Vec<&str> = inner.iter().filter_map(|c| match c {
-                    DomNode::Element { tag, .. } => Some(tag.as_str()),
-                    _ => None,
-                }).collect();
-                assert!(tags.contains(&"article"), "article (best child) should be kept");
-                assert!(tags.contains(&"div"), "div (same-class sibling) should be kept via bonus");
+                assert_eq!(
+                    inner.len(),
+                    2,
+                    "both best child and same-class sibling should be kept"
+                );
+                let tags: Vec<&str> = inner
+                    .iter()
+                    .filter_map(|c| match c {
+                        DomNode::Element { tag, .. } => Some(tag.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    tags.contains(&"article"),
+                    "article (best child) should be kept"
+                );
+                assert!(
+                    tags.contains(&"div"),
+                    "div (same-class sibling) should be kept via bonus"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -968,50 +1086,65 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text(long_text.into())],
-                            scores: Default::default(),
-                            metadata: [
-                                ("md_rd_subtree_acc_score".into(), "5.0".into()),
-                                ("link_density".into(), "0.1".into()),
-                            ].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text(long_text.into())],
+                        scores: Default::default(),
+                        metadata: [
+                            ("md_rd_subtree_acc_score".into(), "5.0".into()),
+                            ("link_density".into(), "0.1".into()),
+                        ]
+                        .into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
-            metadata: [
-                ("md_rd_subtree_max_score".into(), "100.0".into()),
-            ].into(),
+            metadata: [("md_rd_subtree_max_score".into(), "100.0".into())].into(),
         };
         pass_keep_qualifying_siblings(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "parent should remain");
-                assert_eq!(inner.len(), 2, "both best child and long-text p-sibling should be kept");
-                let tags: Vec<&str> = inner.iter().filter_map(|c| match c {
-                    DomNode::Element { tag, .. } => Some(tag.as_str()),
-                    _ => None,
-                }).collect();
-                assert!(tags.contains(&"article"), "article (best child) should be kept");
-                assert!(tags.contains(&"p"), "p (long-text sibling) should be kept via heuristic");
+                assert_eq!(
+                    inner.len(),
+                    2,
+                    "both best child and long-text p-sibling should be kept"
+                );
+                let tags: Vec<&str> = inner
+                    .iter()
+                    .filter_map(|c| match c {
+                        DomNode::Element { tag, .. } => Some(tag.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    tags.contains(&"article"),
+                    "article (best child) should be kept"
+                );
+                assert!(
+                    tags.contains(&"p"),
+                    "p (long-text sibling) should be kept via heuristic"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -1026,50 +1159,65 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("Short sentence.".into())],
-                            scores: Default::default(),
-                            metadata: [
-                                ("md_rd_subtree_acc_score".into(), "5.0".into()),
-                                ("link_density".into(), "0.0".into()),
-                            ].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("Short sentence.".into())],
+                        scores: Default::default(),
+                        metadata: [
+                            ("md_rd_subtree_acc_score".into(), "5.0".into()),
+                            ("link_density".into(), "0.0".into()),
+                        ]
+                        .into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
-            metadata: [
-                ("md_rd_subtree_max_score".into(), "100.0".into()),
-            ].into(),
+            metadata: [("md_rd_subtree_max_score".into(), "100.0".into())].into(),
         };
         pass_keep_qualifying_siblings(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "parent should remain");
-                assert_eq!(inner.len(), 2, "both best child and short-sentence p-sibling should be kept");
-                let tags: Vec<&str> = inner.iter().filter_map(|c| match c {
-                    DomNode::Element { tag, .. } => Some(tag.as_str()),
-                    _ => None,
-                }).collect();
-                assert!(tags.contains(&"article"), "article (best child) should be kept");
-                assert!(tags.contains(&"p"), "p (short-sentence sibling) should be kept via heuristic");
+                assert_eq!(
+                    inner.len(),
+                    2,
+                    "both best child and short-sentence p-sibling should be kept"
+                );
+                let tags: Vec<&str> = inner
+                    .iter()
+                    .filter_map(|c| match c {
+                        DomNode::Element { tag, .. } => Some(tag.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    tags.contains(&"article"),
+                    "article (best child) should be kept"
+                );
+                assert!(
+                    tags.contains(&"p"),
+                    "p (short-sentence sibling) should be kept via heuristic"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -1085,44 +1233,50 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text(long_text.into())],
-                            scores: Default::default(),
-                            metadata: [
-                                ("md_rd_subtree_acc_score".into(), "5.0".into()),
-                                ("link_density".into(), "0.5".into()),
-                            ].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text(long_text.into())],
+                        scores: Default::default(),
+                        metadata: [
+                            ("md_rd_subtree_acc_score".into(), "5.0".into()),
+                            ("link_density".into(), "0.5".into()),
+                        ]
+                        .into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
-            metadata: [
-                ("md_rd_subtree_max_score".into(), "100.0".into()),
-            ].into(),
+            metadata: [("md_rd_subtree_max_score".into(), "100.0".into())].into(),
         };
         pass_keep_qualifying_siblings(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "parent should remain");
-                assert_eq!(inner.len(), 1, "only best child should remain, high-LD p removed");
+                assert_eq!(
+                    inner.len(),
+                    1,
+                    "only best child should remain, high-LD p removed"
+                );
                 if let DomNode::Element { tag: ct, .. } = &inner[0] {
                     assert_eq!(ct, "article", "article (best child) should be kept");
                 } else {
@@ -1144,49 +1298,63 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "body".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "200.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "body".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "200.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
-            metadata: [
-                ("md_rd_subtree_max_score".into(), "200.0".into()),
-            ].into(),
+            metadata: [("md_rd_subtree_max_score".into(), "200.0".into())].into(),
         };
         pass_keep_qualifying_siblings(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "parent should remain");
                 // body is excluded from best child selection, so article is selected.
                 // body has score 200.0 which is >= sibling_floor (200.0*0.2=40.0), so body is kept as sibling.
-                assert_eq!(inner.len(), 2, "both article (best) and body (qualifying sibling) should be kept");
-                let tags: Vec<&str> = inner.iter().filter_map(|c| match c {
-                    DomNode::Element { tag, .. } => Some(tag.as_str()),
-                    _ => None,
-                }).collect();
-                assert!(tags.contains(&"article"), "article should be selected as best child");
-                assert!(tags.contains(&"body"), "body should be kept as qualifying sibling");
+                assert_eq!(
+                    inner.len(),
+                    2,
+                    "both article (best) and body (qualifying sibling) should be kept"
+                );
+                let tags: Vec<&str> = inner
+                    .iter()
+                    .filter_map(|c| match c {
+                        DomNode::Element { tag, .. } => Some(tag.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    tags.contains(&"article"),
+                    "article should be selected as best child"
+                );
+                assert!(
+                    tags.contains(&"body"),
+                    "body should be kept as qualifying sibling"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -1203,39 +1371,40 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "span".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "3.0".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "span".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "3.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
-            metadata: [
-                ("md_rd_subtree_max_score".into(), "100.0".into()),
-            ].into(),
+            metadata: [("md_rd_subtree_max_score".into(), "100.0".into())].into(),
         };
         pass_keep_qualifying_siblings(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "parent should remain");
                 assert_eq!(inner.len(), 1, "only best child should remain");
                 if let DomNode::Element { tag: ct, .. } = &inner[0] {
@@ -1258,38 +1427,47 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                        DomNode::Text("some text".into()),
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Text("some text".into()),
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
-            metadata: [
-                ("md_rd_subtree_max_score".into(), "100.0".into()),
-            ].into(),
+            metadata: [("md_rd_subtree_max_score".into(), "100.0".into())].into(),
         };
         pass_keep_qualifying_siblings(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "parent should remain");
-                assert_eq!(inner.len(), 2, "best child and text node should be preserved");
-                let has_text = inner.iter().any(|c| matches!(c, DomNode::Text(t) if t == "some text"));
+                assert_eq!(
+                    inner.len(),
+                    2,
+                    "best child and text node should be preserved"
+                );
+                let has_text = inner
+                    .iter()
+                    .any(|c| matches!(c, DomNode::Text(t) if t == "some text"));
                 assert!(has_text, "text node should be preserved");
-                let has_article = inner.iter().any(|c| matches!(c, DomNode::Element { tag, .. } if tag == "article"));
+                let has_article = inner
+                    .iter()
+                    .any(|c| matches!(c, DomNode::Element { tag, .. } if tag == "article"));
                 assert!(has_article, "article should be kept");
             } else {
                 panic!("root child should be Element");
@@ -1365,7 +1543,8 @@ mod tests {
             metadata: [
                 ("md_rd_subtree_acc_score".into(), "5.0".into()),
                 ("link_density".into(), "0.1".into()),
-            ].into(),
+            ]
+            .into(),
         };
         assert!(should_keep_sibling(&sibling, 100.0, "", 20.0));
     }
@@ -1381,7 +1560,8 @@ mod tests {
             metadata: [
                 ("md_rd_subtree_acc_score".into(), "5.0".into()),
                 ("link_density".into(), "0.0".into()),
-            ].into(),
+            ]
+            .into(),
         };
         assert!(should_keep_sibling(&sibling, 100.0, "", 20.0));
     }
@@ -1397,7 +1577,8 @@ mod tests {
             metadata: [
                 ("md_rd_subtree_acc_score".into(), "5.0".into()),
                 ("link_density".into(), "0.0".into()),
-            ].into(),
+            ]
+            .into(),
         };
         assert!(should_keep_sibling(&sibling, 100.0, "", 20.0));
     }
@@ -1405,7 +1586,8 @@ mod tests {
     #[test]
     fn test_should_keep_sibling_p_high_link_density() {
         // <p> with long text but high link_density (>= 0.25) → false.
-        let long_text = "This is a long paragraph that exceeds eighty characters but has high link density.";
+        let long_text =
+            "This is a long paragraph that exceeds eighty characters but has high link density.";
         let sibling = DomNode::Element {
             tag: "p".into(),
             attrs: vec![],
@@ -1414,7 +1596,8 @@ mod tests {
             metadata: [
                 ("md_rd_subtree_acc_score".into(), "5.0".into()),
                 ("link_density".into(), "0.5".into()),
-            ].into(),
+            ]
+            .into(),
         };
         assert!(!should_keep_sibling(&sibling, 100.0, "", 20.0));
     }
@@ -1461,21 +1644,22 @@ mod tests {
         let mut parent = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "p".into(),
-                    attrs: vec![],
-                    children: vec![],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "p".into(),
+                attrs: vec![],
+                children: vec![],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
         pass_prune_no_candidate(&mut parent);
         if let DomNode::Element { children, .. } = &parent {
-            assert!(children.is_empty(), "zero-score scored tag should be removed");
+            assert!(
+                children.is_empty(),
+                "zero-score scored tag should be removed"
+            );
         } else {
             panic!("parent should remain Element");
         }
@@ -1489,15 +1673,13 @@ mod tests {
         let mut parent = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "article".into(),
-                    attrs: vec![],
-                    children: vec![],
-                    scores: Default::default(),
-                    metadata: Default::default(), // no md_rd_subtree_acc_score
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "article".into(),
+                attrs: vec![],
+                children: vec![],
+                scores: Default::default(),
+                metadata: Default::default(), // no md_rd_subtree_acc_score
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
@@ -1505,22 +1687,20 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "pass_prune_no_candidate: unparseable md_rd_subtree_acc_score")]
+    #[should_panic(expected = "pass_prune_no_candidate: unparsable md_rd_subtree_acc_score")]
     fn test_prune_nan_score() {
         // Element with NaN md_rd_subtree_acc_score should panic
         // (scoring bug: meta_parse_f64 should have rejected this).
         let mut parent = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "article".into(),
-                    attrs: vec![],
-                    children: vec![],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "NaN".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "article".into(),
+                attrs: vec![],
+                children: vec![],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "NaN".into())].into(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
@@ -1533,15 +1713,13 @@ mod tests {
         let mut parent = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "article".into(),
-                    attrs: vec![],
-                    children: vec![],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "42.5".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "article".into(),
+                attrs: vec![],
+                children: vec![],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "42.5".into())].into(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
@@ -1587,7 +1765,7 @@ mod tests {
             attrs: vec![],
             children: vec![
                 DomNode::Element {
-                    tag: "p".into(),  // scored tag — removed on zero score
+                    tag: "p".into(), // scored tag — removed on zero score
                     attrs: vec![],
                     children: vec![],
                     scores: Default::default(),
@@ -1601,7 +1779,7 @@ mod tests {
                     metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
                 },
                 DomNode::Element {
-                    tag: "p".into(),  // scored tag — removed on zero score
+                    tag: "p".into(), // scored tag — removed on zero score
                     attrs: vec![],
                     children: vec![],
                     scores: Default::default(),
@@ -1614,18 +1792,25 @@ mod tests {
         };
         pass_prune_no_candidate(&mut parent);
         if let DomNode::Element { children, .. } = &parent {
-            assert_eq!(children.len(), 2, "should keep positive-score element + text node");
+            assert_eq!(
+                children.len(),
+                2,
+                "should keep positive-score element + text node"
+            );
             // Verify the positive-score element survived
-            let has_positive = children.iter().any(|c| matches!(c, DomNode::Element { tag, .. } if tag == "positive"));
+            let has_positive = children
+                .iter()
+                .any(|c| matches!(c, DomNode::Element { tag, .. } if tag == "positive"));
             assert!(has_positive, "positive-score element should be kept");
             // Verify text node survived
-            let has_text = children.iter().any(|c| matches!(c, DomNode::Text(t) if t == "text node"));
+            let has_text = children
+                .iter()
+                .any(|c| matches!(c, DomNode::Text(t) if t == "text node"));
             assert!(has_text, "text node should be preserved");
         } else {
             panic!("parent should remain Element");
         }
     }
-
 
     #[test]
     fn test_prune_zero_score_non_scored_tag() {
@@ -1633,15 +1818,13 @@ mod tests {
         let mut parent = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "span".into(),
-                    attrs: vec![],
-                    children: vec![DomNode::Text("content".into())],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "span".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("content".into())],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
@@ -1664,15 +1847,13 @@ mod tests {
         let mut parent = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "a".into(),
-                    attrs: vec![],
-                    children: vec![DomNode::Text("link".into())],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "a".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("link".into())],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
@@ -1695,15 +1876,13 @@ mod tests {
         let mut parent = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "div".into(),
-                    attrs: [("class".into(), "content".into())].into(),
-                    children: vec![DomNode::Text("content".into())],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "div".into(),
+                attrs: [("class".into(), "content".into())].into(),
+                children: vec![DomNode::Text("content".into())],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
@@ -1720,8 +1899,6 @@ mod tests {
         }
     }
 
-
-
     #[test]
     fn test_prune_data_table_skip() {
         // Elements inside a data table should survive pass_prune_no_candidate.
@@ -1729,23 +1906,19 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "table".into(),
+            children: vec![DomNode::Element {
+                tag: "table".into(),
+                attrs: vec![],
+                children: vec![DomNode::Element {
+                    tag: "td".into(),
                     attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "td".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("data".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
-                        },
-                    ],
+                    children: vec![DomNode::Text("data".into())],
                     scores: Default::default(),
-                    metadata: [("is_data_table".into(), "true".into())].into(),
-                },
-            ],
+                    metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
+                }],
+                scores: Default::default(),
+                metadata: [("is_data_table".into(), "true".into())].into(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
@@ -1773,23 +1946,19 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "article".into(),
+            children: vec![DomNode::Element {
+                tag: "article".into(),
+                attrs: vec![],
+                children: vec![DomNode::Element {
+                    tag: "p".into(),
                     attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                    ],
+                    children: vec![DomNode::Text("content".into())],
                     scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
-                },
-            ],
+                    metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                }],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
         };
@@ -1797,7 +1966,12 @@ mod tests {
         if let DomNode::Element { children, .. } = &root {
             // article wrapper should be spliced away, leaving p
             assert_eq!(children.len(), 1, "article should be spliced, leaving p");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "p", "p should remain after article is spliced");
                 assert_eq!(inner.len(), 1, "p should keep its text child");
                 assert!(matches!(&inner[0], DomNode::Text(t) if t == "content"));
@@ -1816,23 +1990,19 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "article".into(),
+            children: vec![DomNode::Element {
+                tag: "article".into(),
+                attrs: vec![],
+                children: vec![DomNode::Element {
+                    tag: "p".into(),
                     attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                    ],
+                    children: vec![DomNode::Text("content".into())],
                     scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "40.0".into())].into(),
-                },
-            ],
+                    metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                }],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "40.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
         };
@@ -1840,7 +2010,12 @@ mod tests {
         if let DomNode::Element { children, .. } = &root {
             // article wrapper should remain (score 40 >= 100/3.0)
             assert_eq!(children.len(), 1, "article should NOT be spliced");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "article", "article should remain");
                 assert_eq!(inner.len(), 1, "article should keep its p child");
                 if let DomNode::Element { tag: pt, .. } = &inner[0] {
@@ -1862,23 +2037,19 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "body".into(),
+            children: vec![DomNode::Element {
+                tag: "body".into(),
+                attrs: vec![],
+                children: vec![DomNode::Element {
+                    tag: "p".into(),
                     attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                    ],
+                    children: vec![DomNode::Text("content".into())],
                     scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
-                },
-            ],
+                    metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                }],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
         };
@@ -1886,7 +2057,12 @@ mod tests {
         if let DomNode::Element { children, .. } = &root {
             // body should NOT be spliced despite low score
             assert_eq!(children.len(), 1, "body should NOT be spliced");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "body", "body should remain");
                 // p is still inside body
                 assert_eq!(inner.len(), 1, "body should keep its p child");
@@ -1904,23 +2080,19 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "html".into(),
+            children: vec![DomNode::Element {
+                tag: "html".into(),
+                attrs: vec![],
+                children: vec![DomNode::Element {
+                    tag: "p".into(),
                     attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                    ],
+                    children: vec![DomNode::Text("content".into())],
                     scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
-                },
-            ],
+                    metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                }],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
         };
@@ -1944,22 +2116,24 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "span".into(),
-                    attrs: vec![],
-                    children: vec![],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "span".into(),
+                attrs: vec![],
+                children: vec![],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
         };
         pass_splice_cutoff(&mut root);
         if let DomNode::Element { children, .. } = &root {
             // span has no children → best_child_score=0.0 → no cutoff
-            assert_eq!(children.len(), 1, "span with no children should NOT be spliced");
+            assert_eq!(
+                children.len(),
+                1,
+                "span with no children should NOT be spliced"
+            );
             if let DomNode::Element { tag, .. } = &children[0] {
                 assert_eq!(tag, "span", "span should remain");
             } else {
@@ -1976,15 +2150,13 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "span".into(),
-                    attrs: vec![],
-                    children: vec![DomNode::Text("content".into())],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "span".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("content".into())],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "5.0".into())].into(),
         };
@@ -2009,29 +2181,29 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "article".into(),
+            children: vec![DomNode::Element {
+                tag: "article".into(),
+                attrs: vec![],
+                children: vec![DomNode::Element {
+                    tag: "p".into(),
                     attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "p".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                    ],
+                    children: vec![],
                     scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+                    metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                }],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
         };
         pass_splice_cutoff(&mut root);
         if let DomNode::Element { children, .. } = &root {
-            assert_eq!(children.len(), 1, "article with 50 >= 100/3.0 should NOT be spliced");
+            assert_eq!(
+                children.len(),
+                1,
+                "article with 50 >= 100/3.0 should NOT be spliced"
+            );
             if let DomNode::Element { tag, .. } = &children[0] {
                 assert_eq!(tag, "article", "article should remain");
             } else {
@@ -2050,31 +2222,25 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "article".into(),
+            children: vec![DomNode::Element {
+                tag: "article".into(),
+                attrs: vec![],
+                children: vec![DomNode::Element {
+                    tag: "section".into(),
                     attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "section".into(),
-                            attrs: vec![],
-                            children: vec![
-                                DomNode::Element {
-                                    tag: "p".into(),
-                                    attrs: vec![],
-                                    children: vec![DomNode::Text("final content".into())],
-                                    scores: Default::default(),
-                                    metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                                },
-                            ],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
-                        },
-                    ],
+                    children: vec![DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("final content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    }],
                     scores: Default::default(),
                     metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
-                },
-            ],
+                }],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
         };
@@ -2085,8 +2251,17 @@ mod tests {
             // section (score=10, child p score=100) → 10 < 100/3.0 → ReplaceWithChildren
             // section replaced by p.
             // Result: root > p > text
-            assert_eq!(children.len(), 1, "both wrappers should be spliced, leaving p");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            assert_eq!(
+                children.len(),
+                1,
+                "both wrappers should be spliced, leaving p"
+            );
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "p", "p should remain after both wrappers are spliced");
                 assert_eq!(inner.len(), 1, "p should keep its text child");
                 assert!(matches!(&inner[0], DomNode::Text(t) if t == "final content"));
@@ -2100,11 +2275,6 @@ mod tests {
 
     // ── pass_keep_alt_cluster ─────────────────────────────────────────
 
-
-
-
-
-
     // ── pass_keep_alt_cluster ─────────────────────────────────────────
 
     #[test]
@@ -2114,28 +2284,42 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element { tag: "article".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into() },
-                        DomNode::Element { tag: "div".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "90.0".into())].into() },
-                        DomNode::Element { tag: "p".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "85.0".into())].into() },
-                        DomNode::Element { tag: "span".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into() },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "div".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "90.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "85.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "span".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
         };
@@ -2143,14 +2327,30 @@ mod tests {
         // article(100), div(90), p(85) qualify; span(10) does not
         pass_keep_alt_cluster(&mut root);
         if let DomNode::Element { children, .. } = &root {
-            assert_eq!(children.len(), 1, "root should still have 1 child (section)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            assert_eq!(
+                children.len(),
+                1,
+                "root should still have 1 child (section)"
+            );
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "section should remain");
-                assert_eq!(inner.len(), 3, "non-qualifying span should be removed from section");
-                let tags: Vec<&str> = inner.iter().filter_map(|c| match c {
-                    DomNode::Element { tag, .. } => Some(tag.as_str()),
-                    _ => None,
-                }).collect();
+                assert_eq!(
+                    inner.len(),
+                    3,
+                    "non-qualifying span should be removed from section"
+                );
+                let tags: Vec<&str> = inner
+                    .iter()
+                    .filter_map(|c| match c {
+                        DomNode::Element { tag, .. } => Some(tag.as_str()),
+                        _ => None,
+                    })
+                    .collect();
                 assert!(tags.contains(&"article"), "article should be kept");
                 assert!(tags.contains(&"div"), "div should be kept");
                 assert!(tags.contains(&"p"), "p should be kept");
@@ -2169,25 +2369,35 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element { tag: "article".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into() },
-                        DomNode::Element { tag: "div".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "80.0".into())].into() },
-                        DomNode::Element { tag: "span".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into() },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "40.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "div".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "80.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "span".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "40.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
         };
@@ -2195,9 +2405,20 @@ mod tests {
         // Only article(100) and div(80) qualify → 2 < 3 → no alt cluster
         pass_keep_alt_cluster(&mut root);
         if let DomNode::Element { children, .. } = &root {
-            assert_eq!(children.len(), 1, "root should still have 1 child (section)");
-            if let DomNode::Element { children: inner, .. } = &children[0] {
-                assert_eq!(inner.len(), 3, "all children should remain (no alt cluster)");
+            assert_eq!(
+                children.len(),
+                1,
+                "root should still have 1 child (section)"
+            );
+            if let DomNode::Element {
+                children: inner, ..
+            } = &children[0]
+            {
+                assert_eq!(
+                    inner.len(),
+                    3,
+                    "all children should remain (no alt cluster)"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -2212,25 +2433,35 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element { tag: "body".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into() },
-                        DomNode::Element { tag: "html".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "95.0".into())].into() },
-                        DomNode::Element { tag: "div".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "90.0".into())].into() },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "40.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "body".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "html".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "95.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "div".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "90.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "40.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
         };
@@ -2238,9 +2469,20 @@ mod tests {
         // Only div qualifies (body/html excluded) → 1 < 3 → no alt cluster
         pass_keep_alt_cluster(&mut root);
         if let DomNode::Element { children, .. } = &root {
-            assert_eq!(children.len(), 1, "root should still have 1 child (section)");
-            if let DomNode::Element { children: inner, .. } = &children[0] {
-                assert_eq!(inner.len(), 3, "all children should remain (body/html excluded from count)");
+            assert_eq!(
+                children.len(),
+                1,
+                "root should still have 1 child (section)"
+            );
+            if let DomNode::Element {
+                children: inner, ..
+            } = &children[0]
+            {
+                assert_eq!(
+                    inner.len(),
+                    3,
+                    "all children should remain (body/html excluded from count)"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -2255,22 +2497,28 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element { tag: "article".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into() },
-                        DomNode::Element { tag: "span".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "5.0".into())].into() },
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "40.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "span".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "5.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "40.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
         };
@@ -2278,9 +2526,20 @@ mod tests {
         // Only article(10.0) qualifies → 1 < 3 → no alt cluster
         pass_keep_alt_cluster(&mut root);
         if let DomNode::Element { children, .. } = &root {
-            assert_eq!(children.len(), 1, "root should still have 1 child (section)");
-            if let DomNode::Element { children: inner, .. } = &children[0] {
-                assert_eq!(inner.len(), 2, "all children should remain (no alt cluster)");
+            assert_eq!(
+                children.len(),
+                1,
+                "root should still have 1 child (section)"
+            );
+            if let DomNode::Element {
+                children: inner, ..
+            } = &children[0]
+            {
+                assert_eq!(
+                    inner.len(),
+                    2,
+                    "all children should remain (no alt cluster)"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -2295,29 +2554,43 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "section".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element { tag: "article".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into() },
-                        DomNode::Element { tag: "div".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "90.0".into())].into() },
-                        DomNode::Element { tag: "p".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "85.0".into())].into() },
-                        DomNode::Element { tag: "span".into(), attrs: vec![], children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into() },
-                        DomNode::Text("some text".into()),
-                    ],
-                    scores: Default::default(),
-                    metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "section".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "div".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "90.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "p".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "85.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "span".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+                    },
+                    DomNode::Text("some text".into()),
+                ],
+                scores: Default::default(),
+                metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+            }],
             scores: Default::default(),
             metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
         };
@@ -2325,20 +2598,38 @@ mod tests {
         // article(100), div(90), p(85) qualify; span(10) does not; text node preserved
         pass_keep_alt_cluster(&mut root);
         if let DomNode::Element { children, .. } = &root {
-            assert_eq!(children.len(), 1, "root should still have 1 child (section)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            assert_eq!(
+                children.len(),
+                1,
+                "root should still have 1 child (section)"
+            );
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "section", "section should remain");
-                assert_eq!(inner.len(), 4, "3 qualifying elements + 1 text node should remain");
-                let tags: Vec<&str> = inner.iter().filter_map(|c| match c {
-                    DomNode::Element { tag, .. } => Some(tag.as_str()),
-                    _ => None,
-                }).collect();
+                assert_eq!(
+                    inner.len(),
+                    4,
+                    "3 qualifying elements + 1 text node should remain"
+                );
+                let tags: Vec<&str> = inner
+                    .iter()
+                    .filter_map(|c| match c {
+                        DomNode::Element { tag, .. } => Some(tag.as_str()),
+                        _ => None,
+                    })
+                    .collect();
                 assert!(tags.contains(&"article"), "article should be kept");
                 assert!(tags.contains(&"div"), "div should be kept");
                 assert!(tags.contains(&"p"), "p should be kept");
                 assert!(!tags.contains(&"span"), "span should be removed");
                 // Verify text node survived
-                let has_text = inner.iter().any(|c| matches!(c, DomNode::Text(t) if t == "some text"));
+                let has_text = inner
+                    .iter()
+                    .any(|c| matches!(c, DomNode::Text(t) if t == "some text"));
                 assert!(has_text, "text node should be preserved");
             } else {
                 panic!("root child should be Element");
@@ -2358,44 +2649,47 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "parent".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "div".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "span".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: Default::default(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "parent".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "div".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "span".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: Default::default(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
         pass_promote_content_child(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "parent", "parent should remain");
                 assert_eq!(inner.len(), 1, "only best child should remain in parent");
                 if let DomNode::Element { tag: ct, .. } = &inner[0] {
@@ -2418,32 +2712,37 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "parent".into(),
+            children: vec![DomNode::Element {
+                tag: "parent".into(),
+                attrs: vec![],
+                children: vec![DomNode::Element {
+                    tag: "article".into(),
                     attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                    ],
+                    children: vec![],
                     scores: Default::default(),
-                    metadata: Default::default(),
-                },
-            ],
+                    metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                }],
+                scores: Default::default(),
+                metadata: Default::default(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
         pass_promote_content_child(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "parent", "parent should remain");
-                assert_eq!(inner.len(), 1, "single child in parent should remain unchanged");
+                assert_eq!(
+                    inner.len(),
+                    1,
+                    "single child in parent should remain unchanged"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -2459,39 +2758,45 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "parent".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "body".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "200.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "html".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "300.0".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: Default::default(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "parent".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "body".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "200.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "html".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "300.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: Default::default(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
         pass_promote_content_child(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "parent", "parent should remain");
-                assert!(inner.is_empty(), "body/html-only children should be cleared from parent");
+                assert!(
+                    inner.is_empty(),
+                    "body/html-only children should be cleared from parent"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -2507,39 +2812,45 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "parent".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "div".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: Default::default(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "parent".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "div".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "0.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: Default::default(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
         pass_promote_content_child(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "parent", "parent should remain");
-                assert!(inner.is_empty(), "all-zero-score children should be cleared from parent");
+                assert!(
+                    inner.is_empty(),
+                    "all-zero-score children should be cleared from parent"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -2555,27 +2866,33 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "parent".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Text("some text".into()),
-                        DomNode::Comment("a comment".into()),
-                    ],
-                    scores: Default::default(),
-                    metadata: Default::default(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "parent".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Text("some text".into()),
+                    DomNode::Comment("a comment".into()),
+                ],
+                scores: Default::default(),
+                metadata: Default::default(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
         pass_promote_content_child(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "parent", "parent should remain");
-                assert!(inner.is_empty(), "only non-Element children should be cleared from parent");
+                assert!(
+                    inner.is_empty(),
+                    "only non-Element children should be cleared from parent"
+                );
             } else {
                 panic!("root child should be Element");
             }
@@ -2591,48 +2908,54 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "parent".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "span".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "div".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: Default::default(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "parent".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "span".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "10.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "div".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "50.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: Default::default(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
         pass_promote_content_child(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "parent", "parent should remain");
                 assert_eq!(inner.len(), 1, "only best child should remain in parent");
                 if let DomNode::Element { tag: ct, .. } = &inner[0] {
-                    assert_eq!(ct, "article", "article (last child) with highest score should be kept");
+                    assert_eq!(
+                        ct, "article",
+                        "article (last child) with highest score should be kept"
+                    );
                 } else {
                     panic!("child should be Element");
                 }
@@ -2652,46 +2975,53 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "parent".into(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "body".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "200.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "html".into(),
-                            attrs: vec![],
-                            children: vec![],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "300.0".into())].into(),
-                        },
-                        DomNode::Element {
-                            tag: "article".into(),
-                            attrs: vec![],
-                            children: vec![DomNode::Text("content".into())],
-                            scores: Default::default(),
-                            metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
-                        },
-                    ],
-                    scores: Default::default(),
-                    metadata: Default::default(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "parent".into(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "body".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "200.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "html".into(),
+                        attrs: vec![],
+                        children: vec![],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "300.0".into())].into(),
+                    },
+                    DomNode::Element {
+                        tag: "article".into(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: [("md_rd_subtree_acc_score".into(), "100.0".into())].into(),
+                    },
+                ],
+                scores: Default::default(),
+                metadata: Default::default(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
         pass_promote_content_child(&mut root);
         if let DomNode::Element { children, .. } = &root {
             assert_eq!(children.len(), 1, "root should have 1 child (parent)");
-            if let DomNode::Element { tag, children: inner, .. } = &children[0] {
+            if let DomNode::Element {
+                tag,
+                children: inner,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(tag, "parent", "parent should remain");
-                assert_eq!(inner.len(), 1, "only best content child should remain in parent");
+                assert_eq!(
+                    inner.len(),
+                    1,
+                    "only best content child should remain in parent"
+                );
                 if let DomNode::Element { tag: ct, .. } = &inner[0] {
                     assert_eq!(ct, "article", "article should be selected over body/html");
                 } else {
@@ -2710,8 +3040,10 @@ mod tests {
         // Non-Element root (Text node) should be silently skipped.
         let mut node = DomNode::Text("hello".into());
         pass_promote_content_child(&mut node);
-        assert!(matches!(&node, DomNode::Text(t) if t == "hello"),
-            "non-Element root should be unchanged");
+        assert!(
+            matches!(&node, DomNode::Text(t) if t == "hello"),
+            "non-Element root should be unchanged"
+        );
     }
 
     #[test]
@@ -2731,5 +3063,4 @@ mod tests {
             panic!("root should remain Element");
         }
     }
-
 }

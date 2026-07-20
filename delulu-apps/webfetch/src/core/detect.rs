@@ -63,7 +63,10 @@ pub fn discourse_url_to_api_url(url: &str) -> String {
         parsed.set_query(Some("raw_json=1&include_raw=1"));
         parsed.to_string()
     } else {
-        format!("{}.json?raw_json=1&include_raw=1", url.trim_end_matches('/'))
+        format!(
+            "{}.json?raw_json=1&include_raw=1",
+            url.trim_end_matches('/')
+        )
     }
 }
 
@@ -199,14 +202,20 @@ mod tests {
     fn discourse_api_url_no_trailing_slash() {
         let url = "https://forum.example.com/t/some-topic/12345";
         let api = discourse_url_to_api_url(url);
-        assert_eq!(api, "https://forum.example.com/t/some-topic/12345.json?raw_json=1&include_raw=1");
+        assert_eq!(
+            api,
+            "https://forum.example.com/t/some-topic/12345.json?raw_json=1&include_raw=1"
+        );
     }
 
     #[test]
     fn discourse_api_url_with_trailing_slash() {
         let url = "https://forum.example.com/t/some-topic/12345/";
         let api = discourse_url_to_api_url(url);
-        assert_eq!(api, "https://forum.example.com/t/some-topic/12345.json?raw_json=1&include_raw=1");
+        assert_eq!(
+            api,
+            "https://forum.example.com/t/some-topic/12345.json?raw_json=1&include_raw=1"
+        );
     }
 
     // -- detect_from_content ------------------------------------------------

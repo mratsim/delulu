@@ -84,18 +84,22 @@ fn load_test_case(
 
     let source_compressed = std::fs::read(&source_path)
         .unwrap_or_else(|e| panic!("Failed to read source.html.zst for '{name}': {e}"));
-    let mut decoder = zstd::Decoder::new(source_compressed.as_slice())
-        .unwrap_or_else(|e| panic!("Failed to create zstd decoder for source.html.zst '{name}': {e}"));
+    let mut decoder = zstd::Decoder::new(source_compressed.as_slice()).unwrap_or_else(|e| {
+        panic!("Failed to create zstd decoder for source.html.zst '{name}': {e}")
+    });
     let mut source_html = String::new();
-    decoder.read_to_string(&mut source_html)
+    decoder
+        .read_to_string(&mut source_html)
         .unwrap_or_else(|e| panic!("Failed to decompress source.html.zst for '{name}': {e}"));
 
     let expected_compressed = std::fs::read(&expected_path)
         .unwrap_or_else(|e| panic!("Failed to read expected.html.zst for '{name}': {e}"));
-    let mut decoder = zstd::Decoder::new(expected_compressed.as_slice())
-        .unwrap_or_else(|e| panic!("Failed to create zstd decoder for expected.html.zst '{name}': {e}"));
+    let mut decoder = zstd::Decoder::new(expected_compressed.as_slice()).unwrap_or_else(|e| {
+        panic!("Failed to create zstd decoder for expected.html.zst '{name}': {e}")
+    });
     let mut expected_html = String::new();
-    decoder.read_to_string(&mut expected_html)
+    decoder
+        .read_to_string(&mut expected_html)
         .unwrap_or_else(|e| panic!("Failed to decompress expected.html.zst for '{name}': {e}"));
 
     let root = parse_html(&source_html)
@@ -366,7 +370,9 @@ fn diag_main() {
     let args: Vec<String> = args_str.split_whitespace().map(String::from).collect();
     if args.is_empty() {
         eprintln!("Usage: DIAG_ARGS=\"batch [--fixtures-dir <path>]\" cargo test ...");
-        eprintln!("       DIAG_ARGS=\"deep-dive <case-name> [--fixtures-dir <path>]\" cargo test ...");
+        eprintln!(
+            "       DIAG_ARGS=\"deep-dive <case-name> [--fixtures-dir <path>]\" cargo test ..."
+        );
         eprintln!("See the top of this file for full instructions.");
         return;
     }
@@ -386,7 +392,9 @@ fn diag_main() {
 
     if mode_args.is_empty() {
         eprintln!("Error: missing mode. Use 'batch' or 'deep-dive'.");
-        eprintln!("Example: DIAG_ARGS=\"batch\" cargo test --test diag_rd_pipeline -- --nocapture --ignored");
+        eprintln!(
+            "Example: DIAG_ARGS=\"batch\" cargo test --test diag_rd_pipeline -- --nocapture --ignored"
+        );
         return;
     }
 
@@ -395,13 +403,18 @@ fn diag_main() {
         "deep-dive" => {
             if mode_args.len() < 2 {
                 eprintln!("Error: deep-dive requires a test case name.");
-                eprintln!("Example: DIAG_ARGS=\"deep-dive bbc-1\" cargo test --test diag_rd_pipeline -- --nocapture --ignored");
+                eprintln!(
+                    "Example: DIAG_ARGS=\"deep-dive bbc-1\" cargo test --test diag_rd_pipeline -- --nocapture --ignored"
+                );
                 return;
             }
             run_deep_dive(&mode_args[1], &fixtures_arg);
         }
         _ => {
-            eprintln!("Error: unknown mode '{}'. Use 'batch' or 'deep-dive'.", mode_args[0]);
+            eprintln!(
+                "Error: unknown mode '{}'. Use 'batch' or 'deep-dive'.",
+                mode_args[0]
+            );
             return;
         }
     }

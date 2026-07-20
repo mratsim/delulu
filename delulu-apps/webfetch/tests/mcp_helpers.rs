@@ -18,7 +18,7 @@
 //! along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -28,7 +28,6 @@ use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::task::JoinHandle;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
-
 
 /// Locate the `delulu-webfetch-mcp` binary using `CARGO_MANIFEST_DIR`.
 ///
@@ -90,7 +89,6 @@ pub async fn spawn_stdio_server(path: &Path) -> Result<(Child, ChildStdin, Child
     let _ = stream_stderr_to_console(stderr);
     Ok((child, stdin, stdout))
 }
-
 
 /// Spawn a tokio task that reads stderr line by line and forwards to `eprintln!`.
 ///
@@ -179,7 +177,11 @@ pub async fn send_tool_call(stdin: &mut ChildStdin, name: &str, args: Value) -> 
 /// Parses newline-delimited JSON. Ignores notifications (no `id` field).
 /// If `expected_id` is `Some(n)`, only returns a response whose `id` matches.
 /// Returns `Err(anyhow!("timeout reading response after {timeout}s"))` on timeout.
-pub async fn read_json_response(stdout: &mut ChildStdout, timeout: Duration, expected_id: Option<u64>) -> Result<Value> {
+pub async fn read_json_response(
+    stdout: &mut ChildStdout,
+    timeout: Duration,
+    expected_id: Option<u64>,
+) -> Result<Value> {
     let mut buf = [0u8; 4096];
     let mut line_buf = String::new();
 

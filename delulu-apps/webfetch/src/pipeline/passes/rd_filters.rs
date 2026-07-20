@@ -371,10 +371,9 @@ pub fn strip_unlikely_candidates(node: &mut DomNode) -> WalkerAction {
                 // Note: MathJax added as workaround — JS Readability relies on retry workflow
                 // to recover from over-stripping, but Rust's retry doesn't fire because
                 // residual markdown output exceeds the 500-char threshold.
-                if CONTENT_CANDIDATE_RE.is_match(class_val)
-                    || CONTENT_CANDIDATE_RE.is_match(id_val)
+                if CONTENT_CANDIDATE_RE.is_match(class_val) || CONTENT_CANDIDATE_RE.is_match(id_val)
                 {
-                    return WalkerAction::Continue;  // okMaybeItsACandidate — keep it
+                    return WalkerAction::Continue; // okMaybeItsACandidate — keep it
                 }
                 return WalkerAction::Remove;
             }
@@ -607,12 +606,10 @@ pub(crate) fn is_data_table(node: &DomNode) -> bool {
     if let DomNode::Element { metadata, .. } = node
         && metadata.get("is_data_table").map(|s| s.as_str()) == Some("true")
     {
-
         return false;
     }
     true
 }
-
 
 /// Bottom-up walk that counts commas in text content and stores `_comma_count` in metadata.
 /// Returns the total comma count for the subtree.
@@ -650,61 +647,68 @@ fn remove_high_link_density(node: &mut DomNode) {
     }
     if let DomNode::Element { children, .. } = node {
         use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
-        walk_post_acc_mut::<(bool,)>(
-            children,
-            Some(is_data_table),
-            &mut |n: &mut DomNode, child_counts: &[(bool,)]| {  // (has_data_table_descendant)
-                // Check if any child subtree contains a data table (post-order accumulator)
-                let child_has_dt = child_counts.iter().any(|c| c.0);
-                if child_has_dt {
+        walk_post_acc_mut::<(bool,)>(children, Some(is_data_table), &mut |n: &mut DomNode,
+                                                                          child_counts: &[(
+            bool,
+        )]| {
+            // (has_data_table_descendant)
+            // Check if any child subtree contains a data table (post-order accumulator)
+            let child_has_dt = child_counts.iter().any(|c| c.0);
+            if child_has_dt {
+                return (WalkerAction::Continue, (false,));
+            }
+            if let DomNode::Element {
+                tag,
+                metadata,
+                children: ch,
+                ..
+            } = n
+            {
+                // is_top_scored guard
+                if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
+                    && (score - global_max).abs() < 1e-4
+                {
                     return (WalkerAction::Continue, (false,));
                 }
-                if let DomNode::Element {
-                    tag,
-                    metadata,
-                    children: ch,
-                    ..
-                } = n
-                {
-                    // is_top_scored guard
-                    if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
-                        && (score - global_max).abs() < 1e-4
-                    {
-                        return (WalkerAction::Continue, (false,));
-                    }
-                    // Data table guard
-                    if metadata.get("is_data_table").is_some_and(|v| v == "true") {
-                        return (WalkerAction::Continue, (false,));
-                    }
-                    // Tag filter
-                    if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
-                        return (WalkerAction::Continue, (false,));
-                    }
-                    // Compute link_density using recursive get_inner_text on children
-                    let all_text: String = ch.iter().map(|c| get_inner_text(c)).collect();
-                    let child_text_len = all_text.len();
-                    // Count link text from <a> children using recursive get_inner_text
-                    let link_text_len: usize = ch.iter().filter_map(|c| {
+                // Data table guard
+                if metadata.get("is_data_table").is_some_and(|v| v == "true") {
+                    return (WalkerAction::Continue, (false,));
+                }
+                // Tag filter
+                if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
+                    return (WalkerAction::Continue, (false,));
+                }
+                // Compute link_density using recursive get_inner_text on children
+                let all_text: String = ch.iter().map(|c| get_inner_text(c)).collect();
+                let child_text_len = all_text.len();
+                // Count link text from <a> children using recursive get_inner_text
+                let link_text_len: usize = ch
+                    .iter()
+                    .filter_map(|c| {
                         if let DomNode::Element { tag: t, .. } = c {
                             if t == "a" {
                                 Some(get_inner_text(c).len())
-                            } else { None }
-                        } else { None }
-                    }).sum();
-                    let link_density = if child_text_len > 0 {
-                        link_text_len as f64 / child_text_len as f64
-                    } else {
-                        0.0
-                    };
-                    metadata.insert("link_density".into(), format!("{:.6}", link_density));
-                    // H1: high link density (no comma gate)
-                    if check_high_link_density(metadata) {
-                        return (WalkerAction::Remove, (false,));
-                    }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .sum();
+                let link_density = if child_text_len > 0 {
+                    link_text_len as f64 / child_text_len as f64
+                } else {
+                    0.0
+                };
+                metadata.insert("link_density".into(), format!("{:.6}", link_density));
+                // H1: high link density (no comma gate)
+                if check_high_link_density(metadata) {
+                    return (WalkerAction::Remove, (false,));
                 }
-                (WalkerAction::Continue, (false,))
-            },
-        );
+            }
+            (WalkerAction::Continue, (false,))
+        });
     }
 }
 
@@ -724,7 +728,8 @@ fn remove_heading_heavy(node: &mut DomNode) {
         walk_post_acc_mut::<(usize, usize, usize, bool)>(
             children,
             Some(is_data_table),
-            &mut |n: &mut DomNode, child_counts: &[(usize, usize, usize, bool)]| {  // (headings, embeds, total, has_data_table_descendant)
+            &mut |n: &mut DomNode, child_counts: &[(usize, usize, usize, bool)]| {
+                // (headings, embeds, total, has_data_table_descendant)
                 // Check if any child subtree contains a data table (post-order accumulator)
                 let child_has_dt = child_counts.iter().any(|c| c.3);
                 if child_has_dt {
@@ -790,8 +795,9 @@ fn remove_media_heavy(node: &mut DomNode) {
         walk_post_acc_mut::<(usize, usize, usize, bool)>(
             children,
             Some(is_data_table),
-            &mut |n: &mut DomNode, child_counts: &[(usize, usize, usize, bool)]| {  // (headings, embeds, total, has_data_table_descendant)
-                    // Check if any child subtree contains a data table (post-order accumulator)
+            &mut |n: &mut DomNode, child_counts: &[(usize, usize, usize, bool)]| {
+                // (headings, embeds, total, has_data_table_descendant)
+                // Check if any child subtree contains a data table (post-order accumulator)
                 let child_has_dt = child_counts.iter().any(|c| c.3);
                 if child_has_dt {
                     return (WalkerAction::Continue, (0, 0, 0, false));
@@ -866,48 +872,49 @@ fn remove_form_heavy(node: &mut DomNode) {
         walk_post_acc_mut::<(usize, usize, bool)>(
             children,
             Some(is_data_table),
-            &mut |n: &mut DomNode, child_counts: &[(usize, usize, bool)]| {  // (inputs, paras, has_data_table_descendant)
-                    // Check if any child subtree contains a data table (post-order accumulator)
+            &mut |n: &mut DomNode, child_counts: &[(usize, usize, bool)]| {
+                // (inputs, paras, has_data_table_descendant)
+                // Check if any child subtree contains a data table (post-order accumulator)
                 let child_has_dt = child_counts.iter().any(|c| c.2);
                 if child_has_dt {
                     return (WalkerAction::Continue, (0, 0, false));
                 }
                 match n {
-                DomNode::Element { tag, metadata, .. } => {
-                    let mut inputs = 0usize;
-                    let mut paras = 0usize;
-                    for &(i, p, _) in child_counts {
-                        inputs += i;
-                        paras += p;
-                    }
-                    match tag.as_str() {
-                        "input" | "textarea" | "select" => inputs += 1,
-                        "p" => paras += 1,
-                        _ => {}
-                    }
-                    if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
-                        && (score - global_max).abs() < 1e-4
-                    {
-                        return (WalkerAction::Continue, (inputs, paras, false));
-                    }
-                    if metadata.get("is_data_table").is_some_and(|v| v == "true") {
-                        return (WalkerAction::Continue, (inputs, paras, false));
-                    }
-                    if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
-                        return (WalkerAction::Continue, (inputs, paras, false));
-                    }
-                    let comma_count = metadata
-                        .get("_comma_count")
-                        .and_then(|s| s.parse::<usize>().ok())
-                        .unwrap_or(0);
-                    if comma_count < COMMA_COUNT_GATE {
-                        if check_form_heavy(inputs, paras) {
-                            return (WalkerAction::Remove, (inputs, paras, false));
+                    DomNode::Element { tag, metadata, .. } => {
+                        let mut inputs = 0usize;
+                        let mut paras = 0usize;
+                        for &(i, p, _) in child_counts {
+                            inputs += i;
+                            paras += p;
                         }
+                        match tag.as_str() {
+                            "input" | "textarea" | "select" => inputs += 1,
+                            "p" => paras += 1,
+                            _ => {}
+                        }
+                        if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
+                            && (score - global_max).abs() < 1e-4
+                        {
+                            return (WalkerAction::Continue, (inputs, paras, false));
+                        }
+                        if metadata.get("is_data_table").is_some_and(|v| v == "true") {
+                            return (WalkerAction::Continue, (inputs, paras, false));
+                        }
+                        if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
+                            return (WalkerAction::Continue, (inputs, paras, false));
+                        }
+                        let comma_count = metadata
+                            .get("_comma_count")
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or(0);
+                        if comma_count < COMMA_COUNT_GATE {
+                            if check_form_heavy(inputs, paras) {
+                                return (WalkerAction::Remove, (inputs, paras, false));
+                            }
+                        }
+                        (WalkerAction::Continue, (inputs, paras, false))
                     }
-                    (WalkerAction::Continue, (inputs, paras, false))
-                }
-                _ => (WalkerAction::Continue, (0, 0, false)),
+                    _ => (WalkerAction::Continue, (0, 0, false)),
                 }
             },
         );
@@ -930,48 +937,49 @@ fn remove_list_heavy(node: &mut DomNode) {
         walk_post_acc_mut::<(usize, usize, bool)>(
             children,
             Some(is_data_table),
-            &mut |n: &mut DomNode, child_counts: &[(usize, usize, bool)]| {  // (inputs, paras, has_data_table_descendant)
-                    // Check if any child subtree contains a data table (post-order accumulator)
+            &mut |n: &mut DomNode, child_counts: &[(usize, usize, bool)]| {
+                // (inputs, paras, has_data_table_descendant)
+                // Check if any child subtree contains a data table (post-order accumulator)
                 let child_has_dt = child_counts.iter().any(|c| c.2);
                 if child_has_dt {
                     return (WalkerAction::Continue, (0, 0, false));
                 }
                 match n {
-                DomNode::Element { tag, metadata, .. } => {
-                    let mut lis = 0usize;
-                    let mut paras = 0usize;
-                    for &(l, p, _) in child_counts {
-                        lis += l;
-                        paras += p;
-                    }
-                    match tag.as_str() {
-                        "li" => lis += 1,
-                        "p" => paras += 1,
-                        _ => {}
-                    }
-                    if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
-                        && (score - global_max).abs() < 1e-4
-                    {
-                        return (WalkerAction::Continue, (lis, paras, false));
-                    }
-                    if metadata.get("is_data_table").is_some_and(|v| v == "true") {
-                        return (WalkerAction::Continue, (lis, paras, false));
-                    }
-                    if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
-                        return (WalkerAction::Continue, (lis, paras, false));
-                    }
-                    let comma_count = metadata
-                        .get("_comma_count")
-                        .and_then(|s| s.parse::<usize>().ok())
-                        .unwrap_or(0);
-                    if comma_count < COMMA_COUNT_GATE {
-                        if check_list_heavy(lis, paras) {
-                            return (WalkerAction::Remove, (lis, paras, false));
+                    DomNode::Element { tag, metadata, .. } => {
+                        let mut lis = 0usize;
+                        let mut paras = 0usize;
+                        for &(l, p, _) in child_counts {
+                            lis += l;
+                            paras += p;
                         }
+                        match tag.as_str() {
+                            "li" => lis += 1,
+                            "p" => paras += 1,
+                            _ => {}
+                        }
+                        if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
+                            && (score - global_max).abs() < 1e-4
+                        {
+                            return (WalkerAction::Continue, (lis, paras, false));
+                        }
+                        if metadata.get("is_data_table").is_some_and(|v| v == "true") {
+                            return (WalkerAction::Continue, (lis, paras, false));
+                        }
+                        if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
+                            return (WalkerAction::Continue, (lis, paras, false));
+                        }
+                        let comma_count = metadata
+                            .get("_comma_count")
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or(0);
+                        if comma_count < COMMA_COUNT_GATE {
+                            if check_list_heavy(lis, paras) {
+                                return (WalkerAction::Remove, (lis, paras, false));
+                            }
+                        }
+                        (WalkerAction::Continue, (lis, paras, false))
                     }
-                    (WalkerAction::Continue, (lis, paras, false))
-                }
-                _ => (WalkerAction::Continue, (0, 0, false)),
+                    _ => (WalkerAction::Continue, (0, 0, false)),
                 }
             },
         );
@@ -994,45 +1002,46 @@ fn remove_embed_heavy(node: &mut DomNode) {
         walk_post_acc_mut::<(usize, bool)>(
             children,
             Some(is_data_table),
-            &mut |n: &mut DomNode, child_counts: &[(usize, bool)]| {  // (embeds, has_data_table_descendant)
-                    // Check if any child subtree contains a data table (post-order accumulator)
+            &mut |n: &mut DomNode, child_counts: &[(usize, bool)]| {
+                // (embeds, has_data_table_descendant)
+                // Check if any child subtree contains a data table (post-order accumulator)
                 let child_has_dt = child_counts.iter().any(|c| c.1);
                 if child_has_dt {
                     return (WalkerAction::Continue, (0, false));
                 }
                 match n {
-                DomNode::Element { tag, metadata, .. } => {
-                    let mut embeds = 0usize;
-                    for &(e, _) in child_counts {
-                        embeds += e;
-                    }
-                    match tag.as_str() {
-                        "img" | "embed" | "object" | "iframe" => embeds += 1,
-                        _ => {}
-                    }
-                    if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
-                        && (score - global_max).abs() < 1e-4
-                    {
-                        return (WalkerAction::Continue, (embeds, false));
-                    }
-                    if metadata.get("is_data_table").is_some_and(|v| v == "true") {
-                        return (WalkerAction::Continue, (embeds, false));
-                    }
-                    if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
-                        return (WalkerAction::Continue, (embeds, false));
-                    }
-                    let comma_count = metadata
-                        .get("_comma_count")
-                        .and_then(|s| s.parse::<usize>().ok())
-                        .unwrap_or(0);
-                    if comma_count < COMMA_COUNT_GATE {
-                        if check_embed_count(embeds) {
-                            return (WalkerAction::Remove, (embeds, false));
+                    DomNode::Element { tag, metadata, .. } => {
+                        let mut embeds = 0usize;
+                        for &(e, _) in child_counts {
+                            embeds += e;
                         }
+                        match tag.as_str() {
+                            "img" | "embed" | "object" | "iframe" => embeds += 1,
+                            _ => {}
+                        }
+                        if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
+                            && (score - global_max).abs() < 1e-4
+                        {
+                            return (WalkerAction::Continue, (embeds, false));
+                        }
+                        if metadata.get("is_data_table").is_some_and(|v| v == "true") {
+                            return (WalkerAction::Continue, (embeds, false));
+                        }
+                        if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
+                            return (WalkerAction::Continue, (embeds, false));
+                        }
+                        let comma_count = metadata
+                            .get("_comma_count")
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or(0);
+                        if comma_count < COMMA_COUNT_GATE {
+                            if check_embed_count(embeds) {
+                                return (WalkerAction::Remove, (embeds, false));
+                            }
+                        }
+                        (WalkerAction::Continue, (embeds, false))
                     }
-                    (WalkerAction::Continue, (embeds, false))
-                }
-                _ => (WalkerAction::Continue, (0, false)),
+                    _ => (WalkerAction::Continue, (0, false)),
                 }
             },
         );
@@ -1055,60 +1064,76 @@ fn remove_low_text_density(node: &mut DomNode) {
         walk_post_acc_mut::<(usize, usize, bool)>(
             children,
             Some(is_data_table),
-            &mut |n: &mut DomNode, child_counts: &[(usize, usize, bool)]| {  // (inputs, paras, has_data_table_descendant)
-                    // Check if any child subtree contains a data table (post-order accumulator)
+            &mut |n: &mut DomNode, child_counts: &[(usize, usize, bool)]| {
+                // (inputs, paras, has_data_table_descendant)
+                // Check if any child subtree contains a data table (post-order accumulator)
                 let child_has_dt = child_counts.iter().any(|c| c.2);
                 if child_has_dt {
                     return (WalkerAction::Continue, (0, 0, false));
                 }
                 match n {
-                DomNode::Element {
-                    tag,
-                    metadata,
-                    children: ch,
-                    ..
-                } => {
-                    let mut text_chars = 0usize;
-                    let mut serialized_chars = 0usize;
-                    for &(tc, sc, _) in child_counts {
-                        text_chars += tc;
-                        serialized_chars += sc;
-                    }
-                    let direct_text: String = ch
-                        .iter()
-                        .filter_map(|c| {
-                            if let DomNode::Text(t) = c {
-                                Some(t.as_str())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    text_chars += direct_text.len();
-                    serialized_chars += direct_text.len();
-                    if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
-                        && (score - global_max).abs() < 1e-4
-                    {
-                        return (WalkerAction::Continue, (text_chars, serialized_chars, false));
-                    }
-                    if metadata.get("is_data_table").is_some_and(|v| v == "true") {
-                        return (WalkerAction::Continue, (text_chars, serialized_chars, false));
-                    }
-                    if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
-                        return (WalkerAction::Continue, (text_chars, serialized_chars, false));
-                    }
-                    let comma_count = metadata
-                        .get("_comma_count")
-                        .and_then(|s| s.parse::<usize>().ok())
-                        .unwrap_or(0);
-                    if comma_count < COMMA_COUNT_GATE {
-                        if check_text_density(text_chars, serialized_chars) {
-                            return (WalkerAction::Remove, (text_chars, serialized_chars, false));
+                    DomNode::Element {
+                        tag,
+                        metadata,
+                        children: ch,
+                        ..
+                    } => {
+                        let mut text_chars = 0usize;
+                        let mut serialized_chars = 0usize;
+                        for &(tc, sc, _) in child_counts {
+                            text_chars += tc;
+                            serialized_chars += sc;
                         }
+                        let direct_text: String = ch
+                            .iter()
+                            .filter_map(|c| {
+                                if let DomNode::Text(t) = c {
+                                    Some(t.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        text_chars += direct_text.len();
+                        serialized_chars += direct_text.len();
+                        if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
+                            && (score - global_max).abs() < 1e-4
+                        {
+                            return (
+                                WalkerAction::Continue,
+                                (text_chars, serialized_chars, false),
+                            );
+                        }
+                        if metadata.get("is_data_table").is_some_and(|v| v == "true") {
+                            return (
+                                WalkerAction::Continue,
+                                (text_chars, serialized_chars, false),
+                            );
+                        }
+                        if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
+                            return (
+                                WalkerAction::Continue,
+                                (text_chars, serialized_chars, false),
+                            );
+                        }
+                        let comma_count = metadata
+                            .get("_comma_count")
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or(0);
+                        if comma_count < COMMA_COUNT_GATE {
+                            if check_text_density(text_chars, serialized_chars) {
+                                return (
+                                    WalkerAction::Remove,
+                                    (text_chars, serialized_chars, false),
+                                );
+                            }
+                        }
+                        (
+                            WalkerAction::Continue,
+                            (text_chars, serialized_chars, false),
+                        )
                     }
-                    (WalkerAction::Continue, (text_chars, serialized_chars, false))
-                }
-                _ => (WalkerAction::Continue, (0, 0, false)),
+                    _ => (WalkerAction::Continue, (0, 0, false)),
                 }
             },
         );
@@ -1131,8 +1156,9 @@ fn remove_short_content(node: &mut DomNode) {
         walk_post_acc_mut::<(usize, usize, bool)>(
             children,
             Some(is_data_table),
-            &mut |n: &mut DomNode, child_counts: &[(usize, usize, bool)]| {  // (inputs, paras, has_data_table_descendant)
-                    // Check if any child subtree contains a data table (post-order accumulator)
+            &mut |n: &mut DomNode, child_counts: &[(usize, usize, bool)]| {
+                // (inputs, paras, has_data_table_descendant)
+                // Check if any child subtree contains a data table (post-order accumulator)
                 let child_has_dt = child_counts.iter().any(|c| c.2);
                 if child_has_dt {
                     return (WalkerAction::Continue, (0, 0, false));
@@ -1210,64 +1236,64 @@ fn remove_ad_content(node: &mut DomNode) {
     }
     if let DomNode::Element { children, .. } = node {
         use crate::pipeline::walkers::{WalkerAction, walk_post_acc_mut};
-        walk_post_acc_mut::<(bool,)>(
-            children,
-            Some(is_data_table),
-            &mut |n: &mut DomNode, child_counts: &[(bool,)]| {  // (has_data_table_descendant)
-                // Check if any child subtree contains a data table (post-order accumulator)
-                let child_has_dt = child_counts.iter().any(|c| c.0);
-                if child_has_dt {
+        walk_post_acc_mut::<(bool,)>(children, Some(is_data_table), &mut |n: &mut DomNode,
+                                                                          child_counts: &[(
+            bool,
+        )]| {
+            // (has_data_table_descendant)
+            // Check if any child subtree contains a data table (post-order accumulator)
+            let child_has_dt = child_counts.iter().any(|c| c.0);
+            if child_has_dt {
+                return (WalkerAction::Continue, (false,));
+            }
+            if let DomNode::Element {
+                tag,
+                attrs,
+                metadata,
+                children: _ch,
+                ..
+            } = n
+            {
+                if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
+                    && (score - global_max).abs() < 1e-4
+                {
                     return (WalkerAction::Continue, (false,));
                 }
-                if let DomNode::Element {
-                    tag,
-                    attrs,
-                    metadata,
-                    children: _ch,
-                    ..
-                } = n
-                {
-                    if let Some(score) = meta_get_f64(metadata, "md_rd_subtree_max_score")
-                        && (score - global_max).abs() < 1e-4
-                    {
-                        return (WalkerAction::Continue, (false,));
+                if metadata.get("is_data_table").is_some_and(|v| v == "true") {
+                    return (WalkerAction::Continue, (false,));
+                }
+                if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
+                    return (WalkerAction::Continue, (false,));
+                }
+                // Compute link_density, weight, has_ad_class
+                // link_density always 0.0 (no child link-text accumulator)
+                let link_density = 0.0;
+                metadata.insert("link_density".into(), format!("{:.6}", link_density));
+                let weight = crate::pipeline::passes::rd_utils::get_class_weight(attrs);
+                let has_ad_class = attrs.iter().any(|(name, val)| {
+                    name == "class"
+                        && (val.contains("ad-")
+                            || val.contains("ads-")
+                            || val.contains("advertisement"))
+                });
+                let comma_count = metadata
+                    .get("_comma_count")
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(0);
+                if comma_count < COMMA_COUNT_GATE {
+                    if check_low_weight_link_density(metadata, weight, has_ad_class) {
+                        return (WalkerAction::Remove, (false,));
                     }
-                    if metadata.get("is_data_table").is_some_and(|v| v == "true") {
-                        return (WalkerAction::Continue, (false,));
+                    if check_high_weight_link_density(metadata, weight, has_ad_class) {
+                        return (WalkerAction::Remove, (false,));
                     }
-                    if !matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") {
-                        return (WalkerAction::Continue, (false,));
-                    }
-                    // Compute link_density, weight, has_ad_class
-                    // link_density always 0.0 (no child link-text accumulator)
-                    let link_density = 0.0;
-                    metadata.insert("link_density".into(), format!("{:.6}", link_density));
-                    let weight = crate::pipeline::passes::rd_utils::get_class_weight(attrs);
-                    let has_ad_class = attrs.iter().any(|(name, val)| {
-                        name == "class"
-                            && (val.contains("ad-")
-                                || val.contains("ads-")
-                                || val.contains("advertisement"))
-                    });
-                    let comma_count = metadata
-                        .get("_comma_count")
-                        .and_then(|s| s.parse::<usize>().ok())
-                        .unwrap_or(0);
-                    if comma_count < COMMA_COUNT_GATE {
-                        if check_low_weight_link_density(metadata, weight, has_ad_class) {
-                            return (WalkerAction::Remove, (false,));
-                        }
-                        if check_high_weight_link_density(metadata, weight, has_ad_class) {
-                            return (WalkerAction::Remove, (false,));
-                        }
-                        if check_ad_words(n) {
-                            return (WalkerAction::Remove, (false,));
-                        }
+                    if check_ad_words(n) {
+                        return (WalkerAction::Remove, (false,));
                     }
                 }
-                (WalkerAction::Continue, (false,))
-            },
-        );
+            }
+            (WalkerAction::Continue, (false,))
+        });
     }
 }
 
@@ -1595,7 +1621,10 @@ mod tests {
             }
         }
         assert!(find_tag(&nodes, "p"), "<p> should remain");
-        assert!(!find_tag(&nodes, "script"), "<script> tags should be removed");
+        assert!(
+            !find_tag(&nodes, "script"),
+            "<script> tags should be removed"
+        );
     }
 
     // ── 4. strip_unlikely_candidates ──────────────────────────────────────
@@ -1692,8 +1721,6 @@ mod tests {
         );
     }
 
-
-
     #[test]
     fn test_strip_unlikely_data_table_guard() {
         // Elements inside a data table should survive strip_unlikely_candidates.
@@ -1701,31 +1728,25 @@ mod tests {
         let mut root = DomNode::Element {
             tag: "div".into(),
             attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "table".into(),
-                    attrs: vec![("class".into(), "infobox".into())],
-                    children: vec![
-                        DomNode::Element {
-                            tag: "tr".into(),
-                            attrs: vec![],
-                            children: vec![
-                                DomNode::Element {
-                                    tag: "td".into(),
-                                    attrs: vec![("class".into(), "sidebar".into())],
-                                    children: vec![DomNode::Text("content".into())],
-                                    scores: Default::default(),
-                                    metadata: Default::default(),
-                                },
-                            ],
-                            scores: Default::default(),
-                            metadata: Default::default(),
-                        },
-                    ],
+            children: vec![DomNode::Element {
+                tag: "table".into(),
+                attrs: vec![("class".into(), "infobox".into())],
+                children: vec![DomNode::Element {
+                    tag: "tr".into(),
+                    attrs: vec![],
+                    children: vec![DomNode::Element {
+                        tag: "td".into(),
+                        attrs: vec![("class".into(), "sidebar".into())],
+                        children: vec![DomNode::Text("content".into())],
+                        scores: Default::default(),
+                        metadata: Default::default(),
+                    }],
                     scores: Default::default(),
-                    metadata: [("is_data_table".into(), "true".into())].into(),
-                },
-            ],
+                    metadata: Default::default(),
+                }],
+                scores: Default::default(),
+                metadata: [("is_data_table".into(), "true".into())].into(),
+            }],
             scores: Default::default(),
             metadata: Default::default(),
         };
@@ -1743,7 +1764,6 @@ mod tests {
             find_tag(&root, "td"),
             "<td> inside data table should survive strip_unlikely_candidates"
         );
-
     }
     // ── 5. remove_empty_structural_elements ──────────────────────────────
 

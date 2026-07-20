@@ -92,7 +92,9 @@ pub fn convert_div_containing_phrasing_to_paragraph(node: &mut DomNode) -> Walke
     if let DomNode::Element { tag, children, .. } = node
         && tag == "div"
         && !children.is_empty()
-        && children.iter().all(crate::pipeline::passes::rd_utils::is_phrasing)
+        && children
+            .iter()
+            .all(crate::pipeline::passes::rd_utils::is_phrasing)
     {
         *tag = "p".to_string();
     }
@@ -633,7 +635,6 @@ pub fn rd_unwrap_structural_wrappers(node: &mut DomNode) {
         }
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // 23.  clean_styles
@@ -1939,8 +1940,4 @@ mod tests {
             "data-src should be preferred over data-original"
         );
     }
-
-
-
-
 }

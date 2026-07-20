@@ -1,5 +1,5 @@
-use crate::pipeline::walkers::{WalkerAction, WalkerFilter, walk_post_mut};
 use crate::pipeline::DomNode;
+use crate::pipeline::walkers::{WalkerAction, WalkerFilter, walk_post_mut};
 
 // ---------------------------------------------------------------------------
 // Heading conversion (h1-h6 → head)
@@ -267,8 +267,8 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::walk_pre_mut;
     use crate::pipeline::parse_html;
+    use crate::pipeline::walk_pre_mut;
 
     fn find_tag(node: &DomNode, tag: &str) -> bool {
         match node {

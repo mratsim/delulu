@@ -291,9 +291,13 @@ async fn test_fetch_and_extract_generic_html_from_fixture() {
     let mock = MockClient::with_response(url, 200, &body);
     let client = WebbfetchClient::with_client(mock);
 
-    let result = fetch_and_extract(url, &client, &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability])
-        .await
-        .unwrap();
+    let result = fetch_and_extract(
+        url,
+        &client,
+        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+    )
+    .await
+    .unwrap();
 
     match result {
         ExtractionResult::GenericHtml { content_md } => {
@@ -346,9 +350,13 @@ async fn test_fetch_and_extract_generic_html_title_from_h1() {
     let mock = MockClient::with_response(url, 200, &body);
     let client = WebbfetchClient::with_client(mock);
 
-    let result = fetch_and_extract(url, &client, &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability])
-        .await
-        .unwrap();
+    let result = fetch_and_extract(
+        url,
+        &client,
+        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+    )
+    .await
+    .unwrap();
 
     match result {
         ExtractionResult::GenericHtml { content_md } => {
@@ -388,9 +396,13 @@ async fn test_fetch_and_extract_empty_body_returns_generic_html() {
     let mock = MockClient::with_response(url, 200, body);
     let client = WebbfetchClient::with_client(mock);
 
-    let result = fetch_and_extract(url, &client, &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability])
-        .await
-        .unwrap();
+    let result = fetch_and_extract(
+        url,
+        &client,
+        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+    )
+    .await
+    .unwrap();
 
     match result {
         ExtractionResult::GenericHtml { content_md } => {
@@ -415,9 +427,13 @@ async fn test_fetch_and_extract_non_2xx_status_returns_error() {
     let mock = MockClient::with_response(url, 404, "Not Found");
     let client = WebbfetchClient::with_client(mock);
 
-    let err = fetch_and_extract(url, &client, &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability])
-        .await
-        .unwrap_err();
+    let err = fetch_and_extract(
+        url,
+        &client,
+        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+    )
+    .await
+    .unwrap_err();
 
     // The error propagates as a Fetch error from the HTTP layer
     assert!(
@@ -439,9 +455,13 @@ async fn test_fetch_and_extract_reddit_with_trailing_slash() {
 
     // Without trailing slash
     let url = "https://www.reddit.com/r/test/comments/abc123/hello_world";
-    let result = fetch_and_extract(url, &client, &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability])
-        .await
-        .unwrap();
+    let result = fetch_and_extract(
+        url,
+        &client,
+        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+    )
+    .await
+    .unwrap();
 
     match result {
         ExtractionResult::Reddit { title, .. } => {
@@ -457,9 +477,13 @@ async fn test_fetch_and_extract_https_only_scheme_rejected() {
     let mock = MockClient::new();
     let client = WebbfetchClient::with_client(mock);
 
-    let err = fetch_and_extract(url, &client, &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability])
-        .await
-        .unwrap_err();
+    let err = fetch_and_extract(
+        url,
+        &client,
+        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(err, WebbfetchError::InvalidUrl(_)),
         "expected InvalidUrl, got {err:?}"
@@ -479,9 +503,13 @@ async fn test_fetch_and_extract_non_discourse_t_url_is_generic_html() {
     let mock = MockClient::with_response(url, 200, body);
     let client = WebbfetchClient::with_client(mock);
 
-    let result = fetch_and_extract(url, &client, &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability])
-        .await
-        .unwrap();
+    let result = fetch_and_extract(
+        url,
+        &client,
+        &[delulu_webfetch::pipeline::mozilla_readability::filter_mozilla_readability],
+    )
+    .await
+    .unwrap();
 
     match result {
         ExtractionResult::GenericHtml { content_md } => {

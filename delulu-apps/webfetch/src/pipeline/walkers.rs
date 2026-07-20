@@ -235,16 +235,16 @@ pub fn walk_pre_mut(node: &mut DomNode, f: &impl Fn(&mut DomNode) -> WalkerActio
                 }
                 WalkerAction::SkipChildren => {
                     i += 1;
-                },
+                }
                 WalkerAction::Remove => {
                     // O(n) shift — Vec::remove moves all subsequent siblings left.
                     // Tolerable for typical DOM sibling counts (< 100).
                     children.remove(i);
                     // Do not increment i; next element shifts into position i.
-                },
+                }
                 WalkerAction::ReplaceWithChildren => {
                     panic!("ReplaceWithChildren is not supported in pre-order traversal");
-                },
+                }
             }
         }
     }

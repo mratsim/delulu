@@ -169,8 +169,6 @@ impl MarkdownLowerer {
         Self::lower_nodes(&[node.clone()], base_url, &mut out, 0);
         Self::cap_size(out)
     }
-
-
 }
 
 // ---------------------------------------------------------------------------
@@ -499,9 +497,6 @@ impl MarkdownLowerer {
 
         out.push('\n');
     }
-
-
-
 
     /// Cap output size to MAX_OUTPUT_SIZE bytes.
     fn cap_size(mut s: String) -> String {

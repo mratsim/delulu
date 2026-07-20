@@ -1,7 +1,6 @@
 use std::fmt;
 use std::str::FromStr;
 
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -181,7 +180,6 @@ pub struct FetchResult {
     pub url: UrlInfo,
     pub content: ExtractionResult,
 }
-
 
 #[cfg(test)]
 mod tests {

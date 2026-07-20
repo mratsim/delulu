@@ -149,15 +149,13 @@ pub fn has_descendant_tag(node: &DomNode, tag: &str) -> bool {
 // meta_get_f64
 // ---------------------------------------------------------------------------
 
-/// Parse a metadata key as `f64`, returning `None` on missing or unparseable.
+/// Parse a metadata key as `f64`, returning `None` on missing or unparsable.
 ///
 /// NaN and Infinity produce `None` with a warning.
 ///
 /// Callers must handle the `None` case (panicking or fallback as appropriate).
 pub fn meta_get_f64(metadata: &HashMap<String, String>, key: &str) -> Option<f64> {
-    metadata
-        .get(key)
-        .and_then(|s| meta_parse_f64(s))
+    metadata.get(key).and_then(|s| meta_parse_f64(s))
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +181,6 @@ pub fn is_phrasing(node: &DomNode) -> bool {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // is_body_or_html
 // ---------------------------------------------------------------------------
@@ -193,8 +190,6 @@ pub fn is_phrasing(node: &DomNode) -> bool {
 pub fn is_body_or_html(tag: &str) -> bool {
     tag == "body" || tag == "html"
 }
-
-
 
 /// Check if all children of an element are phrasing content.
 pub fn all_phrasing(children: &[DomNode]) -> bool {
@@ -451,7 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn test_meta_get_f64_unparseable() {
+    fn test_meta_get_f64_unparsable() {
         let mut metadata = HashMap::new();
         metadata.insert("score".into(), "not-a-number".into());
         assert_eq!(meta_get_f64(&metadata, "score"), None);
@@ -474,9 +469,9 @@ mod tests {
         assert!(!is_body_or_html("main"));
 
         // Edge cases
-        assert!(!is_body_or_html("BODY"));   // case-sensitive
-        assert!(!is_body_or_html("HTML"));   // case-sensitive
-        assert!(!is_body_or_html(""));       // empty string
-        assert!(!is_body_or_html("body "));  // trailing space
+        assert!(!is_body_or_html("BODY")); // case-sensitive
+        assert!(!is_body_or_html("HTML")); // case-sensitive
+        assert!(!is_body_or_html("")); // empty string
+        assert!(!is_body_or_html("body ")); // trailing space
     }
 }

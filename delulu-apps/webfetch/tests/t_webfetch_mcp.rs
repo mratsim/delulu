@@ -28,7 +28,7 @@ mod mcp_helpers;
 use mcp_helpers::*;
 
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Once;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
@@ -38,9 +38,7 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 fn init_tracing() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        tracing_subscriber::fmt()
-            .with_env_filter("info")
-            .init();
+        tracing_subscriber::fmt().with_env_filter("info").init();
     });
 }
 
@@ -115,9 +113,7 @@ async fn test_mcp_help_output() -> Result<()> {
     init_tracing();
     let path = find_binary()?;
 
-    let output = std::process::Command::new(&path)
-        .arg("--help")
-        .output()?;
+    let output = std::process::Command::new(&path).arg("--help").output()?;
 
     assert!(output.status.success(), "Help should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -171,10 +167,7 @@ async fn test_mcp_tools_list() -> Result<()> {
     let tools = response["result"]["tools"]
         .as_array()
         .context("tools should be an array")?;
-    let tool_names: Vec<&str> = tools
-        .iter()
-        .filter_map(|t| t["name"].as_str())
-        .collect();
+    let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
     assert!(
         tool_names.contains(&"webfetch"),
         "tools/list should contain webfetch tool, got: {:?}",
@@ -204,9 +197,13 @@ async fn test_mcp_webfetch_tool() -> Result<()> {
         .await
         .context("MCP initialize failed")?;
 
-    send_tool_call(&mut stdin, "webfetch", json!({"url": "https://example.com"}))
-        .await
-        .context("failed to send webfetch tool call")?;
+    send_tool_call(
+        &mut stdin,
+        "webfetch",
+        json!({"url": "https://example.com"}),
+    )
+    .await
+    .context("failed to send webfetch tool call")?;
 
     let response = read_json_response(&mut stdout, TIMEOUT, Some(2)).await?;
 
@@ -250,8 +247,7 @@ async fn test_mcp_webfetch_raw_tool() -> Result<()> {
     let text = response["result"]["content"][0]["text"]
         .as_str()
         .context("response should have text content")?;
-    let inner: Value =
-        serde_json::from_str(text).context("response text should be valid JSON")?;
+    let inner: Value = serde_json::from_str(text).context("response text should be valid JSON")?;
     let has_variant = match inner {
         Value::Object(obj) => {
             obj.contains_key("GenericHtml")

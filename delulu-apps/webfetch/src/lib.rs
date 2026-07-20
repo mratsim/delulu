@@ -7,9 +7,7 @@ pub mod sources;
 
 pub use crate::core::detect::detect_source_type;
 pub use crate::core::http_client::WebbfetchClient;
-pub use crate::core::types::{
-    ExtractionResult, MarkdownDocument, RedditComment,
-};
+pub use crate::core::types::{ExtractionResult, MarkdownDocument, RedditComment};
 
 use crate::core::types::{SourceType, WebbfetchError};
 use crate::pipeline::DomNode;
@@ -136,7 +134,12 @@ pub async fn extract(
     url: &str,
     client: &crate::core::http_client::WebbfetchClient,
 ) -> Result<ExtractionResult, WebbfetchError> {
-    fetch_and_extract(url, client, &[crate::pipeline::mozilla_readability::filter_mozilla_readability]).await
+    fetch_and_extract(
+        url,
+        client,
+        &[crate::pipeline::mozilla_readability::filter_mozilla_readability],
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -502,7 +505,8 @@ mod tests {
         .to_string();
 
         let original_url = "https://forum.example.com/t/discourse-topic/12345";
-        let api_url = "https://forum.example.com/t/discourse-topic/12345.json?raw_json=1&include_raw=1";
+        let api_url =
+            "https://forum.example.com/t/discourse-topic/12345.json?raw_json=1&include_raw=1";
 
         // Two-step mock: first responds to original URL with HTML, second to .json with JSON
         let mock = MockClient::new()
@@ -510,9 +514,13 @@ mod tests {
             .add_response(api_url, 200, &discourse_json);
         let client = WebbfetchClient::with_client(mock);
 
-        let result = fetch_and_extract(original_url, &client, &[crate::pipeline::mozilla_readability::filter_mozilla_readability])
-            .await
-            .unwrap();
+        let result = fetch_and_extract(
+            original_url,
+            &client,
+            &[crate::pipeline::mozilla_readability::filter_mozilla_readability],
+        )
+        .await
+        .unwrap();
 
         match result {
             ExtractionResult::Discourse {

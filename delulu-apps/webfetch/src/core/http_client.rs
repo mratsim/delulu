@@ -41,7 +41,6 @@ const DEFAULT_QPS: u64 = 2;
 /// Default fetch timeout in seconds.
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
-
 /// Retry-After cap in seconds (for 429 responses).
 const RETRY_AFTER_CAP_SECS: u64 = 60;
 
