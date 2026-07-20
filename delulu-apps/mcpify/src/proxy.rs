@@ -44,7 +44,7 @@ impl ProxyClient {
                     }
                 } else {
                     let truncated = if body.len() > 500 {
-                        format!("{}...", &body[..500])
+                        format!("{}...", truncate_error_body(&body, 500))
                     } else {
                         body
                     };
@@ -144,6 +144,27 @@ impl ProxyResponse {
             data: None,
             error: Some(msg.into()),
         }
+    }
+}
+
+/// Returns the longest valid UTF-8 prefix of `body` whose byte length is ≤ `max_bytes`.
+/// Falls back to the full string if `body.len() <= max_bytes`.
+/// Never panics on valid UTF-8 input.
+fn truncate_error_body(body: &str, max_bytes: usize) -> &str {
+    if body.len() > max_bytes {
+        // Walk backward from max_bytes to find the last UTF-8 character boundary
+        // at or before max_bytes. At most 4 iterations (max UTF-8 char width = 4 bytes,
+        // so worst case: byte 500 is the 4th byte of a 4-byte char, walk back 3 steps).
+        // This avoids panic when byte max_bytes falls in the middle of a multi-byte
+        // character and guarantees the content before "..." is ≤ max_bytes bytes.
+        let mut end = max_bytes;
+        debug_assert!(end > 0, "max_bytes must be > 0 for the truncation path");
+        while !body.is_char_boundary(end) {
+            end -= 1;
+        }
+        &body[..end]
+    } else {
+        body
     }
 }
 
