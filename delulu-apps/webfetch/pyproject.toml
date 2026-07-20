@@ -1,0 +1,9 @@
+[project]
+name = "delulu-webfetch-agent"
+version = "0.1.0"
+description = "Web content fetching and markdown conversion services"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["mcp>=1.0", "jsonschema"]

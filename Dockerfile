@@ -77,3 +77,24 @@ EXPOSE 8080
 
 # Set the entry point
 ENTRYPOINT ["/app/delulu-travel-mcp"]
+
+#############################################
+#                                           #
+#           Stage 4: webfetch-mcp Builder   #
+#                                           #
+#############################################
+FROM rust:1.85-slim-bookworm AS delulu-webfetch-mcp
+WORKDIR /app
+COPY . .
+RUN cargo build --release -p delulu-webfetch --features mcp
+
+#############################################
+#                                           #
+#           Stage 5: webfetch-mcp Runtime   #
+#                                           #
+#############################################
+FROM gcr.io/distroless/cc-debian12 AS delulu-webfetch-mcp-runtime
+COPY --from=delulu-webfetch-mcp /app/target/release/delulu-webfetch-mcp /usr/local/bin/
+USER 1000:1000
+EXPOSE 8081
+ENTRYPOINT ["delulu-webfetch-mcp"]

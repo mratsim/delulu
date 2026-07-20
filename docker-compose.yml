@@ -14,3 +14,13 @@ services:
     # --host 127.0.0.1 allows connection from local clients
     # --port 8080 sets the listening port
     command: ["http", "--host", "0.0.0.0", "--port", "8080"]
+
+  webfetch-mcp:
+    build:
+      context: .
+      target: delulu-webfetch-mcp
+    ports:
+      - "8081:8081"
+    environment:
+      - RUST_LOG=info
+    command: ["http", "--host", "0.0.0.0", "--port", "8081"]

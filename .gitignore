@@ -28,3 +28,11 @@ uv.lock
 .pytest_cache
 .ruff_cache
 __pycache__
+# Delulu webfetch temp artifacts
+node_modules/
+*.pyc
+*.egg-info/
+dist/
+
+# Editor / agent backup files
+*.bak
