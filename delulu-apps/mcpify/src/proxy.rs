@@ -9,6 +9,10 @@ pub struct ProxyClient {
 
 impl ProxyClient {
     pub fn new() -> Result<Self> {
+        // SECURITY: No redirect policy is set — wreq follows redirects by default.
+        // An upstream server can issue a 302 redirect to any internal address
+        // (localhost, cloud metadata, etc.), bypassing base_url restrictions.
+        // Future: add .redirect(wreq::redirect::Policy::none()) to disable following.
         let client = wreq::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()?;

@@ -26,11 +26,15 @@ struct ToolEntry {
 
 impl McpifyServer {
     pub fn from_openapi(spec: &OpenApiSpec) -> Result<Self> {
+        // SECURITY: base_url is taken directly from the spec's servers[0].url
+        // with NO validation. A malicious spec can point at internal services.
+        // This is by design for local dev use. Future hardening: validate scheme
+        // (https only), block private IPs, or add an allowlist via CLI.
+        // NOTE: blocking private IPs would BREAK proxying local services.
         let base_url = spec
             .base_url()
             .ok_or_else(|| anyhow::anyhow!("No servers defined in OpenAPI spec"))?
             .to_string();
-
         let proxy = Arc::new(ProxyClient::new()?);
 
         let mut tools = Vec::new();

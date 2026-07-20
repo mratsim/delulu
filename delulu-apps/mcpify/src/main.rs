@@ -35,13 +35,31 @@ enum Command {
     },
 
     /// Run MCP server over HTTP
+    ///
+    /// SECURITY: Defaults to 0.0.0.0 (all interfaces).
+    /// In production, bind to 127.0.0.1 and proxy through a reverse proxy
+    /// (nginx, Caddy) with authentication, or use --host 127.0.0.1 for
+    /// local-only access.
     Http {
+        /// Path to OpenAPI spec file (.json or .yaml)
+        ///
+        /// SECURITY: The `servers[0].url` in the spec is used as the proxy
+        /// target with NO validation. A malicious spec can point at internal
+        /// services (localhost, cloud metadata, etc.).
+        ///
+        /// This is by design — it allows proxying local services during
+        /// development. For production, only load trusted specs and restrict
+        /// network access to mcpify via firewall/reverse proxy.
         path: String,
-
-        #[arg(long, default_value = "0.0.0.0")]
+        /// Listen address. Default: 0.0.0.0 (all interfaces).
+        ///
+        /// WARNING: Binding to 0.0.0.0 exposes the MCP server to all
+        /// network interfaces with no authentication. For production use,
+        /// bind to 127.0.0.1 and put a reverse proxy with auth in front.
+#[arg(long, default_value = "0.0.0.0")]
         host: String,
 
-        #[arg(long, default_value = "8080")]
+#[arg(long, default_value = "8080")]
         port: u16,
     },
 }
@@ -80,6 +98,9 @@ async fn main() -> Result<()> {
             tracing::info!("Shutting down...");
         }
         Command::Http { host, port, .. } => {
+            // SECURITY: Default bind is 0.0.0.0 which exposes the server to
+            // all network interfaces with no authentication. Future: default
+            // to 127.0.0.1 and document --host 0.0.0.0 for explicit remote access.
             let addr: SocketAddr = format!("{}:{}", host, port)
                 .parse()
                 .context("Invalid host:port")?;
