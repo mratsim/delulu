@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct OpenApiSpec {
@@ -134,12 +135,25 @@ impl OpenApiSpec {
         serde_json::from_str(json).context("Failed to parse OpenAPI spec")
     }
 
+    fn from_yaml(yaml: &str) -> Result<Self> {
+        let value: serde_json::Value = serde_yaml::from_str(yaml).context("Failed to parse YAML OpenAPI spec")?;
+        serde_json::from_value(value).context("Failed to convert YAML to OpenAPI spec")
+    }
+
     pub fn from_file(path: &str) -> Result<Self> {
-        let json = std::fs::read_to_string(path).context("Failed to read OpenAPI file")?;
-        Self::from_json(&json)
+        let content = std::fs::read_to_string(path).context("Failed to read OpenAPI file")?;
+        let p = Path::new(path);
+        match p.extension().and_then(|e| e.to_str()) {
+            Some("yaml") | Some("yml") => Self::from_yaml(&content),
+            _ => Self::from_json(&content),
+        }
     }
 
     pub fn base_url(&self) -> Option<&str> {
         self.servers.first().map(|s| s.url.as_str())
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/openapi_test.rs"]
+mod tests;
