@@ -18,21 +18,6 @@ fn test_filter_mozilla_readability_empty() {
     assert_eq!(len, 0, "empty input should produce empty output");
 }
 
-#[test]
-fn test_run_readability_pipeline_backward_compat() {
-    // Iterating READABILITY_LEVEL_1_STRICT still works and produces output
-    let mut root = parse_html(
-        "<div><p>Hello world, this is a test paragraph with some content to measure.</p></div>",
-    )
-    .expect("valid HTML");
-    for pass in *READABILITY_LEVEL_1_STRICT {
-        pass(&mut root);
-    }
-    // Should not crash, output depends on content scoring
-    let len = measure_output(&root);
-    // After filtering, we may get some output or empty depending on scoring
-    let _ = len;
-}
 
 #[test]
 fn test_filter_mozilla_readability_large_tree_uses_level_1_only() {

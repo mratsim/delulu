@@ -247,6 +247,7 @@ fn test_qualifying_sibling_below_floor_removed_relative() {
         panic!("parent should be Element");
     }
 }
+#[test]
 fn test_qualifying_sibling_score_floor_kept() {
     // Sibling with score >= sibling_floor should be kept.
     // global_max = 100.0, sibling_floor = (100.0 * 0.2).max(10.0) = 20.0

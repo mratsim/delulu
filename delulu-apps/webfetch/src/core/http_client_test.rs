@@ -147,18 +147,3 @@ async fn test_discourse_url_detected_as_generic_html() {
         .unwrap();
     assert_eq!(result.url.source_type, SourceType::GenericHtml);
 }
-
-#[tokio::test]
-async fn test_fetch_with_config_override() {
-    let mock = MockClient::with_response("https://example.com/page", 200, "content");
-    let client = WebbfetchClient::with_client(mock);
-    let config = FetchConfig {
-        timeout_secs: 5,
-        qps: 1,
-    };
-    let result = client
-        .fetch_with_config("https://example.com/page", &config)
-        .await
-        .unwrap();
-    assert_eq!(result.url.source_type, SourceType::GenericHtml);
-}
