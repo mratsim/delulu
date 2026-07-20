@@ -17,7 +17,7 @@ def find_binary() -> Path:
         root = Path(manifest).resolve()
     else:
         # Fallback: walk up from this file
-        root = Path(__file__).resolve().parent.parent.parent.parent.parent
+        root = Path(__file__).resolve().parent.parent.parent.parent.parent.parent
     for path in [
         root / "target" / "debug" / "delulu-mcpify",
         root / "target" / "release" / "delulu-mcpify",

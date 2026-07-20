@@ -41,12 +41,12 @@ impl McpifyServer {
 
         for (path, path_item) in spec.paths.iter() {
             if let Some(op) = &path_item.get {
-                if let Some(entry) = Self::build_tool(&base_url, path, op, proxy.clone())? {
+                if let Some(entry) = Self::build_tool(&base_url, path, op, "GET", proxy.clone())? {
                     tools.push(entry);
                 }
             }
             if let Some(op) = &path_item.post {
-                if let Some(entry) = Self::build_tool(&base_url, path, op, proxy.clone())? {
+                if let Some(entry) = Self::build_tool(&base_url, path, op, "POST", proxy.clone())? {
                     tools.push(entry);
                 }
             }
@@ -65,6 +65,7 @@ impl McpifyServer {
         base_url: &str,
         path: &str,
         op: &Operation,
+        method: &'static str,
         proxy: Arc<ProxyClient>,
     ) -> Result<Option<ToolEntry>> {
         let operation_id = match &op.operation_id {
@@ -104,15 +105,24 @@ impl McpifyServer {
                 let path_param_names = path_param_names.clone();
                 let proxy = proxy.clone();
                 async move {
-                    let params = ctx.arguments.unwrap_or_default();
+                    let params = ctx.arguments
+                        .ok_or_else(|| rmcp::ErrorData::invalid_params(
+                            "arguments are required for this tool", None
+                        ))?;
                     let params_map: HashMap<String, Value> = params
                         .into_iter()
                         .map(|(k, v)| (k, v))
                         .collect();
 
-                    let result = proxy
-                        .get(&base_url, &path, params_map, &path_param_names)
-                        .await;
+                    let result = if method == "POST" {
+                        proxy
+                            .post(&base_url, &path, params_map, &path_param_names)
+                            .await
+                    } else {
+                        proxy
+                            .get(&base_url, &path, params_map, &path_param_names)
+                            .await
+                    };
 
                     let upstream = format!("{}{}", base_url, path);
 
@@ -172,6 +182,30 @@ fn build_input_schema(op: &Operation) -> Value {
 
         if param.required {
             required.push(param.name.clone());
+        }
+    }
+
+    // Include request_body schema properties for POST operations
+    if let Some(rb) = &op.request_body {
+        if let Some(content) = &rb.content {
+            // Prefer application/json media type, fall back to first available
+            let media_type = content
+                .get("application/json")
+                .or_else(|| content.values().next());
+            if let Some(mt) = media_type {
+                if let Some(schema) = &mt.schema {
+                    let body_schema = param_schema_to_json_schema(schema);
+                    let body_key = if properties.contains_key("body") {
+                        "_request_body"
+                    } else {
+                        "body"
+                    };
+                    properties.insert(body_key.to_string(), body_schema);
+                    if rb.required {
+                        required.push(body_key.to_string());
+                    }
+                }
+            }
         }
     }
 

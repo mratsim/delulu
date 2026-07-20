@@ -2,18 +2,15 @@
 // These are NOT fixed by this session. Tests must NOT accidentally rely on
 // their silent-fallback behavior.
 //
-// 1. server.rs:103 — `ctx.arguments.unwrap_or_default()`: If MCP client sends
-//    `arguments: null`, silently replaced with empty map.
-// 2. server.rs:113 — `serde_json::to_value(&result).unwrap_or(json!({"error":
+// 1. server.rs:113 — `serde_json::to_value(&result).unwrap_or(json!({"error":
 //    "Serialization failed"}))`: If ProxyResponse serialization fails, returns
 //    hardcoded error JSON instead of panicking.
-// 3. server.rs:115 — `serde_json::to_string(&json).unwrap_or_default()`: If
+// 2. server.rs:115 — `serde_json::to_string(&json).unwrap_or_default()`: If
 //    error JSON itself can't serialize, returns empty string.
-// 4. proxy.rs:38 — `response.text().await.unwrap_or_default()`: If HTTP body
+// 3. proxy.rs:38 — `response.text().await.unwrap_or_default()`: If HTTP body
 //    read fails, returns empty string.
-// 5. proxy.rs:42-43 — Non-JSON 2xx response silently wrapped as
+// 4. proxy.rs:42-43 — Non-JSON 2xx response silently wrapped as
 //    `ProxyResponse::success(Value::String(body))`.
-
 use delulu_mcpify::{McpifyServer, OpenApiSpec};
 use serde_json::json;
 
@@ -443,6 +440,89 @@ fn test_unsupported_methods_produce_zero_tools() {
 
     assert_eq!(
         tools.len(), 0,
-        "PUT and DELETE operations should produce zero tools (silently dropped)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// POST operation with requestBody includes body property in input schema
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_post_with_request_body_includes_body_property() {
+    let spec = make_spec(json!({
+        "openapi": "3.0.0",
+        "info": { "title": "Test", "version": "1.0.0" },
+        "paths": {
+            "/resources": {
+                "post": {
+                    "operationId": "createResource",
+                    "parameters": [
+                        {
+                            "name": "name",
+                            "in": "query",
+                            "required": true,
+                            "schema": { "type": "string" }
+                        }
+                    ],
+                    "requestBody": {
+                        "description": "Resource data",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "title": { "type": "string" },
+                                        "price": { "type": "number" }
+                                    }
+                                }
+                            }
+                        },
+                        "required": true
+                    }
+                }
+            }
+        },
+        "servers": [{"url": "https://example.com"}]
+    }));
+    let server = McpifyServer::from_openapi(&spec).expect("Server should build");
+    let tools = server.list_tools();
+
+    assert_eq!(tools.len(), 1, "POST operation should register exactly one tool");
+    assert_eq!(tools[0].name, "createResource");
+
+
+
+    let properties = tools[0].input_schema["properties"]
+        .as_object()
+        .expect("input_schema must have a 'properties' object");
+
+    // The request body should appear as a 'body' property
+    assert!(
+        properties.contains_key("body"),
+        "input schema properties must contain 'body' from requestBody"
+    );
+
+    let body_prop = properties["body"].as_object()
+        .expect("'body' property must be a JSON object");
+    assert_eq!(
+        body_prop["type"].as_str(),
+        Some("object"),
+        "body schema type should be 'object'"
+    );
+
+    // The required array should include 'body' since requestBody.required = true
+    let required = tools[0].input_schema["required"]
+        .as_array()
+        .expect("input_schema should have a 'required' array");
+    let required_names: Vec<&str> = required
+        .iter()
+        .map(|v| v.as_str().expect("required entry must be a string"))
+        .collect();
+    assert!(
+        required_names.contains(&"body"),
+        "required array must contain 'body' when requestBody.required is true"
+    );
+    assert!(
+        required_names.contains(&"name"),
     );
 }

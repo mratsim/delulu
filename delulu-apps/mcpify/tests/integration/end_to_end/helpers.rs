@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, timeout};
 
@@ -68,4 +69,35 @@ pub async fn health_check(port: u16) -> bool {
 /// Initialise tracing once per process. Safe to call multiple times.
 pub fn init_tracing() {
     let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).try_init();
+}
+
+/// Drop guard that ensures E2E test services are cleaned up on early return.
+/// Sends shutdown signals to backend services and kills child processes.
+pub struct E2eGuard {
+    /// Backend service shutdown senders
+    pub shutdown_senders: Vec<oneshot::Sender<()>>,
+    /// Backend service JoinHandles (not awaited in Drop, but kept alive)
+    pub _server_tasks: Vec<JoinHandle<()>>,
+    /// mcpify child processes
+    pub children: Vec<Option<std::process::Child>>,
+    /// stderr streaming tasks (not awaited in Drop)
+    pub _stderr_tasks: Vec<Option<JoinHandle<()>>>,
+}
+
+impl Drop for E2eGuard {
+    fn drop(&mut self) {
+        // Kill child processes
+        for c in &mut self.children {
+            if let Some(c) = c {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        }
+        // Send shutdown signals to backend services
+        for s in self.shutdown_senders.drain(..) {
+            let _ = s.send(());
+        }
+        // Note: server_tasks and stderr_tasks are NOT awaited here because
+        // Drop cannot be async. The runtime will clean them up.
+    }
 }

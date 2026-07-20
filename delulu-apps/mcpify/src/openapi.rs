@@ -56,8 +56,8 @@ pub struct Operation {
     pub description: Option<String>,
     #[serde(default)]
     pub parameters: Vec<Parameter>,
-    #[serde(default)]
-    request_body: Option<RequestBody>,
+    #[serde(default, rename = "requestBody")]
+    pub request_body: Option<RequestBody>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -87,7 +87,7 @@ pub struct ParameterSchema {
     pub param_type: Option<String>,
     #[serde(default)]
     pub format: Option<String>,
-    #[serde(default)]
+    #[serde(rename = "enum", default)]
     pub enum_values: Option<Vec<serde_json::Value>>,
     #[serde(default)]
     pub default: Option<serde_json::Value>,
@@ -108,20 +108,27 @@ pub struct ParameterSchema {
     #[serde(default)]
     pub maximum: Option<serde_json::Value>,
 }
-
 #[derive(Debug, Deserialize, Serialize)]
-struct RequestBody {
+/// Describes an OpenAPI 3.x Request Body Object.
+///
+/// `content` maps media type strings (e.g., `"application/json"`) to their
+/// schema definitions. `required` indicates whether the body is mandatory
+/// in the request.
+pub struct RequestBody {
     #[serde(default)]
-    description: Option<String>,
-    content: Option<HashMap<String, MediaType>>,
+    pub description: Option<String>,
+    pub content: Option<HashMap<String, MediaType>>,
     #[serde(default)]
-    required: bool,
+    pub required: bool,
 }
-
 #[derive(Debug, Deserialize, Serialize)]
-struct MediaType {
+/// An OpenAPI 3.x Media Type Object.
+///
+/// Wraps the schema definition associated with a specific media type
+/// (e.g., `application/json`) in a request or response body.
+pub struct MediaType {
     #[serde(default)]
-    schema: Option<ParameterSchema>,
+    pub schema: Option<ParameterSchema>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -143,7 +150,7 @@ impl OpenApiSpec {
     pub fn from_file(path: &str) -> Result<Self> {
         let content = std::fs::read_to_string(path).context("Failed to read OpenAPI file")?;
         let p = Path::new(path);
-        match p.extension().and_then(|e| e.to_str()) {
+        match p.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() {
             Some("yaml") | Some("yml") => Self::from_yaml(&content),
             _ => Self::from_json(&content),
         }

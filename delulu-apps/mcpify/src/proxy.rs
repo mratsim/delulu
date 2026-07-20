@@ -37,47 +37,112 @@ impl ProxyClient {
         tracing::debug!("Proxy GET: {}", url);
 
         match self.client.get(url.as_str()).send().await {
-            Ok(response) => {
-                let status = response.status();
-
-                // Limit response to ~1M tokens (conservative 512KB) to fit in LLM context windows
-                if let Some(cl) = response.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<usize>().ok()) {
-                    if cl > 524_288 {
-                        return ProxyResponse::error(format!("Response too large: {} bytes (max 512KB)", cl));
-                    }
-                }
-
-                let body = match response.text().await {
-                    Ok(b) => b,
-                    Err(e) => return ProxyResponse::error(format!("Body read failed: {}", e)),
-                };
-
-                // Safety check even without Content-Length header
-                if body.len() > 524_288 {
-                    return ProxyResponse::error(format!("Response body too large: {} bytes (max 512KB)", body.len()));
-                }
-
-                if status.is_success() {
-                    match serde_json::from_str::<serde_json::Value>(&body) {
-                        Ok(json) => ProxyResponse::success(json),
-                        Err(_) => ProxyResponse::error(format!(
-                            "Non-JSON response (HTTP {}): {}",
-                            status,
-                            truncate_error_body(&body, 500)
-                        )),
-                    }
-                } else {
-                    let truncated = if body.len() > 500 {
-                        format!("{}...", truncate_error_body(&body, 500))
-                    } else {
-                        body
-                    };
-                    ProxyResponse::error(format!("HTTP {}: {}", status, truncated))
-                }
-            }
+            Ok(mut response) => Self::process_response(&mut response).await,
             Err(e) => ProxyResponse::error(format!("Request failed: {}", e)),
         }
     }
+
+    /// Execute an HTTP POST request against the constructed URL.
+    ///
+    /// Path parameters are substituted into `{paramName}` placeholders (same as GET).
+    /// Non-path parameters are serialized as a JSON body.
+    pub async fn post(
+        &self,
+        base_url: &str,
+        path: &str,
+        params: HashMap<String, Value>,
+        path_param_names: &[String],
+    ) -> ProxyResponse {
+        // For POST, only pass path params to build_url (non-path params go in JSON body only)
+        let path_params_only: HashMap<String, Value> = params.clone()
+            .into_iter()
+            .filter(|(k, _)| path_param_names.contains(k))
+            .collect();
+        let url = build_url(base_url, path, path_params_only, path_param_names);
+
+        // Build JSON body from non-path parameters
+        let body: HashMap<String, Value> = params
+            .into_iter()
+            .filter(|(k, _)| !path_param_names.contains(k))
+            .collect();
+
+        tracing::debug!("Proxy POST: {} body={}", url, serde_json::to_string(&body).unwrap_or_default());
+
+        match self.client.post(url.as_str()).json(&body).send().await {
+            Ok(mut response) => Self::process_response(&mut response).await,
+            Err(e) => ProxyResponse::error(format!("Request failed: {}", e)),
+        }
+    }
+
+    /// Process an HTTP response: check size limits, read body incrementally,
+    /// parse JSON, and return a ProxyResponse.
+    async fn process_response(response: &mut wreq::Response) -> ProxyResponse {
+        let status = response.status();
+
+        // Limit response to ~1M tokens (conservative 512KB) to fit in LLM context windows
+        if let Some(cl) = response.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<usize>().ok()) {
+            if cl > 524_288 {
+                return ProxyResponse::error(format!("Response too large: {} bytes (max 512KB)", cl));
+            }
+        }
+
+        // Read body incrementally with size cap
+        let mut body_bytes: Vec<u8> = Vec::new();
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) => {
+                    body_bytes.extend_from_slice(&chunk);
+                    if body_bytes.len() > 524_288 {
+                        return ProxyResponse::error(format!(
+                            "Response body too large: exceeded 512KB limit"
+                        ));
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => return ProxyResponse::error(format!("Body read failed: {}", e)),
+            }
+        }
+
+        // Safety check even without Content-Length header
+        if body_bytes.len() > 524_288 {
+            return ProxyResponse::error(format!("Response body too large: {} bytes (max 512KB)", body_bytes.len()));
+        }
+        let body = match String::from_utf8(body_bytes) {
+            Ok(s) => s,
+            Err(e) => return ProxyResponse::error(format!(
+                "Response body is not valid UTF-8: {} at byte offset {}",
+                e.utf8_error(),
+                e.utf8_error().valid_up_to()
+            )),
+        };
+
+        if status.is_success() {
+            match serde_json::from_str::<serde_json::Value>(&body) {
+                Ok(json) => ProxyResponse::success(json),
+                Err(e) => {
+                    let truncated = if body.len() > 500 {
+                        format!("{}...", truncate_error_body(&body, 500))
+                    } else {
+                        body.clone()
+                    };
+                    ProxyResponse::error(format!(
+                        "Non-JSON response (HTTP {}): {} — parse error: {}",
+                        status,
+                        truncated,
+                        e
+                    ))
+                }
+            }
+        } else {
+            let truncated = if body.len() > 500 {
+                format!("{}...", truncate_error_body(&body, 500))
+            } else {
+                body
+            };
+            ProxyResponse::error(format!("HTTP {}: {}", status, truncated))
+        }
+    }
+
 }
 
 /// Convert a JSON value to its string representation for URL usage.
@@ -135,7 +200,7 @@ fn build_url(
             if i > 0 {
                 result.push('&');
             }
-            result.push_str(key);
+            result.push_str(&urlencoding::encode(key));
             result.push('=');
             result.push_str(&urlencoding::encode(val));
         }

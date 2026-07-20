@@ -11,7 +11,6 @@ use rmcp::service::serve_server;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
-use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -103,8 +102,8 @@ async fn main() -> Result<()> {
             // SECURITY: Default bind is 0.0.0.0 which exposes the server to
             // all network interfaces with no authentication. Future: default
             // to 127.0.0.1 and document --host 0.0.0.0 for explicit remote access.
-            let addr = format!("{}:{}", host, port)
-                .to_socket_addrs()
+            let addr = tokio::net::lookup_host(format!("{}:{}", host, port))
+                .await
                 .context("Failed to resolve host")?
                 .next()
                 .ok_or_else(|| anyhow::anyhow!("No addresses resolved for {}:{}", host, port))?;

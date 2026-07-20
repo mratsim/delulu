@@ -1,7 +1,7 @@
 #![cfg(feature = "mcp")]
 
 use anyhow::{Context, Result};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use tokio::time::{Duration, timeout};
 
 mod helpers;
@@ -21,6 +21,14 @@ async fn test_e2e_http_transport() -> Result<()> {
     // Start backend services
     let (sa, sda, pa) = start_service_a().await;
     let (sb, sdb, pb) = start_service_b().await;
+
+    // Create drop guard for backend services
+    let _backend_guard = E2eGuard {
+        shutdown_senders: vec![sda, sdb],
+        _server_tasks: vec![sa, sb],
+        children: vec![],
+        _stderr_tasks: vec![],
+    };
 
     // Wait for services to be healthy
     for (p, label) in [(pa, "A"), (pb, "B")] {
@@ -43,14 +51,14 @@ async fn test_e2e_http_transport() -> Result<()> {
 
     // Start mcpify instances
     let binary = find_binary()?;
-    let mut ca: Option<Child> = None;
-    let mut cb: Option<Child> = None;
+    let mut ca: Option<std::process::Child> = None;
+    let mut cb: Option<std::process::Child> = None;
     let mut sea: Option<tokio::task::JoinHandle<()>> = None;
     let mut seb: Option<tokio::task::JoinHandle<()>> = None;
 
     let mut c = Command::new(&binary)
         .args(["http", "--host", "127.0.0.1", "--port", &pa2.to_string(), &spec_a])
-        .stdout(Stdio::piped())
+        .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
         .context("spawn mcpify A")?;
@@ -59,12 +67,20 @@ async fn test_e2e_http_transport() -> Result<()> {
 
     let mut c = Command::new(&binary)
         .args(["http", "--host", "127.0.0.1", "--port", &pb2.to_string(), &spec_b])
-        .stdout(Stdio::piped())
+        .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
         .context("spawn mcpify B")?;
     seb = Some(stream_stderr_to_console(c.stderr.take().expect("stderr")));
     cb = Some(c);
+
+    // Create drop guard for mcpify children
+    let _mcpify_guard = E2eGuard {
+        shutdown_senders: vec![],
+        _server_tasks: vec![],
+        children: vec![ca, cb],
+        _stderr_tasks: vec![sea, seb],
+    };
 
     // Wait for mcpify instances to be ready (TCP connect, no /health endpoint)
     for (p, label) in [(pa2, "mcpify A"), (pb2, "mcpify B")] {
@@ -104,12 +120,6 @@ async fn test_e2e_http_transport() -> Result<()> {
     // Print Python output for debugging
     if !stdout.is_empty() { print!("{}", stdout); }
     if !stderr.is_empty() { eprint!("{}", stderr); }
-
-    // Cleanup
-    for c in [&mut ca, &mut cb] { if let Some(mut c) = c.take() { let _ = c.kill(); let _ = c.wait(); } }
-    let _ = sda.send(()); let _ = sa.await;
-    let _ = sdb.send(()); let _ = sb.await;
-    for h in [&mut sea, &mut seb] { if let Some(h) = h.take() { let _ = h.await; } }
 
     anyhow::ensure!(py_output.status.success(), "Python tests failed (exit: {:?})", py_output.status.code());
     Ok(())

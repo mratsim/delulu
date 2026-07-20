@@ -22,6 +22,14 @@ async fn test_e2e_stdio_transport() -> Result<()> {
     let (sa, sda, pa) = start_service_a().await;
     let (sb, sdb, pb) = start_service_b().await;
 
+    // Create drop guard for backend services
+    let _backend_guard = E2eGuard {
+        shutdown_senders: vec![sda, sdb],
+        _server_tasks: vec![sa, sb],
+        children: vec![],
+        _stderr_tasks: vec![],
+    };
+
     // Wait for services to be healthy
     for (p, label) in [(pa, "A"), (pb, "B")] {
         let start = std::time::Instant::now();
@@ -63,10 +71,6 @@ async fn test_e2e_stdio_transport() -> Result<()> {
     // Print Python output for debugging
     if !stdout.is_empty() { print!("{}", stdout); }
     if !stderr.is_empty() { eprint!("{}", stderr); }
-
-    // Cleanup
-    let _ = sda.send(()); let _ = sa.await;
-    let _ = sdb.send(()); let _ = sb.await;
 
     anyhow::ensure!(py_output.status.success(), "Python tests failed (exit: {:?})", py_output.status.code());
     Ok(())
