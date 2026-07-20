@@ -15,16 +15,20 @@ impl ProxyClient {
         Ok(Self { client })
     }
 
+    /// Execute an HTTP GET request against the constructed URL.
+    ///
+    /// Parameters named in `path_param_names` are substituted into `{paramName}`
+    /// placeholders in the path template and excluded from the query string.
+    /// All other parameters are appended as query string values, sorted by key
+    /// for deterministic output.
     pub async fn get(
         &self,
         base_url: &str,
         path: &str,
         params: HashMap<String, Value>,
+        path_param_names: &[String],
     ) -> ProxyResponse {
-        let url = match build_url(base_url, path, params) {
-            Ok(u) => u,
-            Err(e) => return ProxyResponse::error(format!("Failed to build URL: {}", e)),
-        };
+        let url = build_url(base_url, path, params, path_param_names);
 
         tracing::debug!("Proxy GET: {}", url);
 
@@ -52,56 +56,81 @@ impl ProxyClient {
     }
 }
 
-fn build_url(base_url: &str, path: &str, params: HashMap<String, Value>) -> Result<String, String> {
-    let mut url = base_url.to_string();
-    if !url.ends_with('/') && !path.starts_with('/') {
-        url.push('/');
+/// Convert a JSON value to its string representation for URL usage.
+fn param_value_to_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        other => other.to_string(),
     }
-    url.push_str(path);
+}
 
+fn build_url(
+    base_url: &str,
+    path: &str,
+    params: HashMap<String, Value>,
+    path_param_names: &[String],
+) -> String {
+    // Join base URL and path, avoiding double slashes
+    let base = base_url.trim_end_matches('/');
+    let mut result = format!("{}/", base);
+
+    // Substitute path parameters into the path template
+    let mut resolved_path = path.to_string();
     let mut query_params: Vec<(String, String)> = Vec::new();
+
     for (key, value) in params {
-        if let Some(v) = value.as_str() {
-            if !v.is_empty() {
-                query_params.push((key.clone(), v.to_string()));
-            }
-        } else if let Some(v) = value.as_i64() {
-            query_params.push((key.clone(), v.to_string()));
-        } else if let Some(v) = value.as_f64() {
-            query_params.push((key.clone(), v.to_string()));
-        } else if let Some(v) = value.as_bool() {
-            query_params.push((key.clone(), v.to_string()));
+        if path_param_names.contains(&key) {
+            // Path parameter: substitute {key} placeholder in the path template
+            let placeholder = format!("{{{}}}", key);
+            let val_str = param_value_to_string(&value);
+            let encoded = urlencoding::encode(&val_str);
+            resolved_path = resolved_path.replace(&placeholder, &encoded);
         } else {
-            query_params.push((key.clone(), value.to_string()));
+            // Query parameter: collect for query string construction
+            if let Some(v) = value.as_str() {
+                if !v.is_empty() {
+                    query_params.push((key, v.to_string()));
+                }
+            } else {
+                let val_str = param_value_to_string(&value);
+                query_params.push((key, val_str));
+            }
         }
     }
+
+    result.push_str(resolved_path.trim_start_matches('/'));
+
+    // Sort query params by key for deterministic output
+    query_params.sort_by(|a, b| a.0.cmp(&b.0));
 
     if !query_params.is_empty() {
-        url.push('?');
+        result.push('?');
         for (i, (key, val)) in query_params.iter().enumerate() {
             if i > 0 {
-                url.push('&');
+                result.push('&');
             }
-            url.push_str(key);
-            url.push('=');
-            url.push_str(&urlencoding::encode(val));
+            result.push_str(key);
+            result.push('=');
+            result.push_str(&urlencoding::encode(val));
         }
     }
 
-    Ok(url)
+    result
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct ProxyResponse {
-    pub success: bool,
+    success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Value>,
+    data: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    error: Option<String>,
 }
 
 impl ProxyResponse {
-    pub fn success<T: Serialize>(data: T) -> Self {
+    fn success<T: Serialize>(data: T) -> Self {
         Self {
             success: true,
             data: Some(serde_json::to_value(data).unwrap_or(Value::Null)),
@@ -109,7 +138,7 @@ impl ProxyResponse {
         }
     }
 
-    pub fn error<T: Into<String>>(msg: T) -> Self {
+    fn error<T: Into<String>>(msg: T) -> Self {
         Self {
             success: false,
             data: None,
@@ -117,3 +146,7 @@ impl ProxyResponse {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/proxy_test.rs"]
+mod tests;

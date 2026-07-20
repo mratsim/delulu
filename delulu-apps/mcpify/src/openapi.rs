@@ -4,28 +4,28 @@ use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct OpenApiSpec {
-    pub openapi: String,
+    openapi: String,
     pub info: Info,
     #[serde(default)]
-    pub servers: Vec<Server>,
+    servers: Vec<Server>,
     pub paths: Paths,
     #[serde(default)]
-    pub components: Component,
+    components: Component,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Info {
     pub title: String,
     #[serde(default)]
-    pub description: Option<String>,
-    pub version: String,
+    description: Option<String>,
+    version: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Server {
-    pub url: String,
+struct Server {
+    url: String,
     #[serde(default)]
-    pub description: Option<String>,
+    description: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default, Serialize)]
@@ -56,7 +56,7 @@ pub struct Operation {
     #[serde(default)]
     pub parameters: Vec<Parameter>,
     #[serde(default)]
-    pub request_body: Option<RequestBody>,
+    request_body: Option<RequestBody>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -109,28 +109,28 @@ pub struct ParameterSchema {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct RequestBody {
+struct RequestBody {
     #[serde(default)]
-    pub description: Option<String>,
-    pub content: Option<HashMap<String, MediaType>>,
+    description: Option<String>,
+    content: Option<HashMap<String, MediaType>>,
     #[serde(default)]
-    pub required: bool,
+    required: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct MediaType {
+struct MediaType {
     #[serde(default)]
-    pub schema: Option<ParameterSchema>,
+    schema: Option<ParameterSchema>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
-pub struct Component {
+struct Component {
     #[serde(default)]
-    pub schemas: Option<HashMap<String, ParameterSchema>>,
+    schemas: Option<HashMap<String, ParameterSchema>>,
 }
 
 impl OpenApiSpec {
-    pub fn from_json(json: &str) -> Result<Self> {
+    fn from_json(json: &str) -> Result<Self> {
         serde_json::from_str(json).context("Failed to parse OpenAPI spec")
     }
 
@@ -141,16 +141,5 @@ impl OpenApiSpec {
 
     pub fn base_url(&self) -> Option<&str> {
         self.servers.first().map(|s| s.url.as_str())
-    }
-
-    pub fn get_operation(&self, path: &str, method: &str) -> Option<&Operation> {
-        self.paths
-            .0
-            .get(path)
-            .and_then(|path_item| match method.to_lowercase().as_str() {
-                "get" => path_item.get.as_ref(),
-                "post" => path_item.post.as_ref(),
-                _ => None,
-            })
     }
 }

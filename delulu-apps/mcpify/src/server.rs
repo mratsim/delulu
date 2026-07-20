@@ -1,4 +1,4 @@
-use crate::openapi::{OpenApiSpec, Operation};
+use crate::openapi::{OpenApiSpec, Operation, ParameterLocation};
 use crate::proxy::ProxyClient;
 use anyhow::Result;
 use futures::FutureExt;
@@ -85,10 +85,19 @@ impl McpifyServer {
         let base_url = base_url.to_string();
         let path = path.to_string();
 
+        // Extract path parameter names from the operation definition
+        let path_param_names: Vec<String> = op
+            .parameters
+            .iter()
+            .filter(|p| matches!(p.location, ParameterLocation::Path))
+            .map(|p| p.name.clone())
+            .collect();
+
         let handler: Arc<DynCallToolHandler<McpifyServer>> = Arc::new(
             move |ctx: ToolCallContext<'_, McpifyServer>| {
                 let base_url = base_url.clone();
                 let path = path.clone();
+                let path_param_names = path_param_names.clone();
                 let proxy = proxy.clone();
                 async move {
                     let params = ctx.arguments.unwrap_or_default();
@@ -97,7 +106,9 @@ impl McpifyServer {
                         .map(|(k, v)| (k, v))
                         .collect();
 
-                    let result = proxy.get(&base_url, &path, params_map).await;
+                    let result = proxy
+                        .get(&base_url, &path, params_map, &path_param_names)
+                        .await;
 
                     let json = serde_json::to_value(&result).unwrap_or(json!({"error": "Serialization failed"}));
                     Ok(CallToolResult::success(vec![rmcp::model::Content::text(

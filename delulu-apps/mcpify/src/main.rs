@@ -2,10 +2,11 @@ mod openapi;
 mod proxy;
 mod server;
 
-use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
 use openapi::OpenApiSpec;
 use server::McpifyServer;
+
+use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
 use rmcp::service::serve_server;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
