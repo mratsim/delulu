@@ -1,0 +1,69 @@
+[package]
+name = "delulu-paper-search-iacr"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0"
+description = "IACR ePrint paper search - CLI and MCP server"
+
+[features]
+default = ["cli", "mcp"]
+cli = ["dep:clap"]
+mcp = [
+    "dep:rmcp",
+    "dep:schemars",
+    "dep:axum",
+    "tracing-subscriber/env-filter",
+    "tokio/signal",
+    "rmcp/transport-io",
+    "rmcp/transport-streamable-http-server",
+]
+
+[dependencies]
+wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
+delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
+anyhow = "1.0"
+chrono = { version = "0.4.20", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+scraper = "0.17"
+regex = { version = "1.10", default-features = false, features = ["unicode-perl", "unicode-case"] }
+clap = { version = "4", features = ["derive"], optional = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["time", "chrono"] }
+urlencoding = "2"
+schemars = { version = "1.0", features = ["derive"], optional = true }
+axum = { version = "0.7", optional = true }
+rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
+serde-xml-rs = "0.8"
+
+[dev-dependencies]
+zstd = { version = "0.13", features = ["experimental"] }
+paper-search-test-utils = { path = "../paper-search-test-utils" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "process"] }
+
+[package.metadata.mcp]
+name = "delulu-paper-search-iacr"
+version = "0.1.0"
+description = "Search papers on IACR ePrint Archive by keyword, author, or year"
+
+[[bin]]
+name = "delulu-iacr"
+path = "src/main_cli.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "delulu-iacr-mcp"
+path = "src/main_mcp.rs"
+required-features = ["mcp"]
+
+
+
+[[test]]
+name = "iacr_integration"
+path = "tests/integration/iacr_integration_test.rs"
+
+[[test]]
+name = "iacr_mcp_e2e"
+path = "tests/integration/iacr_mcp_e2e_test.rs"
+required-features = ["mcp"]
