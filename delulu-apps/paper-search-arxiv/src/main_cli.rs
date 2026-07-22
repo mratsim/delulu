@@ -68,6 +68,12 @@ enum Command {
         /// Comma-separated list of arXiv IDs (e.g. "2301.12345,2302.67890")
         ids: String,
     },
+
+    /// Fetch a full paper as markdown from arXiv HTML5
+    GetPaper {
+        /// arXiv ID (e.g. "1706.03762" or "cond-mat/0011267")
+        arxiv_id: String,
+    },
 }
 
 #[tokio::main]
@@ -121,6 +127,14 @@ async fn main() -> Result<()> {
             let output = serde_json::to_string_pretty(&papers)
                 .context("Failed to serialize results")?;
             println!("{}", output);
+        }
+        Command::GetPaper { arxiv_id } => {
+            tracing::info!("Fetching paper: {}", arxiv_id);
+            let md = client
+                .get_paper(&arxiv_id)
+                .await
+                .context("arXiv paper fetch failed")?;
+            println!("{}", md);
         }
     }
 

@@ -689,6 +689,7 @@ dependencies = [
  "chrono",
  "clap",
  "delulu-rate-limited-crawler",
+ "delulu-webfetch",
  "paper-search-test-utils",
  "rmcp",
  "schemars",

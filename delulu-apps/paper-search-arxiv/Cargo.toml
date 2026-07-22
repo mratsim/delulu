@@ -22,6 +22,7 @@ mcp = [
 [dependencies]
 wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
 delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
+delulu-webfetch = { path = "../../delulu-apps/webfetch" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
 anyhow = "1.0"
 chrono = { version = "0.4.20", features = ["serde"] }

@@ -93,6 +93,13 @@ pub struct GetPapersByIdInput {
     pub ids: String,
 }
 
+
+/// Input parameters for fetching a full paper as markdown.
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetPaperInput {
+    /// arXiv ID (e.g. "1706.03762" or "cond-mat/0011267")
+    pub arxiv_id: String,
+}
 #[derive(Clone)]
 pub struct ArxivMcpServer {
     client: Arc<ArxivClient>,
@@ -152,6 +159,23 @@ impl ArxivMcpServer {
             .map_err(|e| format!("arXiv fetch failed: {e}"))?;
 
         serde_json::to_string(&papers).map_err(|e| e.to_string())
+    }
+
+    #[tool(
+        name = "get_paper",
+        description = "Fetch a full paper from arXiv as markdown. Downloads the arXiv HTML5 version, strips navigation chrome, and converts to markdown with LaTeX math preserved. Parameters: arxiv_id (arXiv ID, e.g. '1706.03762')."
+    )]
+    async fn get_paper(
+        &self,
+        params: Parameters<GetPaperInput>,
+    ) -> Result<String, String> {
+        let input = params.0;
+        let md = self
+            .client
+            .get_paper(&input.arxiv_id)
+            .await
+            .map_err(|e| format!("arXiv paper fetch failed: {e}"))?;
+        Ok(md)
     }
 }
 

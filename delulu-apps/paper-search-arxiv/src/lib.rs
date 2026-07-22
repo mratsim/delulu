@@ -122,4 +122,48 @@ impl ArxivClient {
 
         Ok(papers)
     }
+
+    /// Fetch the full paper as markdown from arXiv HTML5.
+    ///
+    /// Downloads the arXiv HTML5 version of the paper and runs the
+    /// `dl_arxiv` cleaning pipeline to produce clean markdown with
+    /// LaTeX math preserved.
+    ///
+    /// # Arguments
+    ///
+    /// * `arxiv_id` — arXiv ID, e.g. "1706.03762" or "cond-mat/0011267"
+    ///
+    /// # Returns
+    ///
+    /// Markdown string with LaTeX math, complex tables as raw HTML.
+    pub async fn get_paper(&self, arxiv_id: &str) -> Result<String> {
+        let url = format!("https://arxiv.org/html/{}", arxiv_id);
+        tracing::debug!("arXiv HTML5 request: {}", url);
+
+        let response = self
+            .crawler
+            .get(&url)
+            .await
+            .context("arXiv HTML5 fetch failed")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            anyhow::bail!(
+                "arXiv HTML5 returned HTTP {} for paper '{}'",
+                status, arxiv_id,
+            );
+        }
+
+        let body = response
+            .text()
+            .await
+            .context("Failed to read arXiv HTML5 body")?;
+
+        let mut dom = delulu_webfetch::pipelines::parse_html(&body)
+            .context("Failed to parse arXiv HTML")?;
+        delulu_webfetch::pipelines::dl_arxiv::filter_arxiv(&mut dom);
+        let md = delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(&dom, None);
+
+        Ok(md)
+    }
 }
