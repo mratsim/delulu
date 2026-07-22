@@ -1,0 +1,21 @@
+//! Helper binary: run with `cargo test -p delulu-webfetch --test gen_expected_arxiv -- --nocapture`
+//! to regenerate expected.md.zst for the arXiv pipeline test.
+#[test]
+fn generate_expected_arxiv_output() {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture_path = manifest.join("tests/fixtures-arxiv/attention-is-all-you-need/source.html.zst");
+
+    let compressed = std::fs::read(&fixture_path).unwrap();
+    let decompressed = zstd::decode_all(compressed.as_slice()).unwrap();
+    let html = String::from_utf8(decompressed).unwrap();
+
+    let mut dom = delulu_webfetch::pipelines::parse_html(&html).unwrap();
+    delulu_webfetch::pipelines::dl_arxiv::filter_arxiv(&mut dom);
+    let md = delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(&dom, None);
+
+    let out_path = manifest.join("tests/fixtures-arxiv/attention-is-all-you-need/expected.md.zst");
+    let compressed_out = zstd::encode_all(md.as_bytes(), 3).unwrap();
+    std::fs::write(&out_path, &compressed_out).unwrap();
+    eprintln!("Written {} bytes -> {}", compressed_out.len(), out_path.display());
+    eprintln!("Markdown: {} chars", md.len());
+}

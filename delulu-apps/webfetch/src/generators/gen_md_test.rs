@@ -343,3 +343,68 @@ fn test_extract_code_block() {
     assert_eq!(lang, "python");
     assert_eq!(code, "print('hello')");
 }
+
+// ---------------------------------------------------------------------------
+// Math (LaTeXML MathML) tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_lower_inline_math() {
+    let node = DomNode::Element {
+        tag: "math".into(),
+        attrs: vec![
+            ("alttext".into(), "E=mc^2".into()),
+            ("display".into(), "inline".into()),
+        ],
+        children: vec![],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    let md = MarkdownLowerer::lower(&node, None);
+    assert_eq!(md, "$E=mc^2$");
+}
+
+#[test]
+fn test_lower_display_math() {
+    let node = DomNode::Element {
+        tag: "math".into(),
+        attrs: vec![
+            ("alttext".into(), "\\sum_{i=1}^n".into()),
+            ("display".into(), "block".into()),
+        ],
+        children: vec![],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    let md = MarkdownLowerer::lower(&node, None);
+    assert!(md.contains("$$\\displaystyle \\sum_{i=1}^n$$"), "display math: {}", md);
+}
+
+#[test]
+fn test_lower_math_no_alttext_falls_back_to_text() {
+    let node = DomNode::Element {
+        tag: "math".into(),
+        attrs: vec![],
+        children: vec![DomNode::Text("E=mc^2".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    let md = MarkdownLowerer::lower(&node, None);
+    assert_eq!(md, "E=mc^2");
+}
+
+#[test]
+fn test_serialize_math_to_latex() {
+    let node = DomNode::Element {
+        tag: "math".into(),
+        attrs: vec![
+            ("alttext".into(), "x^2".into()),
+            ("display".into(), "inline".into()),
+        ],
+        children: vec![],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    let html = serialize_node_to_html(&node);
+    assert_eq!(html, "$x^2$");
+}
