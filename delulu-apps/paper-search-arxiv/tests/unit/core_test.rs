@@ -26,7 +26,7 @@
 mod fixtures;
 
 use chrono::NaiveDate;
-use crate::core::{SearchQuery, parse_atom_response};
+use crate::core::{extract_arxiv_id, parse_atom_response, SearchQuery};
 
 /// Load the realistic fixture XML and verify parsing produces correct results.
 #[test]
@@ -175,4 +175,50 @@ fn test_search_query_url_encoding() {
     assert!(s.contains("search_query=au%3Asmith%20AND%20ti%3Alearning"));
     assert!(s.contains("max_results=5"));
     assert!(!s.contains("sortBy"));
+}
+
+// ---------------------------------------------------------------------------
+// arXiv ID extraction tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_extract_arxiv_id_standard() {
+    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/2301.12345"), "2301.12345");
+}
+
+#[test]
+fn test_extract_arxiv_id_https() {
+    assert_eq!(extract_arxiv_id("https://arxiv.org/abs/2301.12345"), "2301.12345");
+}
+
+#[test]
+fn test_extract_arxiv_id_with_version() {
+    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/2301.12345v2"), "2301.12345");
+}
+
+#[test]
+fn test_extract_arxiv_id_old_format() {
+    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/cond-mat/0011267"), "cond-mat/0011267");
+}
+
+#[test]
+fn test_extract_arxiv_id_old_format_with_version() {
+    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/cond-mat/0011267v1"), "cond-mat/0011267");
+}
+
+#[test]
+fn test_extract_arxiv_id_v_in_body() {
+    // 'v' character in the paper ID itself, not a version suffix
+    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/2301.12345v"), "2301.12345v");
+}
+
+
+#[test]
+fn test_extract_arxiv_id_strips_query_params() {
+    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/2301.12345?format=pdf"), "2301.12345");
+}
+
+#[test]
+fn test_extract_arxiv_id_strips_fragment() {
+    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/2301.12345#section2"), "2301.12345");
 }

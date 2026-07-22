@@ -84,7 +84,11 @@ impl PubmedClient {
     pub async fn fetch_abstracts(&self, ids: &str) -> Result<Vec<(String, String)>> {
         let url = format!("{}/efetch.fcgi?db=pubmed&id={}&rettype=medline&retmode=text", self.base_url, urlencoding::encode(ids));
         let body = self.get_text(&url).await?;
-        Ok(core::parse_abstract_text(&body))
+        let abstracts = core::parse_abstract_text(&body);
+        if abstracts.is_empty() && !ids.is_empty() {
+            anyhow::bail!("fetch_abstracts: parsed 0 abstracts for provided PMIDs (format may have changed)");
+        }
+        Ok(abstracts)
     }
 
     pub async fn find_related(&self, ids: &str) -> Result<core::RelatedArticles> {

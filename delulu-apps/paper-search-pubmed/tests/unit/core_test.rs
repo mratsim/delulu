@@ -21,8 +21,8 @@
 
 
 use crate::core::{
-    parse_abstract_text, parse_ecitmatch_text, parse_einfo_json, parse_elink_json,
-    parse_search_json, parse_summary_json, SearchQuery,
+    extract_pmc_id, parse_abstract_text, parse_ecitmatch_text, parse_einfo_json,
+    parse_elink_json, parse_search_json, parse_summary_json, DocSum, SearchQuery,
 };
 
 const FIXTURES_DIR: &str = "tests/fixtures";
@@ -93,6 +93,7 @@ fn test_parse_search_json_with_no_results() {
 // Summary JSON parsing tests
 // ---------------------------------------------------------------------------
 
+#[test]
 fn test_parse_summary_json_from_fixture() {
     let json = read_fixture("pubmed-summary.json.zst");
     let papers = parse_summary_json(&json).unwrap();
@@ -212,4 +213,41 @@ fn test_parse_ecitmatch_text_no_match() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].key, "key1");
     assert_eq!(results[0].pmid, ""); // empty PMID means no match
+}
+
+// ---------------------------------------------------------------------------
+// PMC ID extraction tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_extract_pmc_id_from_elocationid() {
+    let doc = DocSum {
+        elocationid: Some("doi: 10.1234/PMC9876543".into()),
+        ..Default::default()
+    };
+    assert_eq!(extract_pmc_id(&doc), Some("PMC9876543".into()));
+}
+
+#[test]
+fn test_extract_pmc_id_no_match() {
+    let doc = DocSum {
+        elocationid: Some("doi: 10.1234/10.5678".into()),
+        ..Default::default()
+    };
+    assert_eq!(extract_pmc_id(&doc), None);
+}
+
+#[test]
+fn test_extract_pmc_id_none_elocationid() {
+    let doc = DocSum { ..Default::default() };
+    assert_eq!(extract_pmc_id(&doc), None);
+}
+
+#[test]
+fn test_extract_pmc_id_pmc_in_middle() {
+    let doc = DocSum {
+        elocationid: Some("doi: 10.1234/PMC5555555/v2".into()),
+        ..Default::default()
+    };
+    assert_eq!(extract_pmc_id(&doc), Some("PMC5555555".into()));
 }

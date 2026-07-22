@@ -129,7 +129,7 @@ pub(crate) struct ESummaryResult {
 }
 
 /// A single document summary from ESummary.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub(crate) struct DocSum {
     pub uid: String,
     pub title: Option<String>,
@@ -474,6 +474,7 @@ pub fn parse_elink_json(json: &str) -> Result<RelatedArticles, String> {
         serde_json::from_str(json).map_err(|e| format!("JSON parse error: {}", e))?;
 
     let mut input_pmids: Vec<String> = Vec::new();
+    let mut seen_input: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut related: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
 
@@ -482,7 +483,7 @@ pub fn parse_elink_json(json: &str) -> Result<RelatedArticles, String> {
         if let Some(ref ids) = linkset.ids {
             for id_entry in ids {
                 if let Some(ref id) = id_entry.id {
-                    if !input_pmids.contains(id) {
+                    if seen_input.insert(id.clone()) {
                         input_pmids.push(id.clone());
                     }
                 }
@@ -499,8 +500,10 @@ pub fn parse_elink_json(json: &str) -> Result<RelatedArticles, String> {
                     // Associate with each input PMID
                     for input_id in &input_pmids {
                         let entry = related.entry(input_id.clone()).or_default();
+                        let mut seen_related: std::collections::HashSet<String> =
+                            entry.iter().cloned().collect();
                         for pmid in &pmids {
-                            if !entry.contains(pmid) {
+                            if seen_related.insert(pmid.clone()) {
                                 entry.push(pmid.clone());
                             }
                         }

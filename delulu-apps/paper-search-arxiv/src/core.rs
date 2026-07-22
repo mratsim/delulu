@@ -72,39 +72,39 @@ impl SearchQuery {
 /// prefixed elements (e.g. `arxiv:comment` → `arxiv_comment`).
 fn normalize_xml(raw: &str) -> String {
     let mut result = String::with_capacity(raw.len());
-    let bytes = raw.as_bytes();
-    let len = bytes.len();
+    let chars: Vec<char> = raw.chars().collect();
+    let len = chars.len();
     let mut i = 0;
 
     while i < len {
         // Check for xmlns declarations (preceded by whitespace)
         if i + 5 < len
-            && bytes[i].is_ascii_whitespace()
-            && bytes[i + 1] == b'x'
-            && bytes[i + 2] == b'm'
-            && bytes[i + 3] == b'l'
-            && bytes[i + 4] == b'n'
-            && bytes[i + 5] == b's'
+            && chars[i].is_ascii_whitespace()
+            && chars[i + 1] == 'x'
+            && chars[i + 2] == 'm'
+            && chars[i + 3] == 'l'
+            && chars[i + 4] == 'n'
+            && chars[i + 5] == 's'
         {
             // Find the closing quote of the xmlns value
             let mut close = i + 6;
-            while close < len && bytes[close] != b'>' && bytes[close] != b'/' {
+            while close < len && chars[close] != '>' && chars[close] != '/' {
                 close += 1;
             }
             // Skip past the entire xmlns="..." or xmlns:prefix="..."
             // Find the end of the attribute value
             let mut attr_end = i + 6;
             let mut in_value = false;
-            let mut quote_char = b'"';
+            let mut quote_char = '"';
             while attr_end < len {
                 if !in_value {
-                    if bytes[attr_end] == b'=' {
+                    if chars[attr_end] == '=' {
                         in_value = true;
                     }
-                } else if bytes[attr_end] == b'"' || bytes[attr_end] == b'\'' {
-                    if quote_char == b'"' {
-                        quote_char = bytes[attr_end];
-                    } else if bytes[attr_end] == quote_char {
+                } else if chars[attr_end] == '"' || chars[attr_end] == '\'' {
+                    if quote_char == '"' {
+                        quote_char = chars[attr_end];
+                    } else if chars[attr_end] == quote_char {
                         // End of attribute value
                         i = attr_end + 1;
                         break;
@@ -113,26 +113,26 @@ fn normalize_xml(raw: &str) -> String {
                 attr_end += 1;
             }
             if attr_end >= len {
-                result.push(bytes[i] as char);
+                result.push(chars[i]);
                 i += 1;
             }
             continue;
         }
 
         // Rename prefixed elements: <arxiv:comment> → <arxiv_comment>
-        if bytes[i] == b'<' {
+        if chars[i] == '<' {
             // Look ahead for a colon in the tag name
-            let tag_start = if i + 1 < len && (bytes[i + 1] == b'/' || bytes[i + 1] == b'?') {
+            let tag_start = if i + 1 < len && (chars[i + 1] == '/' || chars[i + 1] == '?') {
                 i + 2
             } else {
                 i + 1
             };
             let mut colon_pos = None;
             for j in tag_start..len {
-                if bytes[j] == b'>' || bytes[j] == b' ' || bytes[j] == b'/' || bytes[j] == b'?' {
+                if chars[j] == '>' || chars[j] == ' ' || chars[j] == '/' || chars[j] == '?' {
                     break;
                 }
-                if bytes[j] == b':' {
+                if chars[j] == ':' {
                     colon_pos = Some(j);
                     break;
                 }
@@ -140,7 +140,7 @@ fn normalize_xml(raw: &str) -> String {
             if let Some(col) = colon_pos {
                 // Copy everything before the colon, replace colon with underscore, skip colon
                 for k in i..col {
-                    result.push(bytes[k] as char);
+                    result.push(chars[k]);
                 }
                 result.push('_');
                 i = col + 1;
@@ -148,7 +148,7 @@ fn normalize_xml(raw: &str) -> String {
             }
         }
 
-        result.push(bytes[i] as char);
+        result.push(chars[i]);
         i += 1;
     }
 
@@ -389,7 +389,9 @@ fn extract_link_by_type(xml: &str, type_: &str) -> Option<String> {
 /// Extract arXiv ID from a URL like `http://arxiv.org/abs/2301.12345v2`.
 fn extract_arxiv_id(url: &str) -> String {
     let id = url.trim_start_matches("http://arxiv.org/abs/")
-        .trim_start_matches("https://arxiv.org/abs/");
+        .trim_start_matches("https://arxiv.org/abs/")
+        .split('?').next().unwrap_or("")
+        .split('#').next().unwrap_or("");
     // Strip version suffix (e.g. "2301.12345v2" → "2301.12345")
     if let Some(v_pos) = id.rfind('v') {
         if v_pos > 0 && id[v_pos..].len() > 1 && id[v_pos+1..].chars().all(|c| c.is_ascii_digit()) {
