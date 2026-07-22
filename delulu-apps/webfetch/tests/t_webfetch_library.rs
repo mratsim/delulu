@@ -57,12 +57,14 @@ fn generic_html_fixture_body() -> String {
 
 struct MockClient {
     responses: Arc<Mutex<HashMap<String, Response>>>,
+    mock_bytes: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
 impl MockClient {
     fn new() -> Self {
         Self {
             responses: Arc::new(Mutex::new(HashMap::new())),
+            mock_bytes: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -73,10 +75,12 @@ impl MockClient {
             Response {
                 status,
                 body: body.to_string(),
+                content_type: None,
             },
         );
         Self {
             responses: Arc::new(Mutex::new(map)),
+            mock_bytes: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -91,6 +95,7 @@ impl MockClient {
                 Response {
                     status,
                     body: body.to_string(),
+                    content_type: None,
                 },
             );
         }
@@ -115,6 +120,16 @@ impl HttpClient for MockClient {
             Some(r) => Ok(r),
             None => panic!("No mock response for {url}"),
         }
+    }
+
+    async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, WebbfetchError> {
+        let bytes = self.mock_bytes.lock().await;
+        if let Some(data) = bytes.get(url) {
+            return Ok(data.clone());
+        }
+        // Fall back to converting string body to bytes
+        let resp = self.get(url).await?;
+        Ok(resp.body.into_bytes())
     }
 }
 

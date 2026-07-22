@@ -131,3 +131,119 @@ fn test_source_type_round_trip() {
         assert_eq!(parsed, variant);
     }
 }
+
+// -- New SourceType variants --------------------------------------------------
+
+#[test]
+fn test_source_type_display_arxiv_pdf() {
+    assert_eq!(SourceType::ArxivPdf.to_string(), "arxiv_pdf");
+}
+
+#[test]
+fn test_source_type_display_document() {
+    assert_eq!(SourceType::Document.to_string(), "document");
+}
+
+#[test]
+fn test_source_type_from_str_arxiv_pdf() {
+    assert_eq!(
+        "arxiv_pdf".parse::<SourceType>().unwrap(),
+        SourceType::ArxivPdf
+    );
+}
+
+#[test]
+fn test_source_type_from_str_arxiv() {
+    assert_eq!(
+        "arxiv".parse::<SourceType>().unwrap(),
+        SourceType::ArxivPdf
+    );
+}
+
+#[test]
+fn test_source_type_from_str_document() {
+    assert_eq!(
+        "document".parse::<SourceType>().unwrap(),
+        SourceType::Document
+    );
+}
+
+#[test]
+fn test_source_type_from_str_doc() {
+    assert_eq!(
+        "doc".parse::<SourceType>().unwrap(),
+        SourceType::Document
+    );
+}
+
+#[test]
+fn test_source_type_from_str_arxiv_pdf_case_insensitive() {
+    assert_eq!(
+        "ArXiv_PDF".parse::<SourceType>().unwrap(),
+        SourceType::ArxivPdf
+    );
+    assert_eq!(
+        "ARXIV".parse::<SourceType>().unwrap(),
+        SourceType::ArxivPdf
+    );
+}
+
+#[test]
+fn test_source_type_from_str_document_case_insensitive() {
+    assert_eq!(
+        "DOCUMENT".parse::<SourceType>().unwrap(),
+        SourceType::Document
+    );
+    assert_eq!(
+        "Doc".parse::<SourceType>().unwrap(),
+        SourceType::Document
+    );
+}
+
+#[test]
+fn test_source_type_round_trip_includes_new() {
+    for variant in [
+        SourceType::ArxivPdf,
+        SourceType::Document,
+    ] {
+        let display = variant.to_string();
+        let parsed: SourceType = display.parse().unwrap();
+        assert_eq!(parsed, variant);
+    }
+}
+
+// -- New WebbfetchError variants ----------------------------------------------
+
+#[test]
+fn test_error_io() {
+    let e = WebbfetchError::IoError("file not found".into());
+    assert_eq!(e.to_string(), "I/O error: file not found");
+}
+
+#[test]
+fn test_error_xberg() {
+    let e = WebbfetchError::XbergError("xberg service unavailable".into());
+    assert_eq!(e.to_string(), "xberg error: xberg service unavailable");
+}
+
+// -- Response content_type ----------------------------------------------------
+
+#[test]
+fn test_response_content_type_some() {
+    let r = Response {
+        status: 200,
+        body: "hello".into(),
+        content_type: Some("text/html".into()),
+    };
+    assert_eq!(r.content_type.as_deref(), Some("text/html"));
+}
+
+#[test]
+fn test_response_content_type_none() {
+    let r = Response {
+        status: 200,
+        body: "hello".into(),
+        content_type: None,
+    };
+    assert_eq!(r.content_type, None);
+}

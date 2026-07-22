@@ -40,6 +40,8 @@ axum = { version = "0.7", optional = true }
 rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
 thiserror = "2"
 async-trait = "0.1"
+xberg = { version = "1.0.0-rc.32", default-features = false, features = ["html", "pdf", "tokio-runtime"] }
+tempfile = "3.10"
 
 [dev-dependencies]
 zstd = "0.13"
@@ -70,3 +72,7 @@ path = "tests/pipeline_readability/diag_rd_pipeline.rs"
 name = "t_webfetch_mcp"
 path = "tests/t_webfetch_mcp.rs"
 required-features = ["mcp"]
+
+[[test]]
+name = "t_fetch_doc_e2e"
+path = "tests/t_fetch_doc_e2e.rs"

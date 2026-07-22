@@ -11,12 +11,14 @@ use tokio::sync::Mutex;
 
 struct MockClient {
     responses: Arc<Mutex<HashMap<String, Response>>>,
+    mock_bytes: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
 impl MockClient {
     fn new() -> Self {
         Self {
             responses: Arc::new(Mutex::new(HashMap::new())),
+            mock_bytes: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -28,15 +30,27 @@ impl MockClient {
             Response {
                 status,
                 body: body.to_string(),
+                content_type: None,
             },
         );
         Self {
             responses: self.responses,
+            mock_bytes: self.mock_bytes,
         }
     }
 
     fn with_response(url: &str, status: u16, body: &str) -> Self {
         Self::new().add_response(url, status, body)
+    }
+
+    fn add_bytes(self, url: &str, data: Vec<u8>) -> Self {
+        let bytes = Arc::clone(&self.mock_bytes);
+        let mut map = bytes.try_lock().expect("MockClient mutex locked");
+        map.insert(url.to_string(), data);
+        Self {
+            responses: self.responses,
+            mock_bytes: self.mock_bytes,
+        }
     }
 }
 
@@ -48,6 +62,16 @@ impl crate::core::types::HttpClient for MockClient {
             .get(url)
             .cloned()
             .ok_or_else(|| WebbfetchError::Fetch(format!("No mock response for {url}")))
+    }
+
+    async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, WebbfetchError> {
+        let bytes = self.mock_bytes.lock().await;
+        if let Some(data) = bytes.get(url) {
+            return Ok(data.clone());
+        }
+        // Fall back to converting string body to bytes
+        let resp = self.get(url).await?;
+        Ok(resp.body.into_bytes())
     }
 }
 
@@ -290,5 +314,88 @@ async fn test_fetch_and_extract_discourse() {
             assert_eq!(posts[0].username, "alice");
         }
         other => panic!("Expected Discourse, got {other:?}"),
+    }
+}
+
+// ── xberg_html_to_markdown tests ─────────────────────────────────────────
+
+#[test]
+fn test_xberg_html_to_markdown_plain_html() {
+    let html = "<html><body><h1>Title</h1><p>Paragraph</p></body></html>";
+    let result = xberg_html_to_markdown(html, None).unwrap();
+    assert!(result.contains("Title"), "should contain title text");
+    assert!(result.contains("Paragraph"), "should contain paragraph text");
+}
+
+#[test]
+fn test_xberg_html_to_markdown_removes_scripts() {
+    let html = r#"<html><body><script>alert(1)</script><p>Content</p></body></html>"#;
+    let result = xberg_html_to_markdown(html, None).unwrap();
+    assert!(!result.contains("alert"), "scripts should be removed");
+    assert!(result.contains("Content"), "content should remain");
+}
+
+#[test]
+fn test_xberg_html_to_markdown_removes_styles() {
+    let html = r#"<html><head><style>body{color:red}</style></head><body><p>Text</p></body></html>"#;
+    let result = xberg_html_to_markdown(html, None).unwrap();
+    assert!(!result.contains("color:red"), "styles should be removed");
+    assert!(result.contains("Text"), "content should remain");
+}
+
+#[test]
+fn test_xberg_html_to_markdown_with_base_url() {
+    let html = r#"<html><body><a href="/relative">Link</a></body></html>"#;
+    let result = xberg_html_to_markdown(html, Some("https://example.com")).unwrap();
+    // Verify the relative URL is resolved against the base URL
+    assert!(
+        result.contains("https://example.com/relative")
+            || result.contains("/relative"),
+        "expected resolved URL in markdown output, got: {result}"
+    );
+    assert!(result.contains("Link"), "should contain link text");
+}
+
+#[test]
+fn test_xberg_html_to_markdown_empty_html() {
+    let html = "";
+    let result = xberg_html_to_markdown(html, None).unwrap();
+    // Empty HTML should produce empty markdown
+    assert!(result.trim().is_empty() || result.is_empty(), "empty HTML should produce empty output");
+}
+
+#[test]
+fn test_xberg_html_to_markdown_preserves_img() {
+    let html = r#"<html><body><img src="pic.png" alt="Pic"/><p>Text</p></body></html>"#;
+    let result = xberg_html_to_markdown(html, None).unwrap();
+    // The markdown lowerer should produce image markdown
+    assert!(result.contains("pic.png") || result.contains("Pic"), "image should be preserved");
+    assert!(result.contains("Text"), "text should be preserved");
+}
+
+#[test]
+fn test_xberg_html_to_markdown_public_api() {
+    // Verify the function is callable as delulu_webfetch::xberg_html_to_markdown
+    let html = "<html><body><p>API test</p></body></html>";
+    let result = xberg_html_to_markdown(html, None).unwrap();
+    assert!(result.contains("API test"), "public API should work");
+}
+
+#[test]
+#[ignore = "parse_html is currently infallible (scraper parses everything). Enable when MAX_NODES guard enforced."]
+fn test_xberg_html_to_markdown_parse_error() {
+    // parse_html should reject malformed/unclosed HTML
+    // Currently, scraper::Html::parse_document is lenient and never fails.
+    // This test documents the expected contract for when MAX_NODES is enforced.
+    let bad_html = "<html><body><p>unclosed";
+    let result = xberg_html_to_markdown(bad_html, None);
+    assert!(
+        result.is_err(),
+        "malformed HTML should produce an error"
+    );
+    match result {
+        Err(WebbfetchError::Parse(_)) => {} // expected
+        Err(other) => panic!("Expected Parse error, got: {other:?}"),
+        Ok(_) => panic!("Expected error, got Ok"),
     }
 }

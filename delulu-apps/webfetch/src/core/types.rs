@@ -14,6 +14,10 @@ pub enum SourceType {
     Reddit,
     Discourse,
     GenericHtml,
+    /// arXiv PDF documents fetched via the arXiv API.
+    ArxivPdf,
+    /// Generic document (PDF, plain text, etc.) fetched via xberg.
+    Document,
 }
 
 impl fmt::Display for SourceType {
@@ -22,6 +26,8 @@ impl fmt::Display for SourceType {
             Self::Reddit => write!(f, "reddit"),
             Self::Discourse => write!(f, "discourse"),
             Self::GenericHtml => write!(f, "generic_html"),
+            Self::ArxivPdf => write!(f, "arxiv_pdf"),
+            Self::Document => write!(f, "document"),
         }
     }
 }
@@ -34,6 +40,8 @@ impl FromStr for SourceType {
             "reddit" => Ok(Self::Reddit),
             "discourse" => Ok(Self::Discourse),
             "generic_html" | "generic" | "html" => Ok(Self::GenericHtml),
+            "arxiv_pdf" | "arxiv" => Ok(Self::ArxivPdf),
+            "document" | "doc" => Ok(Self::Document),
             _ => Err(format!("unknown source type: {s}")),
         }
     }
@@ -65,6 +73,17 @@ pub enum WebbfetchError {
 
     #[error("Authentication required: {0}")]
     AuthRequired(String),
+
+    /// I/O error from the underlying HTTP transport or filesystem.
+    /// Raised when temp file creation, writing, or document size checks fail
+    /// during document fetch (xberg pipeline).
+    #[error("I/O error: {0}")]
+    IoError(String),
+
+    /// Error returned by the xberg document-fetching backend.
+    /// Raised when xberg extraction fails or times out (120s timeout exceeded).
+    #[error("xberg error: {0}")]
+    XbergError(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +94,8 @@ pub enum WebbfetchError {
 pub struct Response {
     pub status: u16,
     pub body: String,
+    /// MIME type / content-type header value from the HTTP response.
+    pub content_type: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +105,9 @@ pub struct Response {
 #[async_trait]
 pub trait HttpClient: Send + Sync {
     async fn get(&self, url: &str) -> Result<Response, WebbfetchError>;
+
+    /// Fetch a URL and return the raw bytes of the response body.
+    async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, WebbfetchError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,8 +203,9 @@ pub struct UrlInfo {
 pub struct FetchResult {
     pub url: UrlInfo,
     pub content: ExtractionResult,
+    /// MIME type / content-type header value from the HTTP response.
+    pub content_type: Option<String>,
 }
-
 #[cfg(test)]
 #[path = "types_test.rs"]
 mod tests;

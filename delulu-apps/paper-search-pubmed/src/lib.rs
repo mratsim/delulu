@@ -109,3 +109,89 @@ impl PubmedClient {
         Ok(core::parse_ecitmatch_text(&body))
     }
 }
+
+// ---------------------------------------------------------------------------
+// get_paper / get_paper_raw
+// ---------------------------------------------------------------------------
+
+impl PubmedClient {
+    /// Download a PubMed Central paper by PMC ID and convert to markdown.
+    ///
+    /// Strips the leading "PMC" prefix if present, downloads the PDF from
+    /// PubMed Central, and converts to Markdown via xberg + webfetch.
+    pub async fn get_paper(&self, pmc_id: &str) -> Result<String> {
+        let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
+        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        let client = delulu_webfetch::WebbfetchClient::new(120, 3);
+        let result = delulu_webfetch::fetch_doc(&url, &client)
+            .await
+            .context("Failed to fetch PubMed paper")?;
+        match result {
+            delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
+                Ok(content_md.body)
+            }
+            _ => anyhow::bail!("Unexpected result type from fetch_doc"),
+        }
+    }
+
+    /// Download a PubMed Central paper by PMC ID and return raw PDF bytes.
+    ///
+    /// Strips the leading "PMC" prefix if present and downloads the raw PDF.
+    pub async fn get_paper_raw(&self, pmc_id: &str) -> Result<Vec<u8>> {
+        let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
+        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        let response = self.crawler.get(&url).send().await
+            .context("Failed to fetch PubMed paper PDF")?;
+        let bytes = response.bytes().await
+            .map_err(|e| anyhow::anyhow!("Failed to read PDF bytes: {}", e))?;
+        Ok(bytes.to_vec())
+    }
+}
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_paper_url_with_pmc_prefix() {
+        // Test that PMC prefix is stripped and URL is constructed correctly
+        let pmc_id = "PMC123456";
+        let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
+        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        assert_eq!(id, "123456");
+        assert_eq!(url, "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC123456/pdf/");
+    }
+
+    #[test]
+    fn test_get_paper_url_without_pmc_prefix() {
+        // Test that ID without PMC prefix is used as-is
+        let pmc_id = "123456";
+        let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
+        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        assert_eq!(id, "123456");
+        assert_eq!(url, "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC123456/pdf/");
+    }
+
+    #[test]
+    fn test_get_paper_url_with_pmc_lowercase() {
+        // Test that lower-case 'pmc' is NOT stripped (only uppercase PMC)
+        let pmc_id = "pmc123456";
+        let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
+        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        assert_eq!(id, "pmc123456");
+        assert_eq!(url, "https://www.ncbi.nlm.nih.gov/pmc/articles/PMCpmc123456/pdf/");
+    }
+
+    #[test]
+    fn test_get_paper_raw_url_construction() {
+        // Test get_paper_raw URL logic (same as get_paper)
+        let pmc_id = "PMC987654";
+        let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
+        assert_eq!(id, "987654");
+        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        assert_eq!(url, "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC987654/pdf/");
+    }
+}

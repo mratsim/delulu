@@ -32,8 +32,11 @@ use crate::core::detect::{
 /// Maximum allowed URL length.
 const MAX_URL_LENGTH: usize = 2048;
 
-/// Maximum response body size (10 MB).
-const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
+/// Maximum response body size (50 MB).
+/// Per spec: raised from 10 MB to 50 MB to support PDF downloads via fetch_doc.
+/// The text-fetch path (used for HTML/JSON) is unlikely to hit this limit;
+/// the 50 MB ceiling primarily serves as a safety guard against runaway responses.
+const MAX_BODY_SIZE: usize = 50 * 1024 * 1024;
 
 /// Default per-domain QPS limit.
 const DEFAULT_QPS: u64 = 2;
@@ -76,6 +79,14 @@ impl HttpClient for WreqClient {
             .map_err(|e| WebbfetchError::Fetch(format!("HTTP request failed: {e}")))?;
 
         let status = resp.status().as_u16();
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            // NOTE: Non-UTF-8 Content-Type headers are silently dropped.
+            // This is a pre-existing limitation from Sprint A. If the server
+            // sends a Content-Type with non-UTF-8 parameter bytes, MIME-based
+            // document detection is skipped entirely with no diagnostic signal.
+            .and_then(|v| v.to_str().ok().map(String::from));
 
         // TODO: fuzz/hardening — resp.text() buffers the entire body before the
         // size check runs, creating an OOM vector on large responses. Should stream
@@ -94,7 +105,31 @@ impl HttpClient for WreqClient {
             )));
         }
 
-        Ok(Response { status, body })
+        Ok(Response { status, body, content_type })
+    }
+
+    async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, WebbfetchError> {
+        let resp = self
+            .inner
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| WebbfetchError::Fetch(format!("HTTP request failed: {e}")))?;
+
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| WebbfetchError::Fetch(format!("Failed to read response bytes: {e}")))?;
+
+        if bytes.len() > MAX_BODY_SIZE {
+            return Err(WebbfetchError::Fetch(format!(
+                "Response body too large: {} bytes (max {})",
+                bytes.len(),
+                MAX_BODY_SIZE
+            )));
+        }
+
+        Ok(bytes.to_vec())
     }
 }
 
@@ -182,6 +217,14 @@ impl WebbfetchClient {
         self.fetch_with_config_inner(url, config).await
     }
 
+    /// Fetch raw bytes from a URL.
+    ///
+    /// Delegates to the underlying HTTP client's `get_bytes` method.
+    /// Useful for downloading binary content (PDFs, documents, etc.).
+    pub async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, WebbfetchError> {
+        self.client.get_bytes(url).await
+    }
+
     /// Internal implementation shared by `fetch` and `fetch_with_config`.
     async fn fetch_with_config_inner(
         &self,
@@ -220,13 +263,15 @@ impl WebbfetchClient {
             SourceType::Reddit => reddit_url_to_api_url(url),
             SourceType::Discourse => url.to_string(), // unreachable from URL detection; Discourse is detected from content in lib.rs
             SourceType::GenericHtml => url.to_string(),
+            SourceType::ArxivPdf => url.to_string(),
+            SourceType::Document => url.to_string(),
         };
 
         // 4. Get or create per-domain queue
         let queue = self.get_or_create_queue(&domain, config.qps).await;
 
         // 5. Execute fetch with retry + timeout
-        let result = self.execute_fetch(&queue, &fetch_url, config).await?;
+        let (result, content_type) = self.execute_fetch(&queue, &fetch_url, config).await?;
 
         let url_info = UrlInfo {
             url: url.to_string(),
@@ -237,6 +282,7 @@ impl WebbfetchClient {
         Ok(FetchResult {
             url: url_info,
             content: result,
+            content_type,
         })
     }
 
@@ -254,12 +300,13 @@ impl WebbfetchClient {
     }
 
     /// Execute the HTTP fetch with retry logic and a total-operation timeout.
+    /// Returns the extraction result and the response content-type.
     async fn execute_fetch(
         &self,
         queue: &QueryQueue,
         url: &str,
         config: &FetchConfig,
-    ) -> Result<ExtractionResult, WebbfetchError> {
+    ) -> Result<(ExtractionResult, Option<String>), WebbfetchError> {
         // Wrap the entire operation in a timeout.
         let timeout_dur = Duration::from_secs(config.timeout_secs);
 
@@ -274,12 +321,13 @@ impl WebbfetchClient {
     }
 
     /// Core fetch with per-error retry logic.
+    /// Returns the extraction result and the response content-type.
     async fn fetch_with_retry(
         &self,
         queue: &QueryQueue,
         url: &str,
         _config: &FetchConfig,
-    ) -> Result<ExtractionResult, WebbfetchError> {
+    ) -> Result<(ExtractionResult, Option<String>), WebbfetchError> {
         let mut retry_count_429 = 0u32;
         let max_retries_429 = 3u32;
         let mut retry_count_5xx = 0u32;
@@ -323,6 +371,9 @@ impl WebbfetchClient {
                 }
             };
 
+            // Capture content_type before response.body is moved
+            let content_type = response.content_type.clone();
+
             // Check for bot detection
             if is_bot_detected(&response.body) {
                 return Err(WebbfetchError::Fetch(
@@ -340,12 +391,13 @@ impl WebbfetchClient {
                 // Build the extraction result.
                 // Store the raw response body as GenericHtml;
                 // structured parsing (Reddit JSON, Discourse JSON) is deferred.
-                return Ok(ExtractionResult::GenericHtml {
+                let result = ExtractionResult::GenericHtml {
                     content_md: MarkdownDocument {
                         frontmatter: String::new(),
                         body: response.body,
                     },
-                });
+                };
+                return Ok((result, content_type));
             }
 
             // Handle non-2xx status codes
@@ -383,7 +435,6 @@ impl WebbfetchClient {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-
 #[cfg(test)]
 #[path = "http_client_test.rs"]
 mod tests;

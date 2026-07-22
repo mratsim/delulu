@@ -87,6 +87,15 @@ pub struct DownloadPaperPdfInput {
     pub number: u32,
 }
 
+/// Input parameters for fetching a full paper as markdown.
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetPaperInput {
+    /// Publication year (e.g. 2024)
+    pub year: u32,
+    /// Paper number within the year (e.g. 1279)
+    pub number: u32,
+}
+
 #[derive(Clone)]
 pub struct IacrMcpServer {
     client: Arc<IacrClient>,
@@ -150,6 +159,23 @@ impl IacrMcpServer {
         let input = params.0;
         let url = self.client.download_paper_pdf(input.year, input.number);
         Ok(url)
+    }
+
+    #[tool(
+        name = "get_paper",
+        description = "Fetch a full paper from IACR ePrint as markdown. Downloads the PDF and converts via xberg. Parameters: year (e.g. 2024), number (e.g. 1279)."
+    )]
+    async fn get_paper(
+        &self,
+        params: Parameters<GetPaperInput>,
+    ) -> Result<String, String> {
+        let input = params.0;
+        let md = self
+            .client
+            .get_paper(input.year, input.number)
+            .await
+            .map_err(|e| format!("IACR paper fetch failed: {e}"))?;
+        Ok(md)
     }
 }
 

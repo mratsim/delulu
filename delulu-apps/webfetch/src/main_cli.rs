@@ -8,6 +8,8 @@
 //! delulu-fetch -i <FILE> --output-format html
 //! delulu-fetch -u <URL> --timeout 120
 //! echo '<html>...</html>' | delulu-fetch -i -
+//! delulu-fetch doc <URL>
+//! delulu-fetch doc <URL> --output-format html
 //! ```
 
 use anyhow::{Context, Error, Result};
@@ -19,7 +21,7 @@ use std::io::Read;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 // ---------------------------------------------------------------------------
-// Args
+// Args (flat, backward-compatible)
 // ---------------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
@@ -52,6 +54,23 @@ struct Args {
     /// Pipeline to use: "rd" (default, Mozilla Readability) or "tf" (Trafilatura).
     #[arg(long, default_value = "rd")]
     pipeline: String,
+}
+
+// ---------------------------------------------------------------------------
+// Doc subcommand args
+// ---------------------------------------------------------------------------
+
+#[derive(Parser, Debug)]
+#[command(name = "doc")]
+struct DocArgs {
+    /// URL of the document to fetch
+    url: String,
+    /// Output format: markdown (default) or html
+    #[arg(long)]
+    output_format: Option<String>,
+    /// Fetch timeout in seconds
+    #[arg(long, default_value = "120")]
+    timeout: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -157,8 +176,25 @@ async fn main() -> Result<(), Error> {
         )
         .init();
 
-    let args = Args::parse();
+    // Check if the first argument is "doc" to dispatch to doc subcommand
+    let args: Vec<String> = std::env::args().collect();
+    let is_doc = args.get(1).map(|s| s == "doc").unwrap_or(false);
 
+    if is_doc {
+        // Strip the "doc" subcommand name — clap's parse_from expects
+        // [program_name, url, ...], not [program_name, subcommand, url, ...]
+        let mut doc_argv = vec![args[0].clone()]; // program name
+        doc_argv.extend(args.iter().skip(2).cloned()); // skip "doc"
+        let doc_args = DocArgs::parse_from(&doc_argv);
+        return run_doc(doc_args).await;
+    } else {
+        // Use original flat-args parsing (backward compatible)
+        let args = Args::parse();
+        run_fetch(args).await
+    }
+}
+
+async fn run_fetch(args: Args) -> Result<(), Error> {
     if let Some(file) = &args.input_file {
         // File/stdin mode
         let html = if file == "-" {
@@ -269,6 +305,28 @@ async fn main() -> Result<(), Error> {
                 let md = md_doc_to_string(result);
                 println!("{md}");
             }
+        }
+    }
+
+    Ok(())
+}
+
+async fn run_doc(args: DocArgs) -> Result<(), Error> {
+    let client = WebbfetchClient::new(args.timeout, 2);
+
+    let result = delulu_webfetch::fetch_doc(&args.url, &client)
+        .await
+        .context("Document fetch failed")?;
+
+    match args.output_format.as_deref() {
+        Some("html") => {
+            if let ExtractionResult::GenericHtml { content_md } = &result {
+                println!("{}", content_md.body);
+            }
+        }
+        _ => {
+            let md = md_doc_to_string(result);
+            println!("{md}");
         }
     }
 

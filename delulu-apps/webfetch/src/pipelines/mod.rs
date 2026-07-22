@@ -6,6 +6,7 @@ use scraper::Node as ScraperNode;
 use crate::core::types::WebbfetchError;
 
 pub mod dl_arxiv;
+pub mod dl_doc;
 pub mod error;
 pub mod mozilla_readability;
 pub mod passes;

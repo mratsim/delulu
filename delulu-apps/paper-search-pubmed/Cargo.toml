@@ -21,6 +21,7 @@ mcp = [
 [dependencies]
 wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
 delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
+delulu-webfetch = { path = "../webfetch" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
 anyhow = "1.0"
 chrono = { version = "0.4.20", features = ["serde"] }
@@ -33,7 +34,6 @@ urlencoding = "2"
 schemars = { version = "1.0", features = ["derive"], optional = true }
 axum = { version = "0.7", optional = true }
 rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
-
 [package.metadata.mcp]
 name = "delulu-paper-search-pubmed"
 version = "0.1.0"

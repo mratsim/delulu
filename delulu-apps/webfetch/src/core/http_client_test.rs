@@ -4,6 +4,7 @@ use super::*;
 struct MockClient {
     responses: Arc<Mutex<HashMap<String, Response>>>,
     fail_count: Arc<Mutex<HashMap<String, u32>>>,
+    mock_bytes: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
 impl MockClient {
@@ -11,6 +12,7 @@ impl MockClient {
         Self {
             responses: Arc::new(Mutex::new(HashMap::new())),
             fail_count: Arc::new(Mutex::new(HashMap::new())),
+            mock_bytes: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -21,11 +23,25 @@ impl MockClient {
             Response {
                 status,
                 body: body.to_string(),
+                content_type: None,
             },
         );
         Self {
             responses: Arc::new(Mutex::new(map)),
             fail_count: Arc::new(Mutex::new(HashMap::new())),
+            mock_bytes: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+impl MockClient {
+    fn with_bytes(url: &str, bytes: &[u8]) -> Self {
+        let mut map = HashMap::new();
+        map.insert(url.to_string(), bytes.to_vec());
+        Self {
+            responses: Arc::new(Mutex::new(HashMap::new())),
+            fail_count: Arc::new(Mutex::new(HashMap::new())),
+            mock_bytes: Arc::new(Mutex::new(map)),
         }
     }
 }
@@ -46,6 +62,16 @@ impl HttpClient for MockClient {
             .get(url)
             .cloned()
             .ok_or_else(|| WebbfetchError::Fetch(format!("No mock response for {url}")))
+    }
+
+    async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, WebbfetchError> {
+        let bytes = self.mock_bytes.lock().await;
+        if let Some(data) = bytes.get(url) {
+            return Ok(data.clone());
+        }
+        // Fall back to converting string body to bytes
+        let resp = self.get(url).await?;
+        Ok(resp.body.into_bytes())
     }
 }
 
@@ -146,4 +172,43 @@ async fn test_discourse_url_detected_as_generic_html() {
         .await
         .unwrap();
     assert_eq!(result.url.source_type, SourceType::GenericHtml);
+}
+
+// -- get_bytes tests ----------------------------------------------------------
+
+#[tokio::test]
+async fn test_get_bytes_returns_body_bytes() {
+    let mock = MockClient::with_response(
+        "https://example.com/data",
+        200,
+        "hello world",
+    );
+    let bytes = mock
+        .get_bytes("https://example.com/data")
+        .await
+        .unwrap();
+    assert_eq!(bytes, b"hello world");
+}
+
+#[tokio::test]
+async fn test_get_bytes_propagates_error() {
+    let mock = MockClient::new();
+    let err = mock
+        .get_bytes("https://example.com/missing")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, WebbfetchError::Fetch(_)));
+}
+
+#[tokio::test]
+async fn test_get_bytes_with_mock_bytes() {
+    let mock = MockClient::with_bytes(
+        "https://example.com/binary",
+        &[0x00, 0x01, 0x02, 0xFF],
+    );
+    let bytes = mock
+        .get_bytes("https://example.com/binary")
+        .await
+        .unwrap();
+    assert_eq!(bytes, vec![0x00, 0x01, 0x02, 0xFF]);
 }

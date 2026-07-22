@@ -153,3 +153,54 @@ fn test_cli_test_mode_missing_fixture_exits_with_error() {
         "stderr should contain error, got: {stderr}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Doc subcommand tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_cli_doc_subcommand_is_registered() {
+    // Verify that 'doc' is handled as a subcommand (not an unknown command)
+    // The doc subcommand is implemented via manual argv parsing, not clap subcommands.
+    // Running 'doc' without a URL should fail with a URL-related error, not an
+    // "unrecognized argument" error.
+    let output = fetch_command()
+        .arg("doc")
+        .output()
+        .expect("failed to run delulu-fetch doc");
+
+    // Should exit non-zero (missing URL)
+    assert!(
+        !output.status.success(),
+        "delulu-fetch doc without URL should exit non-zero"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("required") || stderr.contains("error") || stderr.contains("url")
+        || stderr.contains("URL"),
+        "stderr should indicate missing URL argument, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_cli_doc_subcommand_help_shows_url_arg() {
+    // Verify that 'doc --help' shows the URL argument
+    let output = fetch_command()
+        .arg("doc")
+        .arg("--help")
+        .output()
+        .expect("failed to run delulu-fetch doc --help");
+
+    assert!(
+        output.status.success(),
+        "delulu-fetch doc --help should exit 0"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("URL") || stdout.contains("url"),
+        "doc --help should mention URL argument, got: {stdout}"
+    );
+}
+

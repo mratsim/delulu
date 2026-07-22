@@ -46,6 +46,14 @@ struct FetchInput {
     pub url: String,
 }
 
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+struct FetchDocInput {
+    pub url: String,
+    /// Timeout in seconds (reserved for future use; currently uses server default of 30s)
+    pub timeout: Option<u64>,
+}
 #[derive(Clone)]
 struct WebfetchServer {
     client: Arc<WebbfetchClient>,
@@ -99,8 +107,19 @@ impl WebfetchServer {
             Err(e) => Ok(format!("{{\"error\": true, \"error_type\": \"{:?}\"}}", e)),
         }
     }
-}
 
+    #[tool(description = "Fetch a document (PDF, DOCX, etc.) and convert to markdown")]
+    async fn fetch_doc(&self, params: Parameters<FetchDocInput>) -> Result<String, String> {
+        let input = params.0;
+        match delulu_webfetch::fetch_doc(&input.url, &self.client).await {
+            Ok(result) => Ok(md_doc_to_string(result)),
+            Err(e) => Ok(format!(
+                "---\nerror: true\nerror_type: {:?}\n---\n\nFetch failed",
+                e
+            )),
+        }
+    }
+}
 // ---------------------------------------------------------------------------
 // ServerHandler impl
 // ---------------------------------------------------------------------------

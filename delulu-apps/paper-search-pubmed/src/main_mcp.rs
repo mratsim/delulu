@@ -112,6 +112,13 @@ pub struct MatchCitationInput {
     pub bdata: String,
 }
 
+/// Input parameters for fetching a full paper as markdown.
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetPaperInput {
+    /// PubMed Central ID (e.g. "PMC1234567" or "1234567")
+    pub pmc_id: String,
+}
+
 // ---------------------------------------------------------------------------
 // MCP Server
 // ---------------------------------------------------------------------------
@@ -244,6 +251,23 @@ impl PubmedMcpServer {
             .map_err(|e| format!("PubMed citation match failed: {e}"))?;
 
         serde_json::to_string(&matches).map_err(|e| e.to_string())
+    }
+
+    #[tool(
+        name = "get_paper",
+        description = "Fetch a full paper from PubMed Central as markdown. Downloads the PDF and converts via xberg. Parameters: pmc_id (PubMed Central ID, e.g. 'PMC1234567' or '1234567')."
+    )]
+    async fn get_paper(
+        &self,
+        params: Parameters<GetPaperInput>,
+    ) -> Result<String, String> {
+        let input = params.0;
+        let md = self
+            .client
+            .get_paper(&input.pmc_id)
+            .await
+            .map_err(|e| format!("PubMed paper fetch failed: {e}"))?;
+        Ok(md)
     }
 }
 

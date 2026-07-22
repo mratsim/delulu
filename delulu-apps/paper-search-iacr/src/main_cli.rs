@@ -54,6 +54,20 @@ enum Command {
         /// Paper number within the year (e.g. 123)
         number: u32,
     },
+    /// Fetch a full paper as markdown
+    GetPaper {
+        /// Publication year (e.g. 2024)
+        year: u32,
+        /// Paper number within the year (e.g. 1279)
+        number: u32,
+    },
+    /// Fetch raw PDF bytes
+    GetPaperRaw {
+        /// Publication year (e.g. 2024)
+        year: u32,
+        /// Paper number within the year (e.g. 1279)
+        number: u32,
+    },
 }
 
 #[tokio::main]
@@ -87,6 +101,18 @@ async fn main() -> Result<()> {
         Command::GetPdf { year, number } => {
             let url = client.download_paper_pdf(year, number);
             println!("{}", url);
+        }
+        Command::GetPaper { year, number } => {
+            let md = client.get_paper(year, number)
+                .await
+                .context("Failed to fetch paper")?;
+            println!("{}", md);
+        }
+        Command::GetPaperRaw { year, number } => {
+            let bytes = client.get_paper_raw(year, number)
+                .await
+                .context("Failed to fetch paper PDF")?;
+            println!("Downloaded {} bytes", bytes.len());
         }
     }
 

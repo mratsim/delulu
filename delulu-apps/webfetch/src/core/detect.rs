@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use super::types::SourceType;
-
+use super::types::WebbfetchError;
 // ---------------------------------------------------------------------------
 // Compiled regex patterns
 // ---------------------------------------------------------------------------
@@ -12,6 +12,21 @@ static REDDIT_URL_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^https?://(?:www\.|old\.|m\.|np\.)?reddit\.com/(?:r/.*/comments/.*|s/[a-zA-Z0-9_-]+(?:/?(?:\?.*)?(?:#.*)?)?$)").unwrap()
 });
 
+/// Matches arXiv PDF/abstract URLs (with optional version suffix).
+/// Examples:
+/// - https://arxiv.org/pdf/1706.03762v1
+/// - https://arxiv.org/abs/1706.03762v1
+/// - https://arxiv.org/pdf/1706.03762v1.pdf
+static ARXIV_URL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^https?://(?:www\.)?arxiv\.org/(?:pdf|abs)/[0-9]{4}\.[0-9]+(?:v[0-9]+)?(?:\.pdf)?$")
+        .unwrap()
+});
+
+/// Matches document file extensions at the end of a URL path.
+static DOCUMENT_EXTENSION_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)\.(pdf|doc|docx|ppt|pptx|key)(?:[?#].*)?$")
+        .unwrap()
+});
 /// Bot-detection patterns (checked against response body).
 pub(crate) static BOT_DETECTION_PATTERNS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     vec![
@@ -29,8 +44,18 @@ pub(crate) static BOT_DETECTION_PATTERNS: Lazy<Vec<&'static str>> = Lazy::new(||
 // ---------------------------------------------------------------------------
 
 /// Detect the source type from a URL based on known platform patterns.
+///
+/// Priority order (first match wins):
+/// 1. arXiv PDF/abstract URLs
+/// 2. Document file extensions (.pdf, .doc, .docx, .ppt, .pptx, .key)
+/// 3. Reddit thread URLs
+/// 4. Generic HTML (default)
 pub fn detect_source_type(url: &str) -> SourceType {
-    if REDDIT_URL_RE.is_match(url) {
+    if ARXIV_URL_RE.is_match(url) {
+        SourceType::ArxivPdf
+    } else if DOCUMENT_EXTENSION_RE.is_match(url) {
+        SourceType::Document
+    } else if REDDIT_URL_RE.is_match(url) {
         SourceType::Reddit
     } else {
         SourceType::GenericHtml
@@ -91,6 +116,64 @@ pub fn detect_from_content(body: &str) -> Option<SourceType> {
     None
 }
 
+/// Detect the source type from a MIME type string.
+///
+/// Checks for common document MIME types:
+/// - `application/pdf`, `application/x-pdf` (and with parameters like `; charset=utf-8`)
+/// - `application/msword`
+/// - `application/vnd.openxmlformats-officedocument.*`
+/// - `application/vnd.ms-powerpoint.*`
+///
+/// Used for Content-Type dispatch after HTTP fetch — if the response
+/// Content-Type header indicates a document MIME type, the caller can
+/// re-fetch via `fetch_doc()` for xberg-based extraction instead of
+/// treating the response as HTML.
+pub fn detect_from_mime_type(mime_type: &str) -> Option<SourceType> {
+    let mime = mime_type.to_lowercase();
+    // Split on ';' to separate the MIME type from parameters like charset
+    let type_part = mime.split(';').next().unwrap_or(&mime).trim();
+    // Check for PDF MIME types with proper boundary matching
+    let is_pdf = type_part == "application/pdf"
+        || type_part == "application/x-pdf"
+        || type_part.ends_with("/pdf")
+        || type_part.starts_with("application/") && type_part.contains("+pdf");
+    if is_pdf
+        || mime.contains("msword")
+        || mime.contains("openxmlformats")
+        || mime.contains("ms-powerpoint")
+    {
+        return Some(SourceType::Document);
+    }
+    None
+}
+
+/// Transform an arXiv URL into its HTML abstract page URL.
+///
+/// Converts `/pdf/` to `/html/` and strips trailing `.pdf` extension.
+/// Returns the URL unchanged (as `Ok`) for non-arXiv URLs or if the
+/// transformation is not applicable.
+pub fn arxiv_url_to_html_url(arxiv_url: &str) -> Result<String, WebbfetchError> {
+    let url = arxiv_url.trim_end_matches('/');
+    if let Some(path) = url
+        .strip_prefix("https://arxiv.org/pdf/")
+        .or_else(|| url.strip_prefix("http://arxiv.org/pdf/"))
+        .or_else(|| url.strip_prefix("https://www.arxiv.org/pdf/"))
+        .or_else(|| url.strip_prefix("http://www.arxiv.org/pdf/"))
+    {
+        let id = path.strip_suffix(".pdf").unwrap_or(path);
+        return Ok(format!("https://arxiv.org/html/{id}"));
+    }
+    if let Some(path) = url
+        .strip_prefix("https://arxiv.org/abs/")
+        .or_else(|| url.strip_prefix("http://arxiv.org/abs/"))
+        .or_else(|| url.strip_prefix("https://www.arxiv.org/abs/"))
+        .or_else(|| url.strip_prefix("http://www.arxiv.org/abs/"))
+    {
+        return Ok(format!("https://arxiv.org/html/{path}"));
+    }
+    Ok(arxiv_url.to_string())
+}
+
 /// Check whether a response body matches known bot-detection patterns.
 pub(crate) fn is_bot_detected(body: &str) -> bool {
     for pattern in BOT_DETECTION_PATTERNS.iter() {
@@ -100,8 +183,6 @@ pub(crate) fn is_bot_detected(body: &str) -> bool {
     }
     false
 }
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

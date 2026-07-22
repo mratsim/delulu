@@ -12,10 +12,13 @@ pub use crate::core::types::{ExtractionResult, MarkdownDocument, RedditComment};
 use crate::core::types::{SourceType, WebbfetchError};
 use crate::pipelines::DomNode;
 use crate::pipelines::PassFn;
+use std::io::Write;
+use std::time::Duration;
+use tempfile::Builder;
+use xberg::{extract as xberg_extract, ExtractInput, ExtractionConfig, OutputFormat};
 // ---------------------------------------------------------------------------
 // fetch_and_extract
 // ---------------------------------------------------------------------------
-
 /// Fetch a URL and extract content based on the detected source type.
 ///
 /// Uses a two-step fetch for Discourse URLs:
@@ -27,22 +30,66 @@ use crate::pipelines::PassFn;
 /// Dispatching:
 /// - Reddit: URL-based detection → immediate dispatch (no content detection needed)
 /// - Discourse: URL returns GenericHtml → content detection → second fetch → parse JSON
-/// - GenericHtml: URL returns GenericHtml → content detection → pipeline → lower
+/// - ArxivPdf: URL-based detection → rewrite to HTML URL → fetch HTML → filter_arxiv → lower to markdown
+/// - Document: URL-based detection → call fetch_doc() directly (no HTTP fetch needed)
+/// - GenericHtml: URL returns GenericHtml → MIME type check → content detection → pipeline → lower
 pub async fn fetch_and_extract(
     url: &str,
     client: &crate::core::http_client::WebbfetchClient,
     pipeline: &[PassFn],
 ) -> Result<ExtractionResult, WebbfetchError> {
-    // Step 1: URL-based detection (primary dispatch — only returns Reddit or GenericHtml now)
+    // Step 1: URL-based detection (primary dispatch)
     let url_source_type = detect_source_type(url);
 
-    // Step 2: Fetch from HTTP layer (Reddit URLs already transformed at HTTP layer)
+    // Step 2: Check source type BEFORE HTTP fetch
+    match url_source_type {
+        SourceType::ArxivPdf => {
+            // Rewrite arXiv PDF/abs URL to HTML abstract page
+            let html_url = crate::core::detect::arxiv_url_to_html_url(url)?;
+            let fetch_result = client.fetch(&html_url).await?;
+            let body = match &fetch_result.content {
+                ExtractionResult::GenericHtml { content_md } => content_md.body.clone(),
+                other => {
+                    tracing::warn!(
+                        "fetch_and_extract: unexpected content type {:?} for arXiv HTML URL, falling back to GenericHtml",
+                        other
+                    );
+                    return Err(WebbfetchError::Pass(format!(
+                        "fetch_and_extract: arXiv HTML fetch returned unexpected content type {:?}",
+                        other
+                    )));
+                }
+            };
+            let mut dom = pipelines::parse_html(&body)?;
+            pipelines::dl_arxiv::filter_arxiv(&mut dom);
+            let content_md = generators::gen_md::MarkdownLowerer::lower(&dom, None);
+            let title = extract_title(&dom);
+            return Ok(ExtractionResult::GenericHtml {
+                content_md: MarkdownDocument {
+                    frontmatter: format!(
+                        "title: {}\nsource_type: generic_html\nsource_url: {}",
+                        title, url
+                    ),
+                    body: content_md,
+                },
+            });
+        }
+        SourceType::Document => {
+            // Direct document fetch via xberg — no HTTP fetch needed
+            return fetch_doc(url, client).await;
+        }
+        _ => {
+            // Reddit and GenericHtml: proceed to HTTP fetch below
+        }
+    }
+
+    // Step 3: Fetch from HTTP layer (Reddit URLs already transformed at HTTP layer)
     // Note: The HTTP layer always stores the raw response body as GenericHtml,
     // regardless of the actual source type. The body is extracted here and
     // dispatched to the appropriate parser.
     let fetch_result = client.fetch(url).await?;
 
-    // Step 3: If Reddit, dispatch immediately — no content detection needed
+    // Step 4: If Reddit, dispatch immediately — no content detection needed
     if url_source_type == SourceType::Reddit {
         match &fetch_result.content {
             ExtractionResult::GenericHtml { content_md } => {
@@ -68,7 +115,7 @@ pub async fn fetch_and_extract(
         }
     }
 
-    // Step 4: For non-Reddit URLs, extract body and run content detection
+    // Step 5: For non-Reddit URLs, extract body and run MIME/content detection
     let body = match &fetch_result.content {
         ExtractionResult::GenericHtml { content_md } => content_md.body.clone(),
         other => {
@@ -83,12 +130,40 @@ pub async fn fetch_and_extract(
         }
     };
 
-    // Step 5: Detect from content (checks for Discourse markers in HTML)
-    let content_type = crate::core::detect::detect_from_content(&body);
+    // Step 6: MIME-type based document detection (best-effort, body already read as UTF-8)
+    //
+    // If the Content-Type header indicates a document MIME type (e.g. application/pdf),
+    // we would ideally re-fetch via fetch_doc() for proper xberg-based extraction.
+    // However, the HTTP response body was already consumed as UTF-8 text above, so
+    // calling fetch_doc() would require a second HTTP request. The spec intentionally
+    // treats this as best-effort — we log a warning and fall through to GenericHtml.
+    //
+    // This is a deliberate trade-off: the common case (file extension in URL) is
+    // handled by URL-based detection in Step 1 (SourceType::Document dispatch).
+    // The MIME-based path only matters for servers that serve documents without
+    // a file extension in the URL path.
+    if let Some(mime) = &fetch_result.content_type {
+        if !mime.is_empty() && crate::core::detect::detect_from_mime_type(mime).is_some() {
+            tracing::warn!(
+                "Content-Type indicates document ({mime}) but body was already consumed as UTF-8; falling through to GenericHtml path"
+            );
+            // Best-effort: body already consumed as UTF-8, fall through to GenericHtml
+        } else if !mime.is_empty() {
+            tracing::debug!(
+                "Content-Type is '{}' — not a recognized document MIME type; treating as GenericHtml",
+                mime
+            );
+        }
+    } else {
+        tracing::debug!("No Content-Type header; treating response as GenericHtml");
+    }
 
-    match content_type {
+    // Step 7: Detect from content (checks for Discourse markers in HTML)
+    let detected = crate::core::detect::detect_from_content(&body);
+
+    match detected {
         Some(SourceType::Discourse) => {
-            // Step 5a: Second fetch — get Discourse JSON API
+            // Step 7a: Second fetch — get Discourse JSON API
             let api_url = crate::core::detect::discourse_url_to_api_url(url);
 
             let api_result = match client.fetch(&api_url).await {
@@ -112,7 +187,7 @@ pub async fn fetch_and_extract(
                 }
             };
 
-            // Step 5b: Parse Discourse JSON
+            // Step 7b: Parse Discourse JSON
             let data = sources::discourse::DiscourseExtractor::extract(&api_body)?;
             Ok(ExtractionResult::Discourse {
                 title: data.title,
@@ -142,6 +217,143 @@ pub async fn extract(
     .await
 }
 
+// ---------------------------------------------------------------------------
+// xberg_html_to_markdown
+// ---------------------------------------------------------------------------
+
+/// Convert HTML (from xberg PDF/text conversion) into Markdown.
+///
+/// This function:
+/// 1. Parses the HTML into a DOM tree via `parse_html()`
+/// 2. Applies the `filter_doc` cleaning pass (removes scripts, styles, empty elements)
+/// 3. Lowers the cleaned DOM to Markdown via `MarkdownLowerer::lower()`
+///
+/// # Arguments
+/// - `xberg_html`: HTML string from xberg document conversion
+/// - `base_url`: Optional base URL for resolving relative links
+///
+/// # Returns
+/// - `Ok(markdown_string)` on success
+/// - `Err(WebbfetchError::Parse(msg))` if HTML parsing fails
+pub fn xberg_html_to_markdown(
+    xberg_html: &str,
+    base_url: Option<&str>,
+) -> Result<String, WebbfetchError> {
+    let mut dom = pipelines::parse_html(xberg_html)?;
+    pipelines::dl_doc::filter_doc(&mut dom);
+    let markdown = generators::gen_md::MarkdownLowerer::lower(&dom, base_url);
+    Ok(markdown)
+}
+
+// ---------------------------------------------------------------------------
+// fetch_doc
+// ---------------------------------------------------------------------------
+
+/// Maximum document size in bytes (50 MB).
+/// Per spec: raised from 10 MB to 50 MB for PDF/document downloads.
+const MAX_DOC_SIZE: usize = 50 * 1024 * 1024;
+
+/// Fetch a document (PDF, DOCX, etc.) via xberg and convert to markdown.
+///
+/// Downloads raw bytes via `client.get_bytes()`, writes to a temporary file,
+/// runs xberg extraction with a 120-second timeout, then parses, filters, and
+/// lowers the resulting HTML to Markdown.
+///
+/// # Arguments
+/// - `url`: The document URL to fetch.
+/// - `client`: A `WebbfetchClient` instance for HTTP fetching.
+///
+/// # Returns
+/// - `Ok(ExtractionResult::GenericHtml { content_md })` with `source_type: "document"` in frontmatter.
+/// - `Err(WebbfetchError::IoError(msg))` if the document exceeds 50 MB or temp I/O fails.
+/// - `Err(WebbfetchError::XbergError(msg))` if xberg extraction fails or times out.
+/// - `Err(WebbfetchError::Fetch(msg))` if the HTTP fetch fails.
+pub async fn fetch_doc(
+    url: &str,
+    client: &crate::core::http_client::WebbfetchClient,
+) -> Result<ExtractionResult, WebbfetchError> {
+    // 1. Download bytes via client.get_bytes()
+    let bytes = client.get_bytes(url).await?;
+
+    // 2. Check size ≤ 50 MB
+    if bytes.len() > MAX_DOC_SIZE {
+        return Err(WebbfetchError::IoError(format!(
+            "Document too large: {} bytes (max {} MB)",
+            bytes.len(),
+            MAX_DOC_SIZE / (1024 * 1024),
+        )));
+    }
+
+    // 3. Write to a NamedTempFile with extension hint from URL
+    let extension = url::Url::parse(url)
+        .ok()
+        .and_then(|parsed| {
+            std::path::Path::new(parsed.path())
+                .extension()
+                .map(|e| format!(".{}", e.to_string_lossy()))
+        })
+        .unwrap_or_default();
+
+    let mut temp_file = Builder::new()
+        .suffix(&extension)
+        .tempfile()
+        .map_err(|e| WebbfetchError::IoError(format!("Failed to create temp file: {e}")))?;
+
+    temp_file
+        .write_all(&bytes)
+        .map_err(|e| WebbfetchError::IoError(format!("Failed to write temp file: {e}")))?;
+
+    let temp_path = temp_file.path().to_path_buf();
+
+    // 4. Run xberg with 120s timeout (hardcoded per spec requirement)
+    // The spec requires a 120-second timeout for xberg extraction.
+    // This is intentionally hardcoded — the CLI --timeout flag controls
+    // only the HTTP fetch timeout, not the extraction timeout.
+    let config = ExtractionConfig {
+        output_format: OutputFormat::Html,
+        use_cache: false,
+        ..Default::default()
+    };
+
+    // Provide a filename hint for MIME detection (xberg uses file extension)
+    let input = ExtractInput {
+        uri: Some(temp_path.to_string_lossy().to_string()),
+        ..Default::default()
+    };
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(120),
+        xberg_extract(input, &config),
+    )
+    .await
+    .map_err(|_| {
+        WebbfetchError::XbergError(
+            "xberg extraction timed out after 120 seconds".into(),
+        )
+    })?
+    .map_err(|e| WebbfetchError::XbergError(e.to_string()))?;
+
+    let html = result
+        .results
+        .into_iter()
+        .next()
+        .and_then(|doc| doc.formatted_content.or(Some(doc.content)))
+        .ok_or_else(|| WebbfetchError::XbergError("no content produced".into()))?;
+
+    // 5. Parse, filter, and lower to markdown
+    let markdown = xberg_html_to_markdown(&html, None)?;
+
+    // 6. Return GenericHtml with source_type: "document"
+    Ok(ExtractionResult::GenericHtml {
+        content_md: MarkdownDocument {
+            frontmatter: format!(
+                "title: {}\nsource_type: document\nsource_url: {}",
+                "", url
+            ),
+            body: markdown,
+        },
+    })
+}
 // ---------------------------------------------------------------------------
 // fallback_to_generic_html
 // ---------------------------------------------------------------------------
