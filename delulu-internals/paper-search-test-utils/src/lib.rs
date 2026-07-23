@@ -3,12 +3,10 @@
 //! Provides fixture loading (`.zst` decompression) and a local HTTP server
 //! that serves fixture content at configurable paths.
 
-use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 

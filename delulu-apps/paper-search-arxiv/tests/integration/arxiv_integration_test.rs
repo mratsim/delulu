@@ -2,7 +2,6 @@
 
 use delulu_paper_search_arxiv::core::SearchQuery;
 use paper_search_test_utils::{fixture_path, serve_fixture};
-
 /// Test that the arXiv client can search for papers using fixture data.
 #[tokio::test]
 async fn test_arxiv_search_with_fixture() {

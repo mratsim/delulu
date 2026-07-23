@@ -38,7 +38,7 @@ rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
 
 [dev-dependencies]
 zstd = { version = "0.13", features = ["experimental"] }
-paper-search-test-utils = { path = "../paper-search-test-utils" }
+paper-search-test-utils = { path = "../../delulu-internals/paper-search-test-utils" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "process"] }
 
 [package.metadata.mcp]

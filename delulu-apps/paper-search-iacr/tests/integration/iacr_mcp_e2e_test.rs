@@ -4,7 +4,6 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use paper_search_test_utils::{fixture_path, serve_fixture};
-
 const BINARY_NAME: &str = "delulu-iacr-mcp";
 
 fn find_binary() -> std::path::PathBuf {

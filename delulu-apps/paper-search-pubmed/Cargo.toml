@@ -56,7 +56,7 @@ path = "tests/integration/pubmed_integration_test.rs"
 
 [dev-dependencies]
 zstd = { version = "0.13", features = ["experimental"] }
-paper-search-test-utils = { path = "../paper-search-test-utils" }
+paper-search-test-utils = { path = "../../delulu-internals/paper-search-test-utils" }
 
 [[test]]
 name = "pubmed_mcp_e2e"

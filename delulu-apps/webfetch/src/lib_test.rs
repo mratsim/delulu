@@ -2,10 +2,8 @@ use super::*;
 use crate::pipelines::parse_html;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
 
 // ── extract_title tests ───────────────────────────────────────────────
 

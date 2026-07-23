@@ -1,7 +1,6 @@
 //! Integration tests for paper-search-iacr using local HTTP server and fixtures.
 
 use paper_search_test_utils::{fixture_path, serve_fixture};
-
 #[tokio::test]
 async fn test_iacr_list_recent_with_fixture() {
     let path = fixture_path("paper-search-iacr", "iacr-rss.xml.zst");

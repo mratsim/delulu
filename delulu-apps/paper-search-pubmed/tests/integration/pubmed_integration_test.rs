@@ -2,7 +2,6 @@
 
 use delulu_paper_search_pubmed::core::SearchQuery;
 use paper_search_test_utils::{fixture_path, serve_fixture};
-
 #[tokio::test]
 async fn test_pubmed_search_with_fixture() {
     let path = fixture_path("paper-search-pubmed", "pubmed-search.json.zst");
