@@ -142,6 +142,16 @@ impl IacrClient {
         let url = iacr_pdf_url(&self.base_url, year, number);
         let response = self.crawler.get(&url).send().await
             .context("Failed to fetch IACR paper PDF")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body_preview = match response.text().await {
+                Ok(body) => body,
+                Err(e) => format!("(failed to read error body: {e})"),
+            };
+            anyhow::bail!("IACR paper PDF returned HTTP {}: {}", status, body_preview);
+        }
+
         let bytes = response.bytes().await
             .map_err(|e| anyhow::anyhow!("Failed to read PDF bytes: {}", e))?;
         Ok(bytes.to_vec())
