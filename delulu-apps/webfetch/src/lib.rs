@@ -76,14 +76,63 @@ pub async fn fetch_and_extract(
             // Reddit and GenericHtml: proceed to HTTP fetch below
         }
     }
-    // Step 3: Transform Reddit URL to API URL, then fetch
+
+    // Step 3: Check Content-Type BEFORE consuming the body as text.
+    // This prevents String::from_utf8_lossy from corrupting binary payloads
+    // (PDFs, DOCX, etc.) served from URLs without a recognized file extension.
     let fetch_url = if url_source_type == SourceType::Reddit {
         crate::core::detect::reddit_url_to_api_url(url)
     } else {
         url.to_string()
     };
-    let (body, content_type) = fetch_url_text(&fetch_url, crawler).await?;
-    // Step 4: If Reddit, dispatch immediately — no content detection needed
+
+    // Validate URL before making the request
+    let trimmed = fetch_url.trim();
+    if trimmed.len() > 2048 {
+        return Err(WebfetchError::Fetch("URL exceeds maximum length".to_string()));
+    }
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        return Err(WebfetchError::Fetch(format!(
+            "Unsupported URL scheme: '{}'",
+            trimmed.split(':').next().unwrap_or(""))));
+    }
+
+    let response = crawler
+        .get(&fetch_url)
+        .send()
+        .await
+        .map_err(|e| WebfetchError::Fetch(format!("HTTP request failed: {e}")))?;
+
+
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok().map(String::from));
+
+    // If the response is a document (PDF, DOCX, etc.), consume as bytes
+    // before the body is corrupted by text conversion.
+    if let Some(ref mime) = content_type {
+        if !mime.is_empty() && crate::core::detect::detect_from_mime_type(mime).is_some() {
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| WebfetchError::Fetch(format!("Failed to read response: {e}")))?;
+            return process_doc_bytes(bytes.to_vec(), url).await;
+        }
+    }
+
+    // Step 4: Consume body as text (safe now — confirmed not a document MIME)
+    let body = response
+        .text()
+        .await
+        .map_err(|e| WebfetchError::Fetch(format!("Failed to read response: {e}")))?;
+
+    // Bot detection is webfetch-specific (content-level check)
+    if crate::core::detect::is_bot_detected(&body) {
+        return Err(WebfetchError::Fetch("Blocked by bot detection".to_string()));
+    }
+
+    // Step 5: If Reddit, dispatch immediately — no content detection needed
     if url_source_type == SourceType::Reddit {
         let data = sources::reddit::RedditExtractor::extract(&body)?;
         return Ok(ExtractionResult::Reddit {
@@ -94,22 +143,6 @@ pub async fn fetch_and_extract(
             permalink: data.permalink,
             comments: data.comments,
         });
-    }
-
-    // Step 5: MIME-type based document detection (best-effort, body already read as UTF-8)
-    if let Some(mime) = &content_type {
-        if !mime.is_empty() && crate::core::detect::detect_from_mime_type(mime).is_some() {
-            tracing::warn!(
-                "Content-Type indicates document ({mime}) but body was already consumed as UTF-8; falling through to GenericHtml path"
-            );
-        } else if !mime.is_empty() {
-            tracing::debug!(
-                "Content-Type is '{}' — not a recognized document MIME type; treating as GenericHtml",
-                mime
-            );
-        }
-    } else {
-        tracing::debug!("No Content-Type header; treating response as GenericHtml");
     }
 
     // Step 6: Detect from content (checks for Discourse markers in HTML)
@@ -360,6 +393,10 @@ pub async fn process_doc_bytes(
 //
 // Does NOT perform URL transformation (Reddit API URL, etc.) — the caller
 // is expected to pass the final URL to fetch.
+//
+// NOTE: Only use this for endpoints known to return text (arXiv HTML,
+// Discourse JSON). For arbitrary URLs, use fetch_and_extract which checks
+// Content-Type before consuming the body.
 async fn fetch_url_text(
     url: &str,
     crawler: &RateLimitedCrawler,
