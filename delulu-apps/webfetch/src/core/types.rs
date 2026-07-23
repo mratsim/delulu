@@ -1,7 +1,6 @@
 use std::fmt;
 use std::str::FromStr;
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -95,18 +94,6 @@ pub struct Response {
     pub body: String,
     /// MIME type / content-type header value from the HTTP response.
     pub content_type: Option<String>,
-}
-
-// ---------------------------------------------------------------------------
-// HttpClient trait
-// ---------------------------------------------------------------------------
-
-#[async_trait]
-pub trait HttpClient: Send + Sync {
-    async fn get(&self, url: &str) -> Result<Response, WebfetchError>;
-
-    /// Fetch a URL and return the raw bytes of the response body.
-    async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, WebfetchError>;
 }
 
 

@@ -1,5 +1,4 @@
 pub mod detect;
-pub mod http_client;
 pub mod types;
 
 pub use detect::detect_source_type;
