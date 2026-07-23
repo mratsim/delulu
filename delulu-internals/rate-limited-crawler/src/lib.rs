@@ -113,10 +113,11 @@ impl RateLimitedCrawler {
             )));
         }
 
-        // 2. Rate-limited fetch
-        let queue = self.domain_queue(&parsed)?;
-        queue.acquire().await;
-        let resp = self.client.get(url).send().await.map_err(CrawlerError::Http)?;
+        // 2. Rate-limited fetch with exponential retry
+        let resp = self.get(url)
+            .with_exponential_retry(1)
+            .send()
+            .await?;
 
         // 3. Extract content-type (before consuming body)
         let content_type = resp.headers().get("content-type")
