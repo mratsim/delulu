@@ -53,7 +53,11 @@ impl SearchQuery {
     pub fn to_query_string(&self) -> String {
         let mut parts = vec![format!("search_query={}", urlencoding::encode(&self.query))];
         if let Some(m) = self.max_results {
-            parts.push(format!("max_results={}", m.min(2000)));
+            let capped = m.min(2000);
+            if capped != m {
+                tracing::warn!("max_results capped at 2000 (requested: {})", m);
+            }
+            parts.push(format!("max_results={}", capped));
         }
         if let Some(s) = self.start {
             parts.push(format!("start={}", s));

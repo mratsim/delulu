@@ -188,8 +188,11 @@ fn serialize_node_to_html(node: &DomNode) -> String {
 
 /// Resolve a potentially relative URL against a base URL.
 fn resolve_url(url: &str, base_url: Option<&str>) -> String {
-    if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("//") {
+    if url.starts_with("http://") || url.starts_with("https://") {
         return url.to_string();
+    }
+    if url.starts_with("//") {
+        return format!("https:{}", url);
     }
     if url.starts_with("mailto:") || url.starts_with("javascript:") || url.starts_with("#") {
         return url.to_string();

@@ -128,7 +128,7 @@ pub fn detect_from_content(body: &str) -> Option<SourceType> {
 /// Content-Type header indicates a document MIME type, the caller can
 /// re-fetch via `fetch_doc()` for xberg-based extraction instead of
 /// treating the response as HTML.
-pub fn detect_from_mime_type(mime_type: &str) -> Option<SourceType> {
+pub(crate) fn detect_from_mime_type(mime_type: &str) -> Option<SourceType> {
     let mime = mime_type.to_lowercase();
     // Split on ';' to separate the MIME type from parameters like charset
     let type_part = mime.split(';').next().unwrap_or(&mime).trim();
