@@ -27,6 +27,7 @@
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde::Deserialize;
+use std::sync::LazyLock;
 
 // ---------------------------------------------------------------------------
 // Paper data structure
@@ -388,11 +389,11 @@ fn extract_year_number_from_url(url: &str) -> Result<(u32, u32), String> {
     // Strip trailing slash
     let url = url.strip_suffix('/').unwrap_or(url);
 
-    // Match the pattern /{year}/{number}
-    let re = Regex::new(r"/(\d{4})/(\d+)$")
-        .map_err(|e| format!("Regex error: {}", e))?;
+    static RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"/(\d{4})/(\d+)$").expect("Invalid year/url regex")
+    });
 
-    if let Some(caps) = re.captures(url) {
+    if let Some(caps) = RE.captures(url) {
         let year: u32 = caps[1]
             .parse()
             .map_err(|_| format!("Invalid year in URL: {}", url))?;
@@ -411,10 +412,12 @@ fn extract_year_number_from_url(url: &str) -> Result<(u32, u32), String> {
 /// Parse a string like "2024/123" into (year, number).
 fn parse_year_number(s: &str) -> Result<(u32, u32), String> {
     let s = s.trim();
-    let re =
-        Regex::new(r"^(\d{4})/(\d+)$").map_err(|e| format!("Regex error: {}", e))?;
 
-    if let Some(caps) = re.captures(s) {
+    static RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^(\d{4})/(\d+)$").expect("Invalid year/number regex")
+    });
+
+    if let Some(caps) = RE.captures(s) {
         let year: u32 = caps[1]
             .parse()
             .map_err(|_| format!("Invalid year: {}", s))?;

@@ -23,6 +23,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use delulu_paper_search_iacr::IacrClient;
 use std::sync::Arc;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-iacr")]
@@ -72,8 +73,14 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
-
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".to_string().into()))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_timer(tracing_subscriber::fmt::time::ChronoUtc::rfc_3339())
+                .with_writer(std::io::stderr),
+        )
+        .init();
     let args = Args::parse();
     let client = Arc::new(IacrClient::new(30).context("Failed to create IACR client")?);
 
