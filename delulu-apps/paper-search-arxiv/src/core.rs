@@ -270,8 +270,15 @@ fn parse_single_entry(xml: &str) -> Result<Option<Paper>, String> {
         .or_else(|| extract_link_by_type(xml, "application/pdf"))
         .unwrap_or_else(|| format!("https://arxiv.org/pdf/{id}"));
 
+    if published.is_empty() {
+        return Err(format!("missing published date for paper {}", id));
+    }
     let published = parse_arxiv_date(&published)?;
-    let updated = parse_arxiv_date(&updated)?;
+    let updated = if updated.is_empty() {
+        published
+    } else {
+        parse_arxiv_date(&updated)?
+    };
 
     Ok(Some(Paper {
         id, title, authors,
