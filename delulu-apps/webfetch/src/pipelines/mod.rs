@@ -5,15 +5,14 @@ use scraper::Node as ScraperNode;
 
 use crate::core::types::WebfetchError;
 
-pub mod dl_arxiv;
-pub mod dl_doc;
+pub use passes::{dl_arxiv, dl_doc};
 pub mod error;
 pub mod mozilla_readability;
 pub mod passes;
 pub mod trafilatura;
 pub mod walkers;
 
-pub use self::walkers::{PassFn, WalkerAction, walk_pre_mut};
+pub use self::walkers::{PassFn, WalkerAction, walk_post_mut, walk_pre_mut};
 pub use error::PipelineError;
 // ---------------------------------------------------------------------------
 // Constants

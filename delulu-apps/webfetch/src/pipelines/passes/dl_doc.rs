@@ -4,7 +4,7 @@
 //! conversion) before markdown lowering. Strips scripts, styles, and empty
 //! elements while preserving void elements like `<img>`, `<br>`, `<hr>`, `<wbr>`.
 
-use crate::pipelines::{DomNode, WalkerAction, walk_pre_mut};
+use crate::pipelines::{WalkerAction, walk_post_mut, DomNode};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -17,7 +17,9 @@ use crate::pipelines::{DomNode, WalkerAction, walk_pre_mut};
 /// - Removes empty elements (elements with no children and no text content)
 /// - Preserves void elements: `<img>`, `<br>`, `<hr>`, `<wbr>`
 pub fn filter_doc(node: &mut DomNode) {
-    walk_pre_mut(node, &|node| {
+    // Post-order walk: children processed before parent, so empty
+    // cascades (parent emptied by child removal) are handled in one pass.
+    let mut filter = |node: &mut DomNode| {
         if let DomNode::Element { tag, children, .. } = node {
             let tag_lower = tag.to_lowercase();
 
@@ -33,7 +35,8 @@ pub fn filter_doc(node: &mut DomNode) {
             }
         }
         WalkerAction::Continue
-    });
+    };
+    walk_post_mut(node, &mut [&mut filter], None);
 }
 
 // ---------------------------------------------------------------------------
