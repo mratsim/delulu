@@ -2,11 +2,9 @@
 //! No I/O — suitable for testing without network access.
 
 use chrono::NaiveDate;
-#[cfg(feature = "mcp")]
-use schemars::JsonSchema;
 use serde::Serialize;
 
-#[cfg_attr(feature = "mcp", derive(JsonSchema))]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 /// A paper from the arXiv API.
 #[derive(Debug, Clone, Serialize)]
 pub struct Paper {
