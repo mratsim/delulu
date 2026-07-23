@@ -125,7 +125,7 @@ impl PubmedClient {
     /// via xberg + webfetch.
     pub async fn get_paper(&self, pmc_id: &str) -> Result<String> {
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
-        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        let url = format!("{}/articles/PMC{id}/pdf/", self.base_url.trim_end_matches('/'));
         let response = self.crawler.get(&url).send().await
             .context("Failed to fetch PubMed paper PDF")?;
 
@@ -158,7 +158,7 @@ impl PubmedClient {
     /// Strips the leading "PMC" prefix if present and downloads the raw PDF.
     pub async fn get_paper_raw(&self, pmc_id: &str) -> Result<Vec<u8>> {
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
-        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        let url = format!("{}/articles/PMC{id}/pdf/", self.base_url.trim_end_matches('/'));
         let response = self.crawler.get(&url).send().await
             .context("Failed to fetch PubMed paper PDF")?;
         let bytes = response.bytes().await
@@ -176,37 +176,45 @@ mod tests {
 
     #[test]
     fn test_get_paper_url_with_pmc_prefix() {
+        let base_url = "https://www.ncbi.nlm.nih.gov/pmc";
         let pmc_id = "PMC123456";
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
-        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        let url = format!("{}/articles/PMC{id}/pdf/", base_url.trim_end_matches('/'));
         assert_eq!(id, "123456");
         assert_eq!(url, "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC123456/pdf/");
     }
 
     #[test]
     fn test_get_paper_url_without_pmc_prefix() {
+        let base_url = "https://www.ncbi.nlm.nih.gov/pmc";
         let pmc_id = "123456";
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
-        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        let url = format!("{}/articles/PMC{id}/pdf/", base_url.trim_end_matches('/'));
         assert_eq!(id, "123456");
         assert_eq!(url, "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC123456/pdf/");
     }
 
     #[test]
     fn test_get_paper_url_with_pmc_lowercase() {
+        let base_url = "https://www.ncbi.nlm.nih.gov/pmc";
         let pmc_id = "pmc123456";
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
-        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
+        let url = format!("{}/articles/PMC{id}/pdf/", base_url.trim_end_matches('/'));
         assert_eq!(id, "pmc123456");
         assert_eq!(url, "https://www.ncbi.nlm.nih.gov/pmc/articles/PMCpmc123456/pdf/");
     }
 
     #[test]
     fn test_get_paper_raw_url_construction() {
+        let base_url = "https://www.ncbi.nlm.nih.gov/pmc";
         let pmc_id = "PMC987654";
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
+        let url = format!("{}/articles/PMC{id}/pdf/", base_url.trim_end_matches('/'));
         assert_eq!(id, "987654");
-        let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
         assert_eq!(url, "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC987654/pdf/");
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/pubmed_client_test.rs"]
+mod client_tests;

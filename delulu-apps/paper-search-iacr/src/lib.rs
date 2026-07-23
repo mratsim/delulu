@@ -28,8 +28,6 @@ use core::Paper;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use std::sync::Arc;
 
-const IACR_BASE_URL: &str = "https://eprint.iacr.org";
-
 /// HTTP client for the IACR ePrint Archive.
 #[derive(Clone)]
 pub struct IacrClient {
@@ -39,7 +37,7 @@ pub struct IacrClient {
 
 impl IacrClient {
     pub fn new(timeout_secs: u64) -> Result<Self> {
-        Self::with_base_url(timeout_secs, IACR_BASE_URL.to_string())
+        Self::with_base_url(timeout_secs, "https://eprint.iacr.org".to_string())
     }
 
     pub fn with_base_url(timeout_secs: u64, base_url: String) -> Result<Self> {
@@ -109,7 +107,7 @@ impl IacrClient {
     /// and converts to Markdown via xberg + webfetch. For pre-2005 papers, the
     /// number is zero-padded to 3 digits.
     pub async fn get_paper(&self, year: u32, number: u32) -> Result<String> {
-        let url = iacr_pdf_url(year, number);
+        let url = iacr_pdf_url(&self.base_url, year, number);
         let response = self.crawler.get(&url).send().await
             .context("Failed to fetch IACR paper PDF")?;
 
@@ -141,7 +139,7 @@ impl IacrClient {
     ///
     /// For pre-2005 papers, the number is zero-padded to 3 digits.
     pub async fn get_paper_raw(&self, year: u32, number: u32) -> Result<Vec<u8>> {
-        let url = iacr_pdf_url(year, number);
+        let url = iacr_pdf_url(&self.base_url, year, number);
         let response = self.crawler.get(&url).send().await
             .context("Failed to fetch IACR paper PDF")?;
         let bytes = response.bytes().await
@@ -149,14 +147,13 @@ impl IacrClient {
         Ok(bytes.to_vec())
     }
 }
-
 // Return the IACR ePrint PDF URL for a given year and number.
 // Zero-pads the number to 3 digits for pre-2005 papers.
-fn iacr_pdf_url(year: u32, number: u32) -> String {
+fn iacr_pdf_url(base_url: &str, year: u32, number: u32) -> String {
     if year < 2005 {
-        format!("{IACR_BASE_URL}/{year}/{number:03}.pdf")
+        format!("{base_url}/{year}/{number:03}.pdf")
     } else {
-        format!("{IACR_BASE_URL}/{year}/{number}.pdf")
+        format!("{base_url}/{year}/{number}.pdf")
     }
 }
 // ---------------------------------------------------------------------------
@@ -169,37 +166,37 @@ mod tests {
 
     #[test]
     fn test_iacr_pdf_url_pre_2005_zero_padding() {
-        let url = iacr_pdf_url(2004, 5);
+        let url = iacr_pdf_url("https://eprint.iacr.org", 2004, 5);
         assert_eq!(url, "https://eprint.iacr.org/2004/005.pdf");
     }
 
     #[test]
     fn test_iacr_pdf_url_pre_2005_three_digit() {
-        let url = iacr_pdf_url(2004, 123);
+        let url = iacr_pdf_url("https://eprint.iacr.org", 2004, 123);
         assert_eq!(url, "https://eprint.iacr.org/2004/123.pdf");
     }
 
     #[test]
     fn test_iacr_pdf_url_year_2005_no_padding() {
-        let url = iacr_pdf_url(2005, 1);
+        let url = iacr_pdf_url("https://eprint.iacr.org", 2005, 1);
         assert_eq!(url, "https://eprint.iacr.org/2005/1.pdf");
     }
 
     #[test]
     fn test_iacr_pdf_url_post_2005_no_padding() {
-        let url = iacr_pdf_url(2024, 123);
+        let url = iacr_pdf_url("https://eprint.iacr.org", 2024, 123);
         assert_eq!(url, "https://eprint.iacr.org/2024/123.pdf");
     }
 
     #[test]
     fn test_iacr_pdf_url_single_digit_pre_2005() {
-        let url = iacr_pdf_url(1999, 7);
+        let url = iacr_pdf_url("https://eprint.iacr.org", 1999, 7);
         assert_eq!(url, "https://eprint.iacr.org/1999/007.pdf");
     }
 
     #[test]
     fn test_iacr_pdf_url_boundary_2004() {
-        let url = iacr_pdf_url(2004, 999);
+        let url = iacr_pdf_url("https://eprint.iacr.org", 2004, 999);
         assert_eq!(url, "https://eprint.iacr.org/2004/999.pdf");
     }
 
@@ -207,7 +204,7 @@ mod tests {
     fn test_get_paper_url_construction() {
         let year = 2024;
         let number = 123;
-        let url = iacr_pdf_url(year, number);
+        let url = iacr_pdf_url("https://eprint.iacr.org", year, number);
         assert_eq!(url, "https://eprint.iacr.org/2024/123.pdf");
     }
 
@@ -215,7 +212,11 @@ mod tests {
     fn test_get_paper_raw_url_construction() {
         let year = 2003;
         let number = 42;
-        let url = iacr_pdf_url(year, number);
+        let url = iacr_pdf_url("https://eprint.iacr.org", year, number);
         assert_eq!(url, "https://eprint.iacr.org/2003/042.pdf");
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/iacr_client_test.rs"]
+mod client_tests;

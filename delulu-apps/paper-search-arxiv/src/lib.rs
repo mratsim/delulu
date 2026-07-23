@@ -35,6 +35,7 @@ use std::sync::Arc;
 pub struct ArxivClient {
     crawler: Arc<RateLimitedCrawler>,
     base_url: String,
+    api_url: String,
 }
 
 impl ArxivClient {
@@ -48,11 +49,10 @@ impl ArxivClient {
             .context("Failed to create rate-limited crawler")?;
         Ok(Self {
             crawler: Arc::new(crawler),
-            base_url: "https://export.arxiv.org/api/query".to_string(),
+            base_url: "https://arxiv.org".to_string(),
+            api_url: "https://export.arxiv.org/api/query".to_string(),
         })
     }
-
-    /// Create a client with a custom base URL and QPS (for testing or custom endpoints).
     pub fn with_base_url(timeout_secs: u64, base_url: String, qps: u64) -> Result<Self> {
         let crawler = RateLimitedCrawler::builder()
             .with_qps(qps)
@@ -62,14 +62,20 @@ impl ArxivClient {
             .context("Failed to create rate-limited crawler")?;
         Ok(Self {
             crawler: Arc::new(crawler),
-            base_url,
+            base_url: base_url.clone(),
+            api_url: base_url,
         })
     }
 
+    /// Set a custom API URL (default: https://export.arxiv.org/api/query).
+    pub fn with_api_url(mut self, url: String) -> Self {
+        self.api_url = url;
+        self
+    }
     /// Search papers on arXiv by query.
     pub async fn search_papers(&self, query: &SearchQuery) -> Result<Vec<Paper>> {
         let query_string = query.to_query_string();
-        let url = format!("{}?{}", self.base_url, query_string);
+        let url = format!("{}?{}", self.api_url, query_string);
 
         tracing::debug!("arXiv API request: {}", url);
 
@@ -97,7 +103,7 @@ impl ArxivClient {
 
     /// Fetch specific papers by their arXiv IDs.
     pub async fn get_papers_by_id(&self, ids: &str) -> Result<Vec<Paper>> {
-        let url = format!("{}?id_list={}", self.base_url, ids);
+        let url = format!("{}?id_list={}", self.api_url, ids);
 
         tracing::debug!("arXiv API request: {}", url);
 
@@ -121,7 +127,7 @@ impl ArxivClient {
             .map_err(|e| anyhow::anyhow!("Failed to parse arXiv response: {}", e))?;
 
         Ok(papers)
-    }
+}
 
     /// Fetch the full paper as markdown from arXiv HTML5.
     ///
@@ -137,7 +143,7 @@ impl ArxivClient {
     ///
     /// Markdown string with LaTeX math, complex tables as raw HTML.
     pub async fn get_paper(&self, arxiv_id: &str) -> Result<String> {
-        let url = format!("https://arxiv.org/html/{}", arxiv_id);
+        let url = format!("{}/html/{}", self.base_url, arxiv_id);
         tracing::debug!("arXiv HTML5 request: {}", url);
 
         let response = self
@@ -167,3 +173,7 @@ impl ArxivClient {
         Ok(md)
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/arxiv_client_test.rs"]
+mod client_tests;
