@@ -3,6 +3,21 @@
 //! No `AsyncSemaphore` — GCRA naturally serializes requests through the gate.
 //! At 10 QPS, requests are spaced 100ms apart. At 50 QPS, 20ms apart.
 //! Concurrent callers to the same domain form an implicit queue.
+//!
+//! # Token leak edge case
+//!
+//! `acquire()` calls `try_consume()` which advances the TAT atomically,
+//! then sleeps for inter-request spacing. If the async task is cancelled
+//! during that sleep, the TAT has already been advanced but no request was
+//! sent — the token is permanently lost.
+//!
+//! **Impact:** The next request sees a TAT that is `t` ns too far in the
+//! future, adding an extra `t` of wait time. Under sustained load with
+//! frequent cancellations, effective QPS drifts below the configured rate.
+//! The system self-heals during idle periods.
+//!
+//! **Fix:** `GcraTokenGuard` (RAII) restores the old TAT on drop if not
+//! committed. See gcra.rs for the flow diagram.
 
 use std::time::Duration;
 
@@ -17,6 +32,27 @@ const MAX_SLEEP_NS: u64 = 60_000_000_000;
 /// A per-domain queue that serializes requests through a GCRA gate.
 pub struct DomainQueue {
     gcra: GcraState,
+}
+
+/// RAII guard that restores the GCRA state if dropped without committing.
+///
+/// When `acquire()` consumes a token and then sleeps for inter-request
+/// spacing, this guard holds the old TAT. If the task is cancelled mid-sleep,
+/// the guard's `Drop` runs and CAS-es the TAT back to `old_tat`, preventing
+/// the token from being permanently lost. See the module docs for impact.
+struct GcraTokenGuard<'a> {
+    gcra: &'a GcraState,
+    old_tat: u64,
+    new_tat: u64,
+    committed: bool,
+}
+
+impl Drop for GcraTokenGuard<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = self.gcra.try_restore(self.new_tat, self.old_tat);
+        }
+    }
 }
 
 impl DomainQueue {
@@ -34,21 +70,31 @@ impl DomainQueue {
     ///
     /// This loops, sleeping the exact GCRA-computed wait time. No busy-waiting.
     /// Sleeps are capped at 60 seconds to prevent clock-jump-induced hangs.
+    ///
+    /// If the calling task is cancelled while waiting for inter-request spacing,
+    /// the GCRA state is restored via RAII guard to avoid leaking rate-limit tokens.
     pub async fn acquire(&self) {
         loop {
             let now = self.nanos_since_start();
             match self.gcra.try_consume(now) {
-                Ok(tat) => {
-                    // Token consumed. If the GCRA says we should wait
-                    // (inter-request spacing from burst), sleep that long.
-                    let wait = tat.saturating_sub(now);
+                Ok((old_tat, new_tat)) => {
+                    // Token consumed. Use RAII guard to restore on cancellation.
+                    let mut guard = GcraTokenGuard {
+                        gcra: &self.gcra,
+                        old_tat,
+                        new_tat,
+                        committed: false,
+                    };
+                    let wait = new_tat.saturating_sub(now);
                     if wait > 0 {
                         tokio::time::sleep(Duration::from_nanos(wait)).await;
                     }
+                    guard.committed = true;
                     return;
                 }
                 Err(tat) => {
-                    // Denied. Wait until `tat` (capped at 60s).
+                    // Denied. Wait until tat (capped at 60s).
+                    // No token was consumed, so no restore needed.
                     let wait = tat.saturating_sub(now);
                     let capped = wait.min(MAX_SLEEP_NS);
                     if capped != wait {
@@ -58,7 +104,6 @@ impl DomainQueue {
                         );
                     }
                     tokio::time::sleep(Duration::from_nanos(capped)).await;
-                    // Loop back to re-check the gate.
                 }
             }
         }

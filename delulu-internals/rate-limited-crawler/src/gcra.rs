@@ -5,14 +5,51 @@
 //!
 //! # Algorithm
 //!
-//! Each call to `try_consume(now)`:
-//! 1. Reads the Theoretical Arrival Time (TAT) — an `AtomicU64` in ns.
-//! 2. Computes `earliest = tat.saturating_sub(tau)` — the earliest time
-//!    a request can be admitted within the burst tolerance.
-//! 3. If `now >= earliest`, the request is admitted:
-//!    - CAS the TAT from old value to `max(now, tat) + t`.
-//!    - Returns `Ok(new_tat)`.
-//! 4. Otherwise returns `Err(tat)` — the caller must wait.
+//! ```text
+//!  try_consume(now):
+//!     Load TAT ──► earliest = TAT - tau
+//!                     │
+//!              ┌──────┴──────┐
+//!              │ now <       │
+//!              │ earliest?   │
+//!              └──────┬──────┘
+//!            No       │       Yes
+//!         ┌──────────┘       └──────────┐
+//!         ▼                             ▼
+//!   Err(TAT)                     new_tat = max(now, TAT) + t
+//!   (not consumed)                     │
+//!                               CAS TAT -> new_tat
+//!                               ┌──────┴──────┐
+//!                               │ CAS ok?     │
+//!                               └──────┬──────┘
+//!                             No       │       Yes
+//!                        ┌─────────────┘       └──────────┐
+//!                        ▼                                ▼
+//!                  Retry CAS loop               Ok((old_tat, new_tat))
+//!                  (spin-loop after
+//!                  (after 3 failures)
+//! ```
+//!
+//! # Edge case: token leak on task cancellation
+//!
+//! The `Ok` path advances the TAT atomically BEFORE the caller
+//! sleeps for inter-request spacing. If the async task is cancelled
+//! during that sleep (JoinHandle::abort(), runtime shutdown, timeout drop),
+//! the TAT has already been advanced but no request was sent.
+//! The slot is permanently burned — the token is "leaked".
+//!
+//! **Impact:** The next legitimate request sees a TAT that is `t`
+//! nanoseconds further in the future than it should be, adding an
+//! extra `t` of wait time. Under sustained load with frequent
+//! cancellations, the effective QPS drifts below the configured rate.
+//! The system self-heals during idle periods (max(now, tat) resets
+//! the TAT to `now` when the domain goes idle).
+//!
+//! **Mitigation:** DomainQueue::acquire() in domain_queue.rs uses
+//! GcraTokenGuard, an RAII guard that restores the old TAT via
+//! try_restore() if the guard is dropped without being committed.
+//! Restoration is best-effort (CAS may fail if another thread advanced
+//! the TAT in the meantime).
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::time::Instant;
@@ -64,11 +101,12 @@ impl GcraState {
     /// `Instant::now().duration_since(self.start).as_nanos() as u64`
     ///
     /// # Returns
-    /// - `Ok(tat)` — token consumed, TAT advanced to `tat` (absolute ns).
-    ///   The caller should wait until `tat` before sending the request
-    ///   (if `tat > now`), then send immediately.
+    /// - `Ok((old_tat, new_tat))` — token consumed, TAT advanced from `old_tat` to `new_tat`.
+    ///   The caller should wait until `new_tat` before sending the request
+    ///   (if `new_tat > now`), then send immediately.
+    ///   `old_tat` is provided so the caller can restore the state on cancellation.
     /// - `Err(tat)` — must wait until `tat` to retry. State NOT modified.
-    pub fn try_consume(&self, now: u64) -> Result<u64, u64> {
+    pub fn try_consume(&self, now: u64) -> Result<(u64, u64), u64> {
         let mut iterations = 0u32;
         loop {
             let tat = self.tat.load(Ordering::Acquire);
@@ -82,11 +120,11 @@ impl GcraState {
                     Ordering::AcqRel,
                     Ordering::Acquire,
                 ) {
-                    Ok(_) => return Ok(new_tat),
+                    Ok(_) => return Ok((tat, new_tat)),
                     Err(_) => {
                         // CAS failed — another thread updated TAT. Retry.
                         iterations += 1;
-                        if iterations >= 128 {
+                        if iterations >= 3 {
                             // Hint the CPU to let other threads make progress.
                             std::hint::spin_loop();
                             iterations = 0;
@@ -98,6 +136,23 @@ impl GcraState {
                 return Err(tat);
             }
         }
+    }
+
+    /// Attempt to restore a previous TAT value.
+    ///
+    /// Used to undo a `try_consume` when the caller is cancelled before
+    /// sending the request. Only succeeds if no other thread has advanced
+    /// the TAT past `expected_current`.
+    pub fn try_restore(&self, expected_current: u64, target: u64) -> Result<(), ()> {
+        self.tat
+            .compare_exchange(
+                expected_current,
+                target,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .map(|_| ())
+            .map_err(|_| ())
     }
 
     /// The minimum spacing between requests in nanoseconds.

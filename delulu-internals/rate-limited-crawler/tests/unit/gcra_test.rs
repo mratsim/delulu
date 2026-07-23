@@ -134,7 +134,7 @@ fn test_ok_returns_tat() {
 
     let result = state.try_consume(now);
     assert!(result.is_ok());
-    let tat = result.unwrap();
+    let (_, tat) = result.unwrap();
     // TAT should be >= now + t (100ms for 10 QPS).
     assert!(tat >= now + 100_000_000, "TAT should advance by at least t");
 }
@@ -151,5 +151,5 @@ fn test_err_returns_tat_unchanged() {
     let err = state.try_consume(now).unwrap_err();
 
     // Err returns the unchanged TAT (same as the Ok returned).
-    assert_eq!(err, ok, "Err should return unchanged TAT");
+    assert_eq!(err, ok.1, "Err should return unchanged TAT");
 }
