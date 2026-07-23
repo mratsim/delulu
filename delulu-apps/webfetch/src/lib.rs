@@ -55,9 +55,9 @@ pub async fn fetch_and_extract(
             let html_url = crate::core::detect::arxiv_url_to_html_url(url)?;
             let (body, _) = fetch_url_text(&html_url, crawler).await?;
             let mut dom = pipelines::parse_html(&body)?;
+            let title = extract_title(&dom);
             pipelines::dl_arxiv::filter_arxiv(&mut dom);
             let content_md = generators::gen_md::MarkdownLowerer::lower(&dom, None);
-            let title = extract_title(&dom);
             return Ok(ExtractionResult::GenericHtml {
                 content_md: MarkdownDocument {
                     frontmatter: format!(
