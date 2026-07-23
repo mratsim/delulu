@@ -8,7 +8,7 @@ async fn test_pubmed_search_with_fixture() {
     let (url, _shutdown) = serve_fixture("/entrez/eutils/esearch.fcgi", path).await;
     let server_url = format!("{}/entrez/eutils", url);
 
-    let client = delulu_paper_search_pubmed::PubmedClient::new(5).unwrap().with_api_url(server_url);
+    let client = delulu_paper_search_pubmed::PubmedClient::new().unwrap().with_api_url(server_url);
 
     let query = SearchQuery { query: "virtual+reality".to_string(), max_results: Some(3), sort: None };
     let result = client
@@ -25,7 +25,7 @@ async fn test_pubmed_summaries_with_fixture() {
     let (url, _shutdown) = serve_fixture("/entrez/eutils/esummary.fcgi", path).await;
     let server_url = format!("{}/entrez/eutils", url);
 
-    let client = delulu_paper_search_pubmed::PubmedClient::new(5).unwrap().with_api_url(server_url);
+    let client = delulu_paper_search_pubmed::PubmedClient::new().unwrap().with_api_url(server_url);
 
     let papers = client
         .get_summaries("38742940")
@@ -42,7 +42,7 @@ async fn test_pubmed_abstracts_with_fixture() {
     let (url, _shutdown) = serve_fixture("/entrez/eutils/efetch.fcgi", path).await;
     let server_url = format!("{}/entrez/eutils", url);
 
-    let client = delulu_paper_search_pubmed::PubmedClient::new(5).unwrap().with_api_url(server_url);
+    let client = delulu_paper_search_pubmed::PubmedClient::new().unwrap().with_api_url(server_url);
 
     let abstracts = client
         .fetch_abstracts("38742940")

@@ -172,8 +172,9 @@ async fn main() -> Result<(), Error> {
 
     tracing::debug!("Creating IACR client...");
     let client = Arc::new(
-        IacrClient::with_base_url(30, args.api_base_url.clone())
+        IacrClient::new()
             .context("Failed to create IACR client")?
+            .with_base_url(args.api_base_url.clone()),
     );
 
     match args.command {

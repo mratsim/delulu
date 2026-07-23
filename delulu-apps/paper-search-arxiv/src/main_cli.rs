@@ -89,7 +89,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let client = ArxivClient::new(30).context("Failed to create arXiv client")?;
+    let client = ArxivClient::new().context("Failed to create arXiv client")?;
 
     match args.command {
         Command::Search {

@@ -82,7 +82,7 @@ async fn main() -> Result<()> {
         )
         .init();
     let args = Args::parse();
-    let client = Arc::new(IacrClient::new(30).context("Failed to create IACR client")?);
+    let client = Arc::new(IacrClient::new().context("Failed to create IACR client")?);
 
     match args.command {
         Command::ListRecent => {

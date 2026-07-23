@@ -9,8 +9,9 @@ async fn test_arxiv_search_with_fixture() {
     let (url, _shutdown) = serve_fixture("/api/query", path).await;
     let server_url = format!("{}/api/query", url);
 
-    let client = delulu_paper_search_arxiv::ArxivClient::with_base_url(5, server_url, 1000)
-        .expect("failed to create client");
+    let client = delulu_paper_search_arxiv::ArxivClient::new()
+        .expect("failed to create client")
+        .with_base_url(server_url);
 
     let query = SearchQuery {
         query: "all:electron".to_string(),
@@ -40,8 +41,9 @@ async fn test_arxiv_get_by_id_with_fixture() {
     let (url, _shutdown) = serve_fixture("/api/query", path).await;
     let server_url = format!("{}/api/query", url);
 
-    let client = delulu_paper_search_arxiv::ArxivClient::with_base_url(5, server_url, 1000)
-        .expect("failed to create client");
+    let client = delulu_paper_search_arxiv::ArxivClient::new()
+        .expect("failed to create client")
+        .with_base_url(server_url);
 
     let papers = client
         .get_papers_by_id("cond-mat/0011267")

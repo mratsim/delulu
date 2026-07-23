@@ -172,10 +172,10 @@ async fn main() -> Result<(), Error> {
 
     tracing::debug!("Creating arXiv client...");
     let client = Arc::new(
-        ArxivClient::with_base_url(30, args.api_base_url.clone(), 1)
-        .context("Failed to create arXiv client")?
+        ArxivClient::new()
+            .context("Failed to create arXiv client")?
+            .with_api_url(args.api_base_url.clone()),
     );
-
     match args.command {
         McpServerConfig::Stdio => {
             let server = ArxivMcpServer::new(client);

@@ -264,7 +264,7 @@ async fn main() -> Result<(), Error> {
 
     tracing::debug!("Creating PubMed client...");
     let client = Arc::new(
-        PubmedClient::new(30).context("Failed to create PubMed client")?.with_api_url(args.api_base_url.clone()),
+        PubmedClient::new().context("Failed to create PubMed client")?.with_api_url(args.api_base_url.clone()),
     );
 
     match args.command {

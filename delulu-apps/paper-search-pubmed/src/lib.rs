@@ -41,8 +41,8 @@ pub struct PubmedClient {
 }
 
 impl PubmedClient {
-    pub fn new(timeout_secs: u64) -> Result<Self> {
-        let crawler = Self::build_crawler(timeout_secs)?;
+    pub fn new() -> Result<Self> {
+        let crawler = Self::build_crawler()?;
         Ok(Self {
             crawler: Arc::new(crawler),
             api_url: API_URL.to_string(),
@@ -62,11 +62,11 @@ impl PubmedClient {
         self
     }
 
-    fn build_crawler(timeout_secs: u64) -> Result<RateLimitedCrawler> {
+    fn build_crawler() -> Result<RateLimitedCrawler> {
         RateLimitedCrawler::builder()
             .with_qps(3)
-            .with_timeout(std::time::Duration::from_secs(timeout_secs))
-            .with_connect_timeout(std::time::Duration::from_secs(timeout_secs))
+            .with_timeout(std::time::Duration::from_secs(30))
+            .with_connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .context("Failed to create rate-limited crawler")
     }

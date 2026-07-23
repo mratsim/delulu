@@ -31,7 +31,7 @@ use crate::IacrClient;
 
 #[test]
 fn test_new_creates_client_with_defaults() {
-    let client = IacrClient::new(30).expect("new() should succeed");
+    let client = IacrClient::new().expect("new() should succeed");
     // Verify the client was constructed by testing a method
     let url = client.download_paper_pdf(2024, 123);
     assert_eq!(url, "https://eprint.iacr.org/2024/123.pdf");
@@ -39,8 +39,8 @@ fn test_new_creates_client_with_defaults() {
 
 #[test]
 fn test_with_base_url_custom() {
-    let client = IacrClient::with_base_url(30, "http://localhost:9999".to_string())
-        .expect("with_base_url should succeed");
+    let client = IacrClient::new().unwrap()
+        .with_base_url("http://localhost:9999".to_string());
     let url = client.download_paper_pdf(2024, 123);
     assert_eq!(url, "http://localhost:9999/2024/123.pdf");
 }
@@ -51,8 +51,8 @@ fn test_with_base_url_custom() {
 
 #[test]
 fn test_download_paper_pdf_uses_base_url() {
-    let client = IacrClient::with_base_url(30, "https://eprint.iacr.org".to_string())
-        .expect("with_base_url should succeed");
+    let client = IacrClient::new().unwrap()
+        .with_base_url("https://eprint.iacr.org".to_string());
 
     // download_paper_pdf uses a simple format! without zero-padding
     let url = client.download_paper_pdf(2024, 123);
@@ -65,8 +65,8 @@ fn test_download_paper_pdf_uses_base_url() {
 
 #[test]
 fn test_download_paper_pdf_with_custom_base() {
-    let client = IacrClient::with_base_url(30, "http://localhost:9999".to_string())
-        .expect("with_base_url should succeed");
+    let client = IacrClient::new().unwrap()
+        .with_base_url("http://localhost:9999".to_string());
 
     let url = client.download_paper_pdf(2024, 123);
     assert_eq!(url, "http://localhost:9999/2024/123.pdf");
@@ -86,8 +86,8 @@ async fn test_list_recent_papers_with_fixture() {
     let (url, _shutdown) = paper_search_test_utils::serve_fixture("/rss/rss.xml", path).await;
     let base_url = url.clone();
 
-    let client = IacrClient::with_base_url(5, base_url)
-        .expect("failed to create client");
+    let client = IacrClient::new().unwrap().with_base_url(base_url)
+        ;
 
     let papers = client
         .list_recent_papers()
@@ -109,8 +109,8 @@ async fn test_get_paper_details_with_fixture() {
     let (url, _shutdown) = paper_search_test_utils::serve_fixture("/2025/1", path).await;
     let base_url = url.clone();
 
-    let client = IacrClient::with_base_url(5, base_url)
-        .expect("failed to create client");
+    let client = IacrClient::new().unwrap().with_base_url(base_url)
+        ;
 
     let paper = client
         .get_paper_details(2025, 1)
@@ -127,8 +127,8 @@ async fn test_get_paper_details_with_fixture() {
 /// Test that a request to an unreachable server returns an error.
 #[tokio::test]
 async fn test_list_recent_papers_connection_refused() {
-    let client = IacrClient::with_base_url(2, "http://127.0.0.1:1".to_string())
-        .expect("failed to create client");
+    let client = IacrClient::new().unwrap().with_base_url("http://127.0.0.1:1".to_string())
+        ;
 
     let result = client.list_recent_papers().await;
     assert!(result.is_err(), "request to invalid endpoint should fail");
@@ -146,8 +146,8 @@ async fn test_get_paper_details_http_error() {
     let (url, _shutdown) = paper_search_test_utils::serve_fixture("/nonexistent", path).await;
     let base_url = url.clone();
 
-    let client = IacrClient::with_base_url(5, base_url)
-        .expect("failed to create client");
+    let client = IacrClient::new().unwrap().with_base_url(base_url)
+        ;
 
     // Request a path that doesn't match the fixture route
     let result = client.get_paper_details(2025, 999).await;
@@ -166,8 +166,8 @@ async fn test_get_paper_raw_with_fixture() {
     let (url, _shutdown) = paper_search_test_utils::serve_fixture("/2025/999.pdf", path).await;
     let base_url = url.clone();
 
-    let client = IacrClient::with_base_url(5, base_url)
-        .expect("failed to create client");
+    let client = IacrClient::new().unwrap().with_base_url(base_url)
+        ;
 
     let result = client.get_paper_raw(2025, 999).await;
     assert!(result.is_ok(), "get_paper_raw should succeed when server responds");

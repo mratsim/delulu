@@ -32,17 +32,40 @@ use crate::ArxivClient;
 
 #[test]
 fn test_with_base_url_custom() {
-    let _client = ArxivClient::with_base_url(30, "http://localhost:9999/api".to_string(), 100)
-        .expect("with_base_url should succeed");
+    let _client = ArxivClient::new()
+        .expect("new should succeed")
+        .with_base_url("http://localhost:9999/api".to_string());
 }
 
 /// Verify that with_api_url overrides the API endpoint.
 #[test]
 fn test_with_api_url_custom() {
-    let client = ArxivClient::with_base_url(30, "http://localhost:9999".to_string(), 100)
-        .expect("with_base_url should succeed")
+    let client = ArxivClient::new()
+        .expect("new should succeed")
+        .with_base_url("http://localhost:9999".to_string())
         .with_api_url("http://localhost:8888/api/query".to_string());
     let _ = client;
+}
+
+/// Verify that with_base_url only overrides base_url, not api_url.
+#[test]
+fn test_with_base_url_does_not_override_api_url() {
+    let client = ArxivClient::new()
+        .expect("new should succeed")
+        .with_base_url("https://custom-base.example.com".to_string());
+    assert_eq!(client.base_url, "https://custom-base.example.com");
+    assert_eq!(client.api_url, "https://export.arxiv.org/api/query");
+}
+
+/// Verify that with_api_url is preserved (set after with_base_url).
+#[test]
+fn test_with_api_url_after_with_base_url() {
+    let client = ArxivClient::new()
+        .expect("new should succeed")
+        .with_base_url("https://arxiv.org".to_string())
+        .with_api_url("https://custom-api.example.com/query".to_string());
+    assert_eq!(client.api_url, "https://custom-api.example.com/query");
+    assert_eq!(client.base_url, "https://arxiv.org");
 }
 
 // ---------------------------------------------------------------------------
@@ -87,8 +110,9 @@ async fn test_search_papers_with_fixture() {
     let (url, _shutdown) = paper_search_test_utils::serve_fixture("/api/query", path).await;
     let server_url = format!("{}/api/query", url);
 
-    let client = ArxivClient::with_base_url(5, server_url, 1000)
-        .expect("failed to create client");
+    let client = ArxivClient::new()
+        .expect("failed to create client")
+        .with_base_url(server_url);
 
     let query = SearchQuery {
         query: "all:electron".to_string(),
@@ -121,8 +145,9 @@ async fn test_get_papers_by_id_with_fixture() {
     let (url, _shutdown) = paper_search_test_utils::serve_fixture("/api/query", path).await;
     let server_url = format!("{}/api/query", url);
 
-    let client = ArxivClient::with_base_url(5, server_url, 1000)
-        .expect("failed to create client");
+    let client = ArxivClient::new()
+        .expect("failed to create client")
+        .with_base_url(server_url);
 
     let papers = client
         .get_papers_by_id("cond-mat/0011267")
@@ -136,8 +161,9 @@ async fn test_get_papers_by_id_with_fixture() {
 #[tokio::test]
 async fn test_search_papers_connection_refused() {
     // Use a port that's unlikely to have anything listening
-    let client = ArxivClient::with_base_url(2, "http://127.0.0.1:1/".to_string(), 1000)
-        .expect("failed to create client");
+    let client = ArxivClient::new()
+        .expect("failed to create client")
+        .with_base_url("http://127.0.0.1:1/".to_string());
 
     let query = SearchQuery {
         query: "test".to_string(),
@@ -177,8 +203,9 @@ async fn test_get_paper_uses_html_base_url() {
             break; // Only handle one request for this test
         }
     });
-    let client = ArxivClient::with_base_url(5, server_url.clone(), 1000)
-        .expect("failed to create client");
+    let client = ArxivClient::new()
+        .expect("failed to create client")
+        .with_base_url(server_url.clone());
 
     let result = client.get_paper("2301.99999").await;
     // The request may succeed or fail (no real server), but should not panic.

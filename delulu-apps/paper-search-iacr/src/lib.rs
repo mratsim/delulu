@@ -36,21 +36,26 @@ pub struct IacrClient {
 }
 
 impl IacrClient {
-    pub fn new(timeout_secs: u64) -> Result<Self> {
-        Self::with_base_url(timeout_secs, "https://eprint.iacr.org".to_string())
+    fn new_with_crawler(crawler: RateLimitedCrawler) -> Self {
+        Self {
+            crawler: Arc::new(crawler),
+            base_url: "https://eprint.iacr.org".to_string(),
+        }
     }
 
-    pub fn with_base_url(timeout_secs: u64, base_url: String) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let crawler = RateLimitedCrawler::builder()
             .with_qps(3)
-            .with_timeout(std::time::Duration::from_secs(timeout_secs))
-            .with_connect_timeout(std::time::Duration::from_secs(timeout_secs))
+            .with_timeout(std::time::Duration::from_secs(30))
+            .with_connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .context("Failed to create rate-limited crawler")?;
-        Ok(Self {
-            crawler: Arc::new(crawler),
-            base_url,
-        })
+        Ok(Self::new_with_crawler(crawler))
+    }
+
+    pub fn with_base_url(mut self, url: String) -> Self {
+        self.base_url = url;
+        self
     }
 
     pub async fn list_recent_papers(&self) -> Result<Vec<Paper>> {

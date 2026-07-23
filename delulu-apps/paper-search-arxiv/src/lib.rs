@@ -39,35 +39,32 @@ pub struct ArxivClient {
 }
 
 impl ArxivClient {
-    /// Create a new arXiv client with rate limiting (1 QPS per arXiv's policy).
-    pub fn new(timeout_secs: u64) -> Result<Self> {
-        let crawler = RateLimitedCrawler::builder()
-            .with_qps(1)
-            .with_timeout(std::time::Duration::from_secs(timeout_secs))
-            .with_connect_timeout(std::time::Duration::from_secs(timeout_secs))
-            .build()
-            .context("Failed to create rate-limited crawler")?;
-        Ok(Self {
+    fn new_with_crawler(crawler: RateLimitedCrawler) -> Self {
+        Self {
             crawler: Arc::new(crawler),
             base_url: "https://arxiv.org".to_string(),
             api_url: "https://export.arxiv.org/api/query".to_string(),
-        })
-    }
-    pub fn with_base_url(timeout_secs: u64, base_url: String, qps: u64) -> Result<Self> {
-        let crawler = RateLimitedCrawler::builder()
-            .with_qps(qps)
-            .with_timeout(std::time::Duration::from_secs(timeout_secs))
-            .with_connect_timeout(std::time::Duration::from_secs(timeout_secs))
-            .build()
-            .context("Failed to create rate-limited crawler")?;
-        Ok(Self {
-            crawler: Arc::new(crawler),
-            base_url: base_url.clone(),
-            api_url: base_url,
-        })
+        }
     }
 
-    /// Set a custom API URL (default: https://export.arxiv.org/api/query).
+    /// Create a new arXiv client with rate limiting (1 QPS per arXiv's policy).
+    pub fn new() -> Result<Self> {
+        let crawler = RateLimitedCrawler::builder()
+            .with_qps(1)
+            .with_timeout(std::time::Duration::from_secs(30))
+            .with_connect_timeout(std::time::Duration::from_secs(30))
+            .build()
+            .context("Failed to create rate-limited crawler")?;
+        Ok(Self::new_with_crawler(crawler))
+    }
+
+    /// Override the HTML base URL (default: https://arxiv.org).
+    pub fn with_base_url(mut self, url: String) -> Self {
+        self.base_url = url;
+        self
+    }
+
+    /// Override the API URL (default: https://export.arxiv.org/api/query).
     pub fn with_api_url(mut self, url: String) -> Self {
         self.api_url = url;
         self

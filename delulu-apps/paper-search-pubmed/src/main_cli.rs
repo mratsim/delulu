@@ -89,7 +89,7 @@ async fn main() -> Result<(), Error> {
     let args = Args::parse();
 
     let client = Arc::new(
-        PubmedClient::new(30).context("Failed to create PubMed client")?,
+        PubmedClient::new().context("Failed to create PubMed client")?,
     );
 
     match args.command {
