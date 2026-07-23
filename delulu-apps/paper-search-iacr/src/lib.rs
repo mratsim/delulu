@@ -63,7 +63,11 @@ impl IacrClient {
 
         let status = response.status();
         if !status.is_success() {
-            anyhow::bail!("IACR RSS returned HTTP {}: {}", status, response.text().await.unwrap_or_default());
+            let body_preview = match response.text().await {
+                Ok(body) => body,
+                Err(e) => format!("(failed to read error body: {e})"),
+            };
+            anyhow::bail!("IACR RSS returned HTTP {}: {}", status, body_preview);
         }
 
         let body = response.text().await.context("Failed to read RSS response")?;
@@ -78,7 +82,11 @@ impl IacrClient {
 
         let status = response.status();
         if !status.is_success() {
-            anyhow::bail!("IACR paper returned HTTP {}: {}", status, response.text().await.unwrap_or_default());
+            let body_preview = match response.text().await {
+                Ok(body) => body,
+                Err(e) => format!("(failed to read error body: {e})"),
+            };
+            anyhow::bail!("IACR paper returned HTTP {}: {}", status, body_preview);
         }
 
         let body = response.text().await.context("Failed to read paper response")?;
@@ -107,7 +115,11 @@ impl IacrClient {
 
         let status = response.status();
         if !status.is_success() {
-            anyhow::bail!("IACR paper PDF returned HTTP {}: {}", status, response.text().await.unwrap_or_default());
+            let body_preview = match response.text().await {
+                Ok(body) => body,
+                Err(e) => format!("(failed to read error body: {e})"),
+            };
+            anyhow::bail!("IACR paper PDF returned HTTP {}: {}", status, body_preview);
         }
 
         let bytes = response.bytes().await

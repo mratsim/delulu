@@ -109,17 +109,6 @@ pub trait HttpClient: Send + Sync {
     async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, WebfetchError>;
 }
 
-// ---------------------------------------------------------------------------
-// FetchConfig
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FetchConfig {
-    /// Request timeout in seconds.
-    pub timeout_secs: u64,
-    /// Queries per second rate limit.
-    pub qps: u64,
-}
 
 // ---------------------------------------------------------------------------
 // MarkdownDocument
@@ -183,28 +172,6 @@ pub enum ExtractionResult {
     },
 }
 
-// ---------------------------------------------------------------------------
-// UrlInfo
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UrlInfo {
-    pub url: String,
-    pub source_type: SourceType,
-    pub domain: String,
-}
-
-// ---------------------------------------------------------------------------
-// FetchResult
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FetchResult {
-    pub url: UrlInfo,
-    pub content: ExtractionResult,
-    /// MIME type / content-type header value from the HTTP response.
-    pub content_type: Option<String>,
-}
 #[cfg(test)]
 #[path = "types_test.rs"]
 mod tests;

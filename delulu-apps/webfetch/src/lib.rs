@@ -192,7 +192,7 @@ pub fn xberg_html_to_markdown(
 // ---------------------------------------------------------------------------
 
 /// Maximum document size in bytes (50 MB).
-/// Per spec: raised from 10 MB to 50 MB for PDF/document downloads.
+/// PDF/document downloads exceeding this size are rejected.
 const MAX_DOC_SIZE: usize = 50 * 1024 * 1024;
 
 /// Fetch a document (PDF, DOCX, etc.) via xberg and convert to markdown.
@@ -329,16 +329,16 @@ pub async fn process_doc_bytes(
 // Helper: fetch_url_text
 // ---------------------------------------------------------------------------
 
-/// Fetch a URL via RateLimitedCrawler and return the response body as text
-/// along with the Content-Type header value.
-///
-/// Delegates URL validation, rate limiting, Content-Length check, and streaming
-/// to `RateLimitedCrawler::fetch_text()`.
-///
-/// Only webfetch-specific checks remain here (bot detection).
-///
-/// Does NOT perform URL transformation (Reddit API URL, etc.) — the caller
-/// is expected to pass the final URL to fetch.
+// Fetch a URL via RateLimitedCrawler and return the response body as text
+// along with the Content-Type header value.
+//
+// Delegates URL validation, rate limiting, Content-Length check, and streaming
+// to `RateLimitedCrawler::fetch_text()`.
+//
+// Only webfetch-specific checks remain here (bot detection).
+//
+// Does NOT perform URL transformation (Reddit API URL, etc.) — the caller
+// is expected to pass the final URL to fetch.
 async fn fetch_url_text(
     url: &str,
     crawler: &RateLimitedCrawler,
@@ -360,7 +360,7 @@ async fn fetch_url_text(
 // fallback_to_generic_html
 // ---------------------------------------------------------------------------
 
-/// Shared logic for GenericHtml extraction.
+// Shared logic for GenericHtml extraction.
 fn fallback_to_generic_html(
     url: &str,
     body: String,
