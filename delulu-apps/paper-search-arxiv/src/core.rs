@@ -70,27 +70,37 @@ impl SearchQuery {
 
 /// Normalize arXiv Atom XML by removing namespace declarations and renaming
 /// prefixed elements (e.g. `arxiv:comment` → `arxiv_comment`).
+///
+/// Strips xmlns attributes from both root elements (`<feed xmlns=...>`),
+/// where the preceding character is `<`, and nested elements
+/// (`<entry xmlns=...>`) where the preceding character is whitespace.
+/// Only matches inside XML tags to avoid false positives in text content.
 fn normalize_xml(raw: &str) -> String {
     let mut result = String::with_capacity(raw.len());
     let chars: Vec<char> = raw.chars().collect();
     let len = chars.len();
     let mut i = 0;
+    let mut in_tag = false;
 
     while i < len {
-        // Check for xmlns declarations (preceded by whitespace)
-        if i + 5 < len
-            && chars[i].is_ascii_whitespace()
+        // Track whether we're inside an XML tag
+        if chars[i] == '<' {
+            in_tag = true;
+        } else if chars[i] == '>' {
+            in_tag = false;
+        }
+
+        // Check for xmlns declarations (only inside tags)
+        // Preceded by whitespace (<elem xmlns=...>) or by < (<feed xmlns=...>)
+        if in_tag
+            && i + 5 < len
+            && (chars[i].is_ascii_whitespace() || chars[i] == '<')
             && chars[i + 1] == 'x'
             && chars[i + 2] == 'm'
             && chars[i + 3] == 'l'
             && chars[i + 4] == 'n'
             && chars[i + 5] == 's'
         {
-            // Find the closing quote of the xmlns value
-            let mut close = i + 6;
-            while close < len && chars[close] != '>' && chars[close] != '/' {
-                close += 1;
-            }
             // Skip past the entire xmlns="..." or xmlns:prefix="..."
             // Find the end of the attribute value
             let mut attr_end = i + 6;
