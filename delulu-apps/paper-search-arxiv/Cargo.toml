@@ -9,14 +9,9 @@ description = "arXiv paper search - CLI and MCP server"
 default = ["cli", "mcp"]
 cli = ["dep:clap"]
 mcp = [
-    "dep:rmcp",
     "dep:schemars",
-    "dep:axum",
-    "tracing-subscriber/env-filter",
-    "tokio/signal",
-    "tokio/net",
-    "rmcp/transport-io",
-    "rmcp/transport-streamable-http-server",
+    "dep:rmcp",
+    "dep:delulu-mcp-server-helper",
 ]
 
 [dependencies]
@@ -30,10 +25,10 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 clap = { version = "4", features = ["derive"], optional = true }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["time", "chrono", "env-filter"] }
-urlencoding = "2"
+delulu-mcp-server-helper = { path = "../../delulu-internals/mcp-server-helper", optional = true }
 schemars = { version = "1.0", features = ["derive"], optional = true }
-axum = { version = "0.7", optional = true }
+urlencoding = "2"
+tracing-subscriber = { version = "0.3", features = ["time", "chrono", "env-filter"] }
 rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
 
 [dev-dependencies]
