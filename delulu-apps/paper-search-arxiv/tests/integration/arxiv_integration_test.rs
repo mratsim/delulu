@@ -10,7 +10,7 @@ async fn test_arxiv_search_with_fixture() {
     let (url, _shutdown) = serve_fixture("/api/query", path).await;
     let server_url = format!("{}/api/query", url);
 
-    let client = delulu_paper_search_arxiv::ArxivClient::with_base_url(5, server_url)
+    let client = delulu_paper_search_arxiv::ArxivClient::with_base_url(5, server_url, 1000)
         .expect("failed to create client");
 
     let query = SearchQuery {
@@ -41,7 +41,7 @@ async fn test_arxiv_get_by_id_with_fixture() {
     let (url, _shutdown) = serve_fixture("/api/query", path).await;
     let server_url = format!("{}/api/query", url);
 
-    let client = delulu_paper_search_arxiv::ArxivClient::with_base_url(5, server_url)
+    let client = delulu_paper_search_arxiv::ArxivClient::with_base_url(5, server_url, 1000)
         .expect("failed to create client");
 
     let papers = client

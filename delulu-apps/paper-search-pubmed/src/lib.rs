@@ -26,6 +26,7 @@ pub mod core;
 use anyhow::{Context, Result};
 use core::{Paper, SearchQuery, SearchResult};
 use delulu_rate_limited_crawler::RateLimitedCrawler;
+use delulu_webfetch::WebbfetchClient;
 use urlencoding;
 use std::sync::Arc;
 
@@ -35,6 +36,7 @@ const BASE_URL: &str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 #[derive(Clone)]
 pub struct PubmedClient {
     crawler: Arc<RateLimitedCrawler>,
+    webfetch_client: Arc<WebbfetchClient>,
     base_url: String,
 }
 
@@ -50,8 +52,10 @@ impl PubmedClient {
             .with_connect_timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
             .context("Failed to create rate-limited crawler")?;
+        let webfetch_client = WebbfetchClient::new(120, 3);
         Ok(Self {
             crawler: Arc::new(crawler),
+            webfetch_client: Arc::new(webfetch_client),
             base_url,
         })
     }
@@ -122,8 +126,7 @@ impl PubmedClient {
     pub async fn get_paper(&self, pmc_id: &str) -> Result<String> {
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
         let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
-        let client = delulu_webfetch::WebbfetchClient::new(120, 3);
-        let result = delulu_webfetch::fetch_doc(&url, &client)
+        let result = delulu_webfetch::fetch_doc(&url, &self.webfetch_client)
             .await
             .context("Failed to fetch PubMed paper")?;
         match result {

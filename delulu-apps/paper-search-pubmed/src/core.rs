@@ -479,7 +479,7 @@ pub fn parse_elink_json(json: &str) -> Result<RelatedArticles, String> {
         std::collections::HashMap::new();
 
     for linkset in &resp.linksets {
-        // Collect input PMIDs
+        // Collect input PMIDs (global for output)
         if let Some(ref ids) = linkset.ids {
             for id_entry in ids {
                 if let Some(ref id) = id_entry.id {
@@ -490,6 +490,13 @@ pub fn parse_elink_json(json: &str) -> Result<RelatedArticles, String> {
             }
         }
 
+        // Collect this LinkSet's input PMIDs for association (local, not accumulated)
+        let current_ids: Vec<String> = linkset
+            .ids
+            .as_ref()
+            .map(|ids| ids.iter().filter_map(|id_entry| id_entry.id.clone()).collect())
+            .unwrap_or_default();
+
         // Collect related PMIDs
         if let Some(ref linksetdbs) = linkset.linksetdbs {
             for lsdb in linksetdbs {
@@ -497,8 +504,8 @@ pub fn parse_elink_json(json: &str) -> Result<RelatedArticles, String> {
                     let pmids: Vec<String> =
                         links.iter().filter_map(|l| l.id.clone()).collect();
 
-                    // Associate with each input PMID
-                    for input_id in &input_pmids {
+                    // Associate with each input PMID from THIS LinkSet only
+                    for input_id in &current_ids {
                         let entry = related.entry(input_id.clone()).or_default();
                         let mut seen_related: std::collections::HashSet<String> =
                             entry.iter().cloned().collect();

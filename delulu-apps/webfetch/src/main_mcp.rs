@@ -71,6 +71,21 @@ impl WebfetchServer {
 
 // ---------------------------------------------------------------------------
 // Tools
+//
+// ⚠️ KNOWN ISSUE: SSRF via arbitrary URL fetch
+// The webfetch and fetch_doc tools accept arbitrary URLs with no domain
+// allowlist, no IP-range validation, and no authentication. An attacker who
+// reaches the port can probe internal services, cloud metadata endpoints,
+// and localhost resources.
+//
+// This is intentional: we assume the MCP server is only accessed by
+// trusted clients (e.g., bound to localhost, behind a reverse proxy with
+// auth, or over stdio). Adding URL validation would prevent fetching
+// internal network pages (intranet docs, private paper repositories).
+//
+// If deploying on a network with untrusted access, either:
+//   - Bind to 127.0.0.1 instead of 0.0.0.0
+//   - Use stdio transport instead of HTTP
 // ---------------------------------------------------------------------------
 
 #[tool_router]

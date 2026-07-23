@@ -73,8 +73,8 @@ impl RateLimitedCrawler {
 }
 
 pub struct CrawlerBuilder {
-    client_builder: Option<wreq::ClientBuilder>,
     client: Option<wreq::Client>,
+    client_builder: Option<wreq::ClientBuilder>,
     qps: u64,
     burst: u64,
     max_domains: usize,
@@ -83,8 +83,8 @@ pub struct CrawlerBuilder {
 impl Default for CrawlerBuilder {
     fn default() -> Self {
         Self {
-            client_builder: Some(wreq::Client::builder()),
             client: None,
+            client_builder: None,
             qps: 10,
             burst: 1,
             max_domains: 128,
@@ -93,37 +93,33 @@ impl Default for CrawlerBuilder {
 }
 
 impl CrawlerBuilder {
+    /// Use a pre-built `wreq::Client`. Cannot be mixed with builder settings.
     pub fn with_client(mut self, client: wreq::Client) -> Self {
         self.client = Some(client);
-        self.client_builder = None;
         self
     }
 
     pub fn with_emulation(mut self, emulation: wreq_util::Emulation) -> Self {
-        if let Some(builder) = self.client_builder.as_mut() {
-            *builder = wreq::Client::builder().emulation(emulation);
-        }
+        let builder = self.client_builder.unwrap_or_else(wreq::Client::builder);
+        self.client_builder = Some(builder.emulation(emulation));
         self
     }
 
     pub fn with_redirect(mut self, policy: wreq::redirect::Policy) -> Self {
-        if let Some(builder) = self.client_builder.as_mut() {
-            *builder = wreq::Client::builder().redirect(policy);
-        }
+        let builder = self.client_builder.unwrap_or_else(wreq::Client::builder);
+        self.client_builder = Some(builder.redirect(policy));
         self
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
-        if let Some(builder) = self.client_builder.as_mut() {
-            *builder = wreq::Client::builder().timeout(timeout);
-        }
+        let builder = self.client_builder.unwrap_or_else(wreq::Client::builder);
+        self.client_builder = Some(builder.timeout(timeout));
         self
     }
 
     pub fn with_connect_timeout(mut self, timeout: Duration) -> Self {
-        if let Some(builder) = self.client_builder.as_mut() {
-            *builder = wreq::Client::builder().connect_timeout(timeout);
-        }
+        let builder = self.client_builder.unwrap_or_else(wreq::Client::builder);
+        self.client_builder = Some(builder.connect_timeout(timeout));
         self
     }
 
@@ -141,7 +137,6 @@ impl CrawlerBuilder {
         self.max_domains = max;
         self
     }
-
     pub fn build(self) -> Result<RateLimitedCrawler, CrawlerError> {
         if self.qps == 0 {
             return Err(CrawlerError::QpsZero);
@@ -152,17 +147,29 @@ impl CrawlerBuilder {
         if self.max_domains == 0 {
             return Err(CrawlerError::MaxDomainsZero);
         }
-        let client = match self.client {
-            Some(c) => c,
-            None => self
-                .client_builder
-                .unwrap_or_else(|| wreq::Client::builder())
+        let client = match (self.client, self.client_builder) {
+            (Some(c), None) => c,
+            (None, Some(builder)) => builder
                 .emulation(wreq_util::Emulation::Safari18_5)
                 .redirect(wreq::redirect::Policy::limited(5))
                 .timeout(Duration::from_secs(30))
                 .connect_timeout(Duration::from_secs(30))
                 .build()
                 .map_err(CrawlerError::Http)?,
+            (None, None) => wreq::Client::builder()
+                .emulation(wreq_util::Emulation::Safari18_5)
+                .redirect(wreq::redirect::Policy::limited(5))
+                .timeout(Duration::from_secs(30))
+                .connect_timeout(Duration::from_secs(30))
+                .build()
+                .map_err(CrawlerError::Http)?,
+            (Some(_), Some(_)) => {
+                return Err(CrawlerError::InvalidConfig {
+                    field: "client/client_builder",
+                    value: "mixed".into(),
+                    reason: "use either with_client or builder settings, not both",
+                })
+            }
         };
         Ok(RateLimitedCrawler {
             client,
@@ -225,16 +232,22 @@ impl GetBuilder<'_> {
                                     tokio::time::sleep(compute_backoff(base_secs, attempt)).await;
                                     continue;
                                 }
+                                // Retries exhausted for HTTP errors — fall through to RetryExhausted
+                                continue;
                             }
                             return Ok(resp);
                         }
-                        Err(e) if e.is_retryable() && attempt < retry_limit => {
+                        Err(e) if e.is_retryable() => {
                             tracing::warn!(
                                 "retryable error for {} (attempt {}/{}): {e}",
                                 self.url, attempt + 1, retry_limit + 1
                             );
                             last_error = Some(e);
-                            tokio::time::sleep(compute_backoff(base_secs, attempt)).await;
+                            if attempt < retry_limit {
+                                tokio::time::sleep(compute_backoff(base_secs, attempt)).await;
+                                continue;
+                            }
+                            // Retries exhausted for connection errors — fall through to RetryExhausted
                         }
                         Err(e) => return Err(e),
                     }
@@ -243,7 +256,7 @@ impl GetBuilder<'_> {
                 Err(CrawlerError::RetryExhausted {
                     url: self.url,
                     retries: retry_limit + 1,
-                    last_error: Box::new(last_error.unwrap_or(CrawlerError::QpsZero)),
+                    last_error: last_error.map(Box::new),
                     last_status,
                 })
             }
@@ -253,7 +266,7 @@ impl GetBuilder<'_> {
 
 fn compute_backoff(base_secs: u64, attempt: u32) -> Duration {
     let exp = 2u64.saturating_pow(attempt);
-    let delay_ns = (base_secs as u64)
+    let delay_ns = base_secs
         .saturating_mul(1_000_000_000)
         .saturating_mul(exp);
     let capped = delay_ns.min(60_000_000_000);

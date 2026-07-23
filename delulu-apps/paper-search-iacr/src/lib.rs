@@ -26,6 +26,7 @@ pub mod core;
 use anyhow::{Context, Result};
 use core::Paper;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
+use delulu_webfetch::WebbfetchClient;
 use std::sync::Arc;
 
 const IACR_BASE_URL: &str = "https://eprint.iacr.org";
@@ -34,6 +35,7 @@ const IACR_BASE_URL: &str = "https://eprint.iacr.org";
 #[derive(Clone)]
 pub struct IacrClient {
     crawler: Arc<RateLimitedCrawler>,
+    webfetch_client: Arc<WebbfetchClient>,
     base_url: String,
 }
 
@@ -49,8 +51,10 @@ impl IacrClient {
             .with_connect_timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
             .context("Failed to create rate-limited crawler")?;
+        let webfetch_client = WebbfetchClient::new(120, 3);
         Ok(Self {
             crawler: Arc::new(crawler),
+            webfetch_client: Arc::new(webfetch_client),
             base_url,
         })
     }
@@ -102,8 +106,7 @@ impl IacrClient {
     /// to 3 digits.
     pub async fn get_paper(&self, year: u32, number: u32) -> Result<String> {
         let url = iacr_pdf_url(year, number);
-        let client = delulu_webfetch::WebbfetchClient::new(120, 3);
-        let result = delulu_webfetch::fetch_doc(&url, &client)
+        let result = delulu_webfetch::fetch_doc(&url, &self.webfetch_client)
             .await
             .context("Failed to fetch IACR paper")?;
         match result {

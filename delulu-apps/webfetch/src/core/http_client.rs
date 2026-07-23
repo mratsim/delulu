@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use delulu_query_queues::QueryQueue;
+use futures_util::StreamExt;
 use rand::Rng;
 use tokio::sync::Mutex;
 use tokio::time;
@@ -88,22 +89,43 @@ impl HttpClient for WreqClient {
             // document detection is skipped entirely with no diagnostic signal.
             .and_then(|v| v.to_str().ok().map(String::from));
 
-        // TODO: fuzz/hardening — resp.text() buffers the entire body before the
-        // size check runs, creating an OOM vector on large responses. Should stream
-        // chunks with a running byte count and reject early via Content-Length.
-        // See https://github.com/mratsim/delulu/pull/7
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| WebbfetchError::Fetch(format!("Failed to read response body: {e}")))?;
-
-        if body.len() > MAX_BODY_SIZE {
-            return Err(WebbfetchError::Fetch(format!(
-                "Response body too large: {} bytes (max {})",
-                body.len(),
-                MAX_BODY_SIZE
-            )));
+        // Check Content-Length header first for early rejection (OOM prevention).
+        // This avoids buffering the entire body before the size check runs.
+        if let Some(len) = resp
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<usize>().ok())
+        {
+            if len > MAX_BODY_SIZE {
+                return Err(WebbfetchError::Fetch(format!(
+                    "Response body too large: {} bytes (max {})",
+                    len, MAX_BODY_SIZE
+                )));
+            }
         }
+
+        // Stream body chunks with a running byte counter.
+        // This prevents OOM on malicious/large responses even when Content-Length
+        // is absent or lies — we reject mid-stream as soon as the limit is exceeded.
+        let mut body_bytes: Vec<u8> = Vec::new();
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result
+                .map_err(|e| WebbfetchError::Fetch(format!("Failed to read response chunk: {e}")))?;
+            body_bytes.extend_from_slice(&chunk);
+            if body_bytes.len() > MAX_BODY_SIZE {
+                return Err(WebbfetchError::Fetch(format!(
+                    "Response body too large: {} bytes (max {})",
+                    body_bytes.len(),
+                    MAX_BODY_SIZE
+                )));
+            }
+        }
+
+        // SAFETY: wreq's text() without charset feature uses from_utf8_lossy internally.
+        // We replicate that here since we already have the bytes.
+        let body = String::from_utf8_lossy(&body_bytes).into_owned();
 
         Ok(Response { status, body, content_type })
     }
@@ -116,20 +138,38 @@ impl HttpClient for WreqClient {
             .await
             .map_err(|e| WebbfetchError::Fetch(format!("HTTP request failed: {e}")))?;
 
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| WebbfetchError::Fetch(format!("Failed to read response bytes: {e}")))?;
-
-        if bytes.len() > MAX_BODY_SIZE {
-            return Err(WebbfetchError::Fetch(format!(
-                "Response body too large: {} bytes (max {})",
-                bytes.len(),
-                MAX_BODY_SIZE
-            )));
+        // Check Content-Length header first for early rejection (OOM prevention).
+        if let Some(len) = resp
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<usize>().ok())
+        {
+            if len > MAX_BODY_SIZE {
+                return Err(WebbfetchError::Fetch(format!(
+                    "Response body too large: {} bytes (max {})",
+                    len, MAX_BODY_SIZE
+                )));
+            }
         }
 
-        Ok(bytes.to_vec())
+        // Stream body chunks with a running byte counter.
+        let mut body_bytes: Vec<u8> = Vec::new();
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result
+                .map_err(|e| WebbfetchError::Fetch(format!("Failed to read response chunk: {e}")))?;
+            body_bytes.extend_from_slice(&chunk);
+            if body_bytes.len() > MAX_BODY_SIZE {
+                return Err(WebbfetchError::Fetch(format!(
+                    "Response body too large: {} bytes (max {})",
+                    body_bytes.len(),
+                    MAX_BODY_SIZE
+                )));
+            }
+        }
+
+        Ok(body_bytes)
     }
 }
 

@@ -1,3 +1,405 @@
 use super::*;
+use std::time::Duration;
+use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::matchers::{method, path};
 
-// Unit tests for RateLimitedCrawler, CrawlerBuilder, GetBuilder — to be filled in Phase 2.
+// ---------------------------------------------------------------------------
+// Builder unit tests — no HTTP server needed, just field assertions
+// ---------------------------------------------------------------------------
+
+/// Verifies that chaining multiple `with_*` methods on `CrawlerBuilder`
+/// does NOT silently drop earlier settings (anti-regression for HIDN-B-002).
+#[test]
+fn test_builder_chained_settings_preserved() {
+    let crawler = RateLimitedCrawler::builder()
+        .with_emulation(
+            wreq_util::Emulation::builder()
+                .profile(wreq_util::Profile::Safari18_5)
+                .build(),
+        )
+        .with_redirect(wreq::redirect::Policy::limited(5))
+        .with_timeout(Duration::from_secs(30))
+        .with_connect_timeout(Duration::from_secs(15))
+        .with_qps(50)
+        .with_burst(5)
+        .with_max_domains(256)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+    assert_eq!(crawler.qps, 50);
+    assert_eq!(crawler.burst, 5);
+}
+/// Verifies that with_client works and builder-only settings cannot be mixed.
+#[test]
+fn test_builder_with_client() {
+    let raw_client = wreq::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("wreq::Client::builder().build() should succeed");
+    let crawler = RateLimitedCrawler::builder()
+        .with_client(raw_client)
+        .with_qps(10)
+        .with_burst(1)
+        .with_max_domains(128)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+    assert_eq!(crawler.qps, 10);
+    assert_eq!(crawler.burst, 1);
+}
+
+/// Verifies that mixing with_client and builder settings returns an error.
+#[test]
+fn test_builder_mixed_with_client_and_timeout_errs() {
+    let raw_client = wreq::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build().unwrap();
+    let result = RateLimitedCrawler::builder()
+        .with_client(raw_client)
+        .with_timeout(Duration::from_secs(5))
+        .build();
+    assert!(result.is_err(), "expected Err, got Ok");
+}
+
+/// Verifies that builder settings then with_client also returns an error.
+#[test]
+fn test_builder_timeout_then_with_client_errs() {
+    let raw_client = wreq::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build().unwrap();
+    let result = RateLimitedCrawler::builder()
+        .with_timeout(Duration::from_secs(5))
+        .with_client(raw_client)
+        .build();
+    assert!(result.is_err(), "expected Err, got Ok");
+}
+
+/// Verifies that chaining only a subset of `with_*` methods works.
+#[test]
+fn test_builder_partial_chain() {
+    let crawler = RateLimitedCrawler::builder()
+        .with_timeout(Duration::from_secs(60))
+        .with_qps(5)
+        .build()
+        .expect("CrawlerBuilder::build() with partial chain should succeed");
+    assert_eq!(crawler.qps, 5);
+    assert_eq!(crawler.burst, 1, "burst should default to 1");
+}
+
+/// Verifies that calling a `with_*` method multiple times (last-wins) works.
+#[test]
+fn test_builder_override_settings() {
+    let crawler = RateLimitedCrawler::builder()
+        .with_timeout(Duration::from_secs(1))
+        .with_timeout(Duration::from_secs(30))
+        .with_emulation(
+            wreq_util::Emulation::builder()
+                .profile(wreq_util::Profile::Safari18_5)
+                .build(),
+        )
+        .with_redirect(wreq::redirect::Policy::limited(5))
+        .with_connect_timeout(Duration::from_secs(30))
+        .build()
+        .expect("CrawlerBuilder::build() with overrides should succeed");
+    assert_eq!(crawler.qps, 10, "qps should default to 10");
+    assert_eq!(crawler.burst, 1, "burst should default to 1");
+}
+
+/// Verifies that the builder with only defaults works.
+#[test]
+fn test_builder_defaults_only() {
+    let crawler = RateLimitedCrawler::builder()
+        .build()
+        .expect("CrawlerBuilder::build() with defaults should succeed");
+    assert_eq!(crawler.qps, 10, "qps should default to 10");
+    assert_eq!(crawler.burst, 1, "burst should default to 1");
+}
+
+// ---------------------------------------------------------------------------
+// Retry & backoff tests — these need a mock HTTP server
+// ---------------------------------------------------------------------------
+// These tests verify GetBuilder::send() retry logic:
+//   - HTTP 429 → retry with exponential backoff
+//   - HTTP 5xx → retry with exponential backoff
+//   - Connection errors → retry with exponential backoff
+//   - Non-429 4xx → no retry
+//   - Custom retry limit
+//
+// NOTE: tokio::time::pause() is NOT used here because CrawlerBuilder::build()
+// hardcodes a 30-second timeout that overrides with_timeout(). When time is
+// paused + advanced past 30s, the wreq client's internal timeout fires and all
+// requests fail with TimedOut. Instead, we run in real time with a base backoff
+// of 1 second — total test time is ~15s which is acceptable.
+//
+// The "exhausted" tests (test_retry_429_exhausted, test_retry_with_custom_limit)
+// DO use pause/advance because they only need a single mock and work correctly.
+
+/// Helper: spawn a retry send() and advance time until it completes.
+/// Only used by tests that work correctly with pause/advance.
+async fn retry_with_time_advance(
+    crawler: RateLimitedCrawler,
+    url: String,
+    base_secs: u64,
+    retry_limit: Option<u32>,
+) -> Result<wreq::Response, CrawlerError> {
+    let handle = tokio::spawn(async move {
+        let mut builder = crawler.get(&url).with_exponential_retry(base_secs);
+        if let Some(limit) = retry_limit {
+            builder = builder.with_retry_limit(limit);
+        }
+        builder.send().await
+    });
+
+    // Let the spawned task make the first request and hit the first sleep
+    tokio::task::yield_now().await;
+
+    // Advance time in steps to let all retry backoffs complete
+    for _ in 0..10 {
+        tokio::time::advance(Duration::from_secs(10)).await;
+        tokio::task::yield_now().await;
+        if handle.is_finished() {
+            break;
+        }
+    }
+
+    handle.await.expect("retry task should not panic")
+}
+
+/// Verifies that HTTP 429 triggers retry with exponential backoff and eventually
+/// succeeds when the server returns 200.
+#[tokio::test]
+async fn test_retry_429_then_succeed() {
+    let mock_server = MockServer::start().await;
+
+    // Mount the 429 mock first (higher priority 1, limited to 2 matches)
+    Mock::given(wiremock::matchers::any())
+        .respond_with(ResponseTemplate::new(429))
+        .up_to_n_times(2)
+        .expect(2)
+        .with_priority(1)
+        .mount(&mock_server)
+        .await;
+
+    // Mount the 200 mock second (lower priority 5, unlimited matches)
+    Mock::given(wiremock::matchers::any())
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&mock_server)
+        .await;
+
+    // Use with_client to bypass wreq's Safari emulation which sends
+    // absolute-form URIs (GET http://localhost/...) that confuse wiremock.
+    let raw_client = wreq::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("wreq::Client::builder().build() should succeed");
+    let crawler = RateLimitedCrawler::builder()
+        .with_client(raw_client)
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/retry-429-succeed", mock_server.uri());
+    // Run in real time — backoffs are ~1s per retry
+    let result = crawler
+        .get(&url)
+        .with_exponential_retry(1)
+        .send()
+        .await;
+
+    assert!(result.is_ok(), "expected Ok after retries, got {:?}", result);
+    let resp = result.unwrap();
+    assert_eq!(resp.status().as_u16(), 200, "expected HTTP 200 after retries");
+    let body = resp.text().await.expect("response body should be readable");
+    assert_eq!(body, "ok", "response body should match");
+}
+
+/// Verifies that HTTP 429 exhausts retries and returns CrawlerError::RetryExhausted.
+#[tokio::test]
+async fn test_retry_429_exhausted() {
+    tokio::time::pause();
+
+    let mock_server = MockServer::start().await;
+
+    // Always return 429
+    Mock::given(method("GET"))
+        .and(path("/retry-429-exhausted"))
+        .respond_with(ResponseTemplate::new(429))
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/retry-429-exhausted", mock_server.uri());
+
+    let result = retry_with_time_advance(crawler, url, 1, None).await;
+    assert!(
+        matches!(result, Err(CrawlerError::RetryExhausted { .. })),
+        "expected RetryExhausted, got {:?}",
+        result
+    );
+}
+
+/// Verifies that HTTP 5xx (503) triggers retry and succeeds when the server
+/// returns 200 on the next attempt.
+#[tokio::test]
+async fn test_retry_5xx_then_succeed() {
+    let mock_server = MockServer::start().await;
+
+    // Mount the 503 mock first (higher priority 1, limited to 1 match)
+    Mock::given(wiremock::matchers::any())
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .expect(1)
+        .with_priority(1)
+        .mount(&mock_server)
+        .await;
+
+    // Mount the 200 mock second (lower priority 5, unlimited matches)
+    Mock::given(wiremock::matchers::any())
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&mock_server)
+        .await;
+
+    // Use with_client to bypass wreq's Safari emulation which sends
+    // absolute-form URIs (GET http://localhost/...) that confuse wiremock.
+    let raw_client = wreq::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("wreq::Client::builder().build() should succeed");
+    let crawler = RateLimitedCrawler::builder()
+        .with_client(raw_client)
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/retry-5xx-succeed", mock_server.uri());
+    // Run in real time — backoffs are ~1s per retry
+    let result = crawler
+        .get(&url)
+        .with_exponential_retry(1)
+        .send()
+        .await;
+
+    assert!(result.is_ok(), "expected Ok after 5xx retry, got {:?}", result);
+    let resp = result.unwrap();
+    assert_eq!(resp.status().as_u16(), 200, "expected HTTP 200 after 5xx retry");
+    let body = resp.text().await.expect("response body should be readable");
+    assert_eq!(body, "ok", "response body should match");
+}
+
+/// Verifies that connection errors trigger retry and eventually return
+/// RetryExhausted, and that the crawler remains usable afterwards.
+#[tokio::test]
+async fn test_retry_connection_error_then_succeed() {
+    // Start a mock server for the recovery request
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/recovery"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("recovery-ok"))
+        .mount(&mock_server)
+        .await;
+
+    // Make a request to a port that's not listening (connection refused).
+    // Port 1 is almost certainly not in use and produces a connection error
+    // that wreq::Error::is_connect() returns true for.
+    let bad_url = "http://127.0.0.1:1/connection-error".to_string();
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    // Run in real time — backoffs are ~1s per retry
+    let result = crawler
+        .get(&bad_url)
+        .with_exponential_retry(1)
+        .send()
+        .await;
+
+    assert!(
+        matches!(result, Err(CrawlerError::RetryExhausted { .. })),
+        "expected RetryExhausted for connection errors, got {:?}",
+        result
+    );
+
+    // Verify the crawler still works for subsequent requests
+    let recovery_url = format!("{}/recovery", mock_server.uri());
+    let crawler2 = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+    let resp = crawler2
+        .get(&recovery_url)
+        .send()
+        .await
+        .expect("recovery request should succeed");
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = resp.text().await.expect("response body should be readable");
+    assert_eq!(body, "recovery-ok");
+}
+
+/// Verifies that non-429 4xx responses (e.g. 404) are NOT retried — they are
+/// returned immediately.
+#[tokio::test]
+async fn test_no_retry_on_4xx_non_429() {
+    let mock_server = MockServer::start().await;
+
+    // Use expect(1) to verify only ONE request is made (no retry)
+    Mock::given(method("GET"))
+        .and(path("/not-found"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("not found"))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/not-found", mock_server.uri());
+
+    // Even with retry enabled, 404 should NOT be retried
+    let result = crawler
+        .get(&url)
+        .with_exponential_retry(1)
+        .send()
+        .await;
+
+    assert!(result.is_ok(), "expected Ok(404), got {:?}", result);
+    let resp = result.unwrap();
+    assert_eq!(resp.status().as_u16(), 404, "expected HTTP 404");
+    let body = resp.text().await.expect("response body should be readable");
+    assert_eq!(body, "not found");
+}
+
+/// Verifies that a custom retry limit is respected.
+#[tokio::test]
+async fn test_retry_with_custom_limit() {
+    tokio::time::pause();
+
+    let mock_server = MockServer::start().await;
+
+    // Always return 429
+    Mock::given(method("GET"))
+        .and(path("/custom-limit"))
+        .respond_with(ResponseTemplate::new(429))
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/custom-limit", mock_server.uri());
+
+    // with_retry_limit(1) means 2 total attempts (attempt 0 and 1)
+    let result = retry_with_time_advance(crawler, url, 1, Some(1)).await;
+    assert!(
+        matches!(result, Err(CrawlerError::RetryExhausted { .. })),
+        "expected RetryExhausted with custom limit, got {:?}",
+        result
+    );
+}

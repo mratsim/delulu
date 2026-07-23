@@ -1,28 +1,25 @@
 //! Error types for the rate-limited crawler.
 
+use std::fmt;
+
 use thiserror::Error;
 
 /// Errors that can occur during crawling operations.
 #[derive(Debug, Error)]
 pub enum CrawlerError {
     /// An HTTP request failed (network error, timeout, etc.).
-    #[error("HTTP request failed: {0}")]
     Http(#[source] wreq::Error),
 
     /// Builder was called with qps=0.
-    #[error("qps must be > 0, got 0")]
     QpsZero,
 
     /// Builder was called with burst=0.
-    #[error("burst must be > 0, got 0")]
     BurstZero,
 
     /// Builder was called with max_domains=0.
-    #[error("max_domains must be > 0, got 0")]
     MaxDomainsZero,
 
     /// Other configuration validation failure.
-    #[error("invalid config: {field}={value} — {reason}")]
     InvalidConfig {
         /// The config field name.
         field: &'static str,
@@ -33,30 +30,58 @@ pub enum CrawlerError {
     },
 
     /// The retry loop was exhausted.
-    #[error("retry exhausted after {retries} attempts: {last_error}")]
     RetryExhausted {
         /// The URL that was being fetched.
         url: String,
         /// Number of retry attempts made.
         retries: u32,
-        /// The error from the last retry attempt.
-        last_error: Box<CrawlerError>,
+        /// The error from the last retry attempt, if any.
+        last_error: Option<Box<CrawlerError>>,
         /// HTTP status code from the last attempt, if it was an HTTP response.
         last_status: Option<u16>,
     },
 
     /// URL parsing failed.
-    #[error("URL parse error: {0}")]
     UrlParse(#[from] url::ParseError),
 
     /// The URL has no extractable host (e.g., IP address or file URL).
-    #[error("URL has no host: {url}")]
     MissingDomain {
         /// The URL that caused the error.
         url: String,
     },
 }
 
+impl fmt::Display for CrawlerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Http(e) => write!(f, "HTTP request failed: {e}"),
+            Self::QpsZero => write!(f, "qps must be > 0, got 0"),
+            Self::BurstZero => write!(f, "burst must be > 0, got 0"),
+            Self::MaxDomainsZero => write!(f, "max_domains must be > 0, got 0"),
+            Self::InvalidConfig { field, value, reason } => {
+                write!(f, "invalid config: {field}={value} — {reason}")
+            }
+            Self::RetryExhausted {
+                retries,
+                last_error,
+                last_status,
+                ..
+            } => {
+                write!(f, "retry exhausted after {retries} attempts")?;
+                if let Some(status) = last_status {
+                    write!(f, " (HTTP {status})")?;
+                }
+                if let Some(err) = last_error {
+                    write!(f, ": {err}")
+                } else {
+                    Ok(())
+                }
+            }
+            Self::UrlParse(e) => write!(f, "URL parse error: {e}"),
+            Self::MissingDomain { url } => write!(f, "URL has no host: {url}"),
+        }
+    }
+}
 impl CrawlerError {
     /// Returns `true` if this error is retryable.
     ///

@@ -52,10 +52,10 @@ impl ArxivClient {
         })
     }
 
-    /// Create a client with a custom base URL (for testing).
-    pub fn with_base_url(timeout_secs: u64, base_url: String) -> Result<Self> {
+    /// Create a client with a custom base URL and QPS (for testing or custom endpoints).
+    pub fn with_base_url(timeout_secs: u64, base_url: String, qps: u64) -> Result<Self> {
         let crawler = RateLimitedCrawler::builder()
-            .with_qps(1000) // high QPS for local test server
+            .with_qps(qps)
             .with_timeout(std::time::Duration::from_secs(timeout_secs))
             .with_connect_timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
