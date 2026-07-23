@@ -13,6 +13,7 @@ use crate::core::types::{SourceType};
 use crate::pipelines::DomNode;
 use crate::pipelines::PassFn;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
+use futures_util::StreamExt;
 use std::io::Write;
 use std::time::Duration;
 use tempfile::Builder;
@@ -214,7 +215,7 @@ pub async fn fetch_doc(
     url: &str,
     crawler: &RateLimitedCrawler,
 ) -> Result<ExtractionResult, WebfetchError> {
-    // 1. Download bytes via crawler
+    // 1. Stream response body with size limit check
     let response = crawler
         .get(url)
         .send()
@@ -226,12 +227,32 @@ pub async fn fetch_doc(
         return Err(WebfetchError::Fetch(format!("HTTP error {status}")));
     }
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| WebfetchError::Fetch(format!("Failed to read response bytes: {e}")))?;
+    // Reject oversized responses before streaming
+    if let Some(len) = response.content_length() {
+        if len as usize > MAX_DOC_SIZE {
+            return Err(WebfetchError::IoError(format!(
+                "Document too large: Content-Length {len} bytes (max {} MB)",
+                MAX_DOC_SIZE / (1024 * 1024),
+            )));
+        }
+    }
 
-    process_doc_bytes(bytes.to_vec(), url).await
+    // Stream chunks with size limit enforcement
+    let mut body = Vec::new();
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk
+            .map_err(|e| WebfetchError::Fetch(format!("Failed to read response chunk: {e}")))?;
+        if body.len() + chunk.len() > MAX_DOC_SIZE {
+            return Err(WebfetchError::IoError(format!(
+                "Document exceeded size limit while streaming (max {} MB)",
+                MAX_DOC_SIZE / (1024 * 1024),
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    process_doc_bytes(body, url).await
 }
 
 /// Process raw document bytes through xberg extraction and return markdown.
