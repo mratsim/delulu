@@ -284,12 +284,6 @@ pub struct CitationMatch {
 // Public parsers
 // ---------------------------------------------------------------------------
 
-/// Parse an ESearch JSON response into a `SearchResult`.
-///
-/// # Errors
-///
-/// Returns an error if the JSON is malformed or required fields are missing.
-
 /// Deserialize a JSON value that may be either a string or an integer into Option<String>.
 fn deserialize_string_or_int<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     match Value::deserialize(d) {
@@ -300,7 +294,13 @@ fn deserialize_string_or_int<'de, D: serde::Deserializer<'de>>(d: D) -> Result<O
     }
 }
 
+/// Parse an ESearch JSON response into a `SearchResult`.
+///
+/// # Errors
+///
+/// Returns an error if the JSON is malformed or required fields are missing.
 pub fn parse_search_json(json: &str) -> Result<SearchResult, String> {
+
     let resp: ESearchResponse =
         serde_json::from_str(json).map_err(|e| format!("JSON parse error: {}", e))?;
 
@@ -308,7 +308,14 @@ pub fn parse_search_json(json: &str) -> Result<SearchResult, String> {
         .result
         .count
         .parse()
-        .unwrap_or(resp.result.id_list.len() as u64);
+        .unwrap_or_else(|_| {
+            tracing::warn!(
+                "Failed to parse PubMed count '{}', falling back to id_list.len() ({})",
+                resp.result.count,
+                resp.result.id_list.len(),
+            );
+            resp.result.id_list.len() as u64
+        });
 
     Ok(SearchResult {
         total_count: count,
