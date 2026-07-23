@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::core::types::WebbfetchError;
+use crate::core::types::WebfetchError;
 
 /// Recoverable errors in the pipeline.
 /// Logic bugs (div-by-zero, missing deps, serialization) remain panics.
@@ -20,8 +20,8 @@ impl fmt::Display for PipelineError {
 
 impl std::error::Error for PipelineError {}
 
-impl From<PipelineError> for WebbfetchError {
+impl From<PipelineError> for WebfetchError {
     fn from(e: PipelineError) -> Self {
-        WebbfetchError::Parse(e.to_string())
+        WebfetchError::Parse(e.to_string())
     }
 }

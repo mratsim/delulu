@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use super::types::SourceType;
-use super::types::WebbfetchError;
+use super::types::WebfetchError;
 // ---------------------------------------------------------------------------
 // Compiled regex patterns
 // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ pub fn detect_from_mime_type(mime_type: &str) -> Option<SourceType> {
 /// Converts `/pdf/` to `/html/` and strips trailing `.pdf` extension.
 /// Returns the URL unchanged (as `Ok`) for non-arXiv URLs or if the
 /// transformation is not applicable.
-pub fn arxiv_url_to_html_url(arxiv_url: &str) -> Result<String, WebbfetchError> {
+pub fn arxiv_url_to_html_url(arxiv_url: &str) -> Result<String, WebfetchError> {
     let url = arxiv_url.trim_end_matches('/');
     if let Some(path) = url
         .strip_prefix("https://arxiv.org/pdf/")

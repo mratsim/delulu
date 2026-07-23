@@ -48,11 +48,10 @@ impl FromStr for SourceType {
 }
 
 // ---------------------------------------------------------------------------
-// WebbfetchError
+// WebfetchError
 // ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize, Error)]
-pub enum WebbfetchError {
+pub enum WebfetchError {
     #[error("HTTP fetch error: {0}")]
     Fetch(String),
 
@@ -104,10 +103,10 @@ pub struct Response {
 
 #[async_trait]
 pub trait HttpClient: Send + Sync {
-    async fn get(&self, url: &str) -> Result<Response, WebbfetchError>;
+    async fn get(&self, url: &str) -> Result<Response, WebfetchError>;
 
     /// Fetch a URL and return the raw bytes of the response body.
-    async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, WebbfetchError>;
+    async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, WebfetchError>;
 }
 
 // ---------------------------------------------------------------------------

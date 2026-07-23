@@ -1238,6 +1238,7 @@ dependencies = [
 name = "delulu-rate-limited-crawler"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "quick_cache",
  "rand 0.8.7",
  "thiserror 2.0.19",
@@ -1289,7 +1290,7 @@ dependencies = [
  "async-trait",
  "axum 0.7.9",
  "clap",
- "delulu-query-queues",
+ "delulu-rate-limited-crawler",
  "ego-tree",
  "futures-util",
  "once_cell",

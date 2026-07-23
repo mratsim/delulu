@@ -9,6 +9,7 @@ pub mod domain_queue;
 pub mod error;
 pub mod gcra;
 
+use futures_util::StreamExt;
 use rand::Rng;
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,12 +20,15 @@ use url::Url;
 use crate::domain_queue::DomainQueue;
 use crate::error::CrawlerError;
 
+/// Maximum allowed URL length.
+const MAX_URL_LENGTH: usize = 2048;
 /// A rate-limited HTTP client that gates requests per domain using GCRA.
 pub struct RateLimitedCrawler {
     client: wreq::Client,
     domains: Cache<String, Arc<DomainQueue>>,
     qps: u64,
     burst: u64,
+    max_resp_size: Option<usize>,
 }
 
 impl RateLimitedCrawler {
@@ -68,7 +72,83 @@ impl RateLimitedCrawler {
         for (name, value) in headers {
             req = req.header(name.as_str(), value.as_str());
         }
-        req.send().await.map_err(CrawlerError::Http)
+        let resp = req.send().await.map_err(CrawlerError::Http)?;
+
+        // Check Content-Length against max_resp_size for early rejection
+        if let Some(max) = self.max_resp_size {
+            if let Some(len) = resp.content_length() {
+                if len as usize > max {
+                    return Err(CrawlerError::ResponseTooLarge {
+                        size: len as usize,
+                        max,
+                    });
+                }
+            }
+        }
+
+        Ok(resp)
+    }
+
+    /// Fetch a URL and return the response body as text with its content-type.
+    ///
+    /// Performs:
+    /// - URL validation (length, scheme)
+    /// - Per-domain rate limiting (GCRA)
+    /// - Content-Length check + streaming body read with size limit
+    ///   (if `with_max_resp_size` was configured on the builder)
+    /// - Returns `(body_string, content_type_header)`
+    pub async fn fetch_text(&self, url: &str) -> Result<(String, Option<String>), CrawlerError> {
+        // 1. Validate URL
+        let url = url.trim();
+        if url.len() > MAX_URL_LENGTH {
+            return Err(CrawlerError::InvalidUrl(
+                "URL exceeds maximum length".to_string(),
+            ));
+        }
+        let parsed = Url::parse(url).map_err(CrawlerError::UrlParse)?;
+        let scheme = parsed.scheme();
+        if scheme != "http" && scheme != "https" {
+            return Err(CrawlerError::InvalidUrl(format!(
+                "Unsupported URL scheme: '{scheme}'"
+            )));
+        }
+
+        // 2. Rate-limited fetch
+        let queue = self.domain_queue(&parsed)?;
+        queue.acquire().await;
+        let resp = self.client.get(url).send().await.map_err(CrawlerError::Http)?;
+
+        // 3. Extract content-type (before consuming body)
+        let content_type = resp.headers().get("content-type")
+            .and_then(|v| v.to_str().ok().map(String::from));
+
+        // 4. Check Content-Length + stream body with size limit
+        if let Some(max) = self.max_resp_size {
+            if let Some(len) = resp.content_length() {
+                if len as usize > max {
+                    return Err(CrawlerError::ResponseTooLarge {
+                        size: len as usize,
+                        max,
+                    });
+                }
+            }
+            let mut body = Vec::new();
+            let mut stream = resp.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(CrawlerError::Http)?;
+                body.extend_from_slice(&chunk);
+                if body.len() > max {
+                    return Err(CrawlerError::ResponseTooLarge {
+                        size: body.len(),
+                        max,
+                    });
+                }
+            }
+            Ok((String::from_utf8_lossy(&body).into_owned(), content_type))
+        } else {
+            let body = resp.text().await.map_err(CrawlerError::Http)?;
+            Ok((body, content_type))
+        }
     }
 }
 
@@ -78,6 +158,7 @@ pub struct CrawlerBuilder {
     qps: u64,
     burst: u64,
     max_domains: usize,
+    max_resp_size: Option<usize>,
 }
 
 impl Default for CrawlerBuilder {
@@ -88,6 +169,7 @@ impl Default for CrawlerBuilder {
             qps: 10,
             burst: 1,
             max_domains: 128,
+            max_resp_size: None,
         }
     }
 }
@@ -137,6 +219,11 @@ impl CrawlerBuilder {
         self.max_domains = max;
         self
     }
+
+    pub fn with_max_resp_size(mut self, max: usize) -> Self {
+        self.max_resp_size = Some(max);
+        self
+    }
     pub fn build(self) -> Result<RateLimitedCrawler, CrawlerError> {
         if self.qps == 0 {
             return Err(CrawlerError::QpsZero);
@@ -176,6 +263,7 @@ impl CrawlerBuilder {
             domains: Cache::new(self.max_domains),
             qps: self.qps,
             burst: self.burst,
+            max_resp_size: self.max_resp_size,
         })
     }
 }
@@ -262,6 +350,7 @@ impl GetBuilder<'_> {
             }
         }
     }
+
 }
 
 fn compute_backoff(base_secs: u64, attempt: u32) -> Duration {

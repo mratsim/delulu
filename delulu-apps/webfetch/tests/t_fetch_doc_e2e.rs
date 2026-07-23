@@ -6,7 +6,9 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use delulu_webfetch::{WebbfetchClient, fetch_doc};
+use delulu_rate_limited_crawler::RateLimitedCrawler;
+use delulu_webfetch::fetch_doc;
+use std::time::Duration;
 
 /// Start a local axum server that serves a PDF fixture at /test.pdf.
 /// Returns the fixture URL and a shutdown sender.
@@ -50,17 +52,25 @@ fn fixture_path(name: &str) -> String {
     manifest.join("tests/fixtures-webfetch/pdf").join(name).to_string_lossy().to_string()
 }
 
+fn test_crawler() -> RateLimitedCrawler {
+    RateLimitedCrawler::builder()
+        .with_qps(100)
+        .with_timeout(Duration::from_secs(30))
+        .with_connect_timeout(Duration::from_secs(5))
+        .build()
+        .expect("Failed to create test crawler")
+}
+
 #[tokio::test]
 async fn test_fetch_doc_iacr_2010_354() -> Result<()> {
     let (url, _shutdown) = serve_pdf_fixture(&fixture_path("iacr-2010-354.pdf.zst")).await?;
-    let client = WebbfetchClient::new(30, 3);
-    let result = fetch_doc(&url, &client).await?;
+    let crawler = test_crawler();
+    let result = fetch_doc(&url, &crawler).await?;
 
     match result {
         delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
             assert!(content_md.body.len() > 100, "Output too short: {} chars", content_md.body.len());
             assert!(content_md.frontmatter.contains("source_type: document"));
-            // Should contain some text from the paper
             assert!(content_md.body.contains("efficient") || content_md.body.contains("protocol")
                 || content_md.body.contains("scheme") || content_md.body.contains("signature"),
                 "Expected paper content in output:\n{}",
@@ -74,8 +84,8 @@ async fn test_fetch_doc_iacr_2010_354() -> Result<()> {
 #[tokio::test]
 async fn test_fetch_doc_iacr_2023_kzg() -> Result<()> {
     let (url, _shutdown) = serve_pdf_fixture(&fixture_path("iacr-2023-033-kzg.pdf.zst")).await?;
-    let client = WebbfetchClient::new(60, 3);
-    let result = fetch_doc(&url, &client).await?;
+    let crawler = test_crawler();
+    let result = fetch_doc(&url, &crawler).await?;
 
     match result {
         delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
@@ -93,8 +103,8 @@ async fn test_fetch_doc_iacr_2023_kzg() -> Result<()> {
 #[tokio::test]
 async fn test_fetch_doc_iacr_2023_das() -> Result<()> {
     let (url, _shutdown) = serve_pdf_fixture(&fixture_path("iacr-2023-1079-das.pdf.zst")).await?;
-    let client = WebbfetchClient::new(60, 3);
-    let result = fetch_doc(&url, &client).await?;
+    let crawler = test_crawler();
+    let result = fetch_doc(&url, &crawler).await?;
 
     match result {
         delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
@@ -112,8 +122,8 @@ async fn test_fetch_doc_iacr_2023_das() -> Result<()> {
 #[tokio::test]
 async fn test_fetch_doc_pubmed_alphafold3() -> Result<()> {
     let (url, _shutdown) = serve_pdf_fixture(&fixture_path("pubmed-2024-alphafold3.pdf.zst")).await?;
-    let client = WebbfetchClient::new(60, 3);
-    let result = fetch_doc(&url, &client).await?;
+    let crawler = test_crawler();
+    let result = fetch_doc(&url, &crawler).await?;
 
     match result {
         delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {

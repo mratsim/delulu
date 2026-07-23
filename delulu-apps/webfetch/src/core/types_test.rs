@@ -1,46 +1,46 @@
 use super::*;
 
-// -- WebbfetchError construction ---------------------------------------
+// -- WebfetchError construction ---------------------------------------
 
 #[test]
 fn test_error_fetch() {
-    let e = WebbfetchError::Fetch("connection refused".into());
+    let e = WebfetchError::Fetch("connection refused".into());
     assert_eq!(e.to_string(), "HTTP fetch error: connection refused");
 }
 
 #[test]
 fn test_error_parse() {
-    let e = WebbfetchError::Parse("invalid JSON".into());
+    let e = WebfetchError::Parse("invalid JSON".into());
     assert_eq!(e.to_string(), "Parse error: invalid JSON");
 }
 
 #[test]
 fn test_error_pass() {
-    let e = WebbfetchError::Pass("DOM walk failed".into());
+    let e = WebfetchError::Pass("DOM walk failed".into());
     assert_eq!(e.to_string(), "DOM pass error: DOM walk failed");
 }
 
 #[test]
 fn test_error_invalid_url() {
-    let e = WebbfetchError::InvalidUrl("bad scheme".into());
+    let e = WebfetchError::InvalidUrl("bad scheme".into());
     assert_eq!(e.to_string(), "Invalid URL: bad scheme");
 }
 
 #[test]
 fn test_error_timeout() {
-    let e = WebbfetchError::Timeout("timed out after 30s".into());
+    let e = WebfetchError::Timeout("timed out after 30s".into());
     assert_eq!(e.to_string(), "Request timed out: timed out after 30s");
 }
 
 #[test]
 fn test_error_retry_exhausted() {
-    let e = WebbfetchError::RetryExhausted(3);
+    let e = WebfetchError::RetryExhausted(3);
     assert_eq!(e.to_string(), "Retry exhausted after 3 attempts");
 }
 
 #[test]
 fn test_error_auth_required() {
-    let e = WebbfetchError::AuthRequired("API key missing".into());
+    let e = WebfetchError::AuthRequired("API key missing".into());
     assert_eq!(e.to_string(), "Authentication required: API key missing");
 }
 
@@ -212,17 +212,17 @@ fn test_source_type_round_trip_includes_new() {
     }
 }
 
-// -- New WebbfetchError variants ----------------------------------------------
+// -- New WebfetchError variants ----------------------------------------------
 
 #[test]
 fn test_error_io() {
-    let e = WebbfetchError::IoError("file not found".into());
+    let e = WebfetchError::IoError("file not found".into());
     assert_eq!(e.to_string(), "I/O error: file not found");
 }
 
 #[test]
 fn test_error_xberg() {
-    let e = WebbfetchError::XbergError("xberg service unavailable".into());
+    let e = WebfetchError::XbergError("xberg service unavailable".into());
     assert_eq!(e.to_string(), "xberg error: xberg service unavailable");
 }
 

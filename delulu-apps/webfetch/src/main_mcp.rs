@@ -4,7 +4,8 @@
 
 use anyhow::{Context, Error, Result};
 use clap::{Parser, Subcommand};
-use delulu_webfetch::{ExtractionResult, RedditComment, WebbfetchClient, fetch_and_extract};
+use delulu_rate_limited_crawler::RateLimitedCrawler;
+use delulu_webfetch::{ExtractionResult, RedditComment, MAX_BODY_SIZE, fetch_and_extract};
 use rmcp::handler::server::{ServerHandler, tool::ToolRouter, wrapper::Parameters};
 use rmcp::service::serve_server;
 use rmcp::tool;
@@ -15,6 +16,7 @@ use rmcp::transport::streamable_http_server::{
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
@@ -56,14 +58,14 @@ struct FetchDocInput {
 }
 #[derive(Clone)]
 struct WebfetchServer {
-    client: Arc<WebbfetchClient>,
+    crawler: Arc<RateLimitedCrawler>,
     tool_router: ToolRouter<Self>,
 }
 
 impl WebfetchServer {
-    fn new(client: Arc<WebbfetchClient>) -> Self {
+    fn new(crawler: Arc<RateLimitedCrawler>) -> Self {
         Self {
-            client,
+            crawler,
             tool_router: Self::tool_router(),
         }
     }
@@ -95,7 +97,7 @@ impl WebfetchServer {
         let input = params.0;
         match fetch_and_extract(
             &input.url,
-            &self.client,
+            &self.crawler,
             &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
         )
         .await
@@ -113,7 +115,7 @@ impl WebfetchServer {
         let input = params.0;
         match fetch_and_extract(
             &input.url,
-            &self.client,
+            &self.crawler,
             &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
         )
         .await
@@ -126,7 +128,7 @@ impl WebfetchServer {
     #[tool(description = "Fetch a document (PDF, DOCX, etc.) and convert to markdown")]
     async fn fetch_doc(&self, params: Parameters<FetchDocInput>) -> Result<String, String> {
         let input = params.0;
-        match delulu_webfetch::fetch_doc(&input.url, &self.client).await {
+        match delulu_webfetch::fetch_doc(&input.url, &self.crawler).await {
             Ok(result) => Ok(md_doc_to_string(result)),
             Err(e) => Ok(format!(
                 "---\nerror: true\nerror_type: {:?}\n---\n\nFetch failed",
@@ -280,13 +282,21 @@ async fn main() -> Result<(), Error> {
     let args = Args::parse();
     tracing::debug!("Parsed args: {:?}", args);
 
-    tracing::debug!("Creating webfetch client...");
-    let client = Arc::new(WebbfetchClient::new(30, 2));
-    tracing::debug!("Client created");
+    tracing::debug!("Creating rate-limited crawler...");
+    let crawler = Arc::new(
+        RateLimitedCrawler::builder()
+            .with_qps(2)
+            .with_max_resp_size(MAX_BODY_SIZE)
+            .with_timeout(Duration::from_secs(30))
+            .with_connect_timeout(Duration::from_secs(30))
+            .build()
+            .context("Failed to create rate-limited crawler")?,
+    );
+    tracing::debug!("Crawler created");
 
     match args.command {
         Command::Stdio => {
-            let server = WebfetchServer::new(client);
+            let server = WebfetchServer::new(crawler);
             let (stdin, stdout) = rmcp::transport::io::stdio();
             tracing::info!("Starting MCP server over stdio...");
             let _running = serve_server(Arc::new(server), (stdin, stdout))
@@ -301,7 +311,7 @@ async fn main() -> Result<(), Error> {
                 .parse()
                 .context("Invalid host:port")?;
             tracing::info!("Starting MCP server over HTTP on {}", addr);
-            let server = WebfetchServer::new(client);
+            let server = WebfetchServer::new(crawler);
             let session_manager = Arc::new(LocalSessionManager::default());
             let config = StreamableHttpServerConfig {
                 stateful_mode: true,

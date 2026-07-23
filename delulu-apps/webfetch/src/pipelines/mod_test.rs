@@ -210,7 +210,7 @@ fn test_parse_html_too_many_nodes() {
     let result = parse_html(&html);
     // This may either error or return many nodes; either is acceptable.
     // The node limit exists as a defense-in-depth measure.
-    if let Err(WebbfetchError::Parse(msg)) = &result {
+    if let Err(WebfetchError::Parse(msg)) = &result {
         assert!(
             msg.contains("node count"),
             "error should mention node count: {msg}"

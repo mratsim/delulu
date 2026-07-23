@@ -403,3 +403,412 @@ async fn test_retry_with_custom_limit() {
         result
     );
 }
+
+// ---------------------------------------------------------------------------
+// URL validation & edge-case tests (ported from deleted webfetch tests)
+// ---------------------------------------------------------------------------
+
+/// Verifies that ftp:// URLs are rejected by the crawler.
+///
+/// `Url::parse("ftp://...")` succeeds (ftp is a valid URL scheme), but wreq
+/// rejects the scheme internally with a `BadScheme` error, which surfaces as
+/// `CrawlerError::Http`.
+#[tokio::test]
+async fn test_fetch_invalid_scheme() {
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let result = crawler.get("ftp://example.com/file").send().await;
+    match result {
+        Err(CrawlerError::Http(e)) => {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("scheme is not allowed") || msg.contains("BadScheme"),
+                "expected bad-scheme error, got: {msg}"
+            );
+        }
+        other => panic!("expected Err(CrawlerError::Http), got {other:?}"),
+    }
+}
+
+/// Verifies that very long URLs (2048+ chars) are handled gracefully.
+///
+/// The crawler does not impose its own URL length limit — wreq handles
+/// long URLs without error.
+#[tokio::test]
+async fn test_fetch_long_url() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("long-ok"))
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    // Build a URL > 2048 chars
+    let long_url = format!("{}/{}", mock_server.uri(), "a".repeat(2048));
+    assert!(long_url.len() > 2048, "test URL must exceed 2048 chars");
+
+    let result = crawler.get(&long_url).send().await;
+    assert!(result.is_ok(), "expected Ok for long URL, got {:?}", result);
+    let resp = result.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = resp.text().await.expect("response body should be readable");
+    assert_eq!(body, "long-ok");
+}
+
+/// Verifies that an empty HTTP 200 response body is handled correctly.
+#[tokio::test]
+async fn test_fetch_empty_body() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200)) // no body
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/empty", mock_server.uri());
+    let result = crawler.get(&url).send().await;
+    assert!(result.is_ok(), "expected Ok for empty body, got {:?}", result);
+    let resp = result.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = resp.text().await.expect("response body should be readable");
+    assert!(body.is_empty(), "expected empty body, got {body:?}");
+}
+
+/// Verifies that non-2xx status codes (e.g. 404) are returned as successful
+/// responses, not as errors.
+///
+/// This is distinct from the retry test `test_no_retry_on_4xx_non_429` which
+/// tests that 404 is not retried. This test verifies the plain GET path
+/// (no retry) returns non-2xx statuses as Ok.
+#[tokio::test]
+async fn test_fetch_non_2xx_status() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("not found"))
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/not-found", mock_server.uri());
+    let result = crawler.get(&url).send().await;
+    assert!(result.is_ok(), "expected Ok(404), got {:?}", result);
+    let resp = result.unwrap();
+    assert_eq!(resp.status().as_u16(), 404, "expected HTTP 404");
+    let body = resp.text().await.expect("response body should be readable");
+    assert_eq!(body, "not found");
+}
+
+// ---------------------------------------------------------------------------
+// max_resp_size tests
+// ---------------------------------------------------------------------------
+
+/// Verifies that `with_max_resp_size` sets the field on the crawler.
+#[test]
+fn test_builder_with_max_resp_size() {
+    let crawler = RateLimitedCrawler::builder()
+        .with_max_resp_size(1024)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+    assert_eq!(crawler.max_resp_size, Some(1024));
+}
+
+/// Verifies that default builder has max_resp_size = None.
+#[test]
+fn test_builder_max_resp_size_default() {
+    let crawler = RateLimitedCrawler::builder()
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+    assert_eq!(crawler.max_resp_size, None);
+}
+
+/// Verifies that `with_max_resp_size` is preserved when chained with other settings.
+#[test]
+fn test_builder_chained_with_max_resp_size() {
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(50)
+        .with_burst(5)
+        .with_max_domains(256)
+        .with_max_resp_size(64 * 1024)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+    assert_eq!(crawler.qps, 50);
+    assert_eq!(crawler.burst, 5);
+    assert_eq!(crawler.max_resp_size, Some(64 * 1024));
+}
+
+/// Verifies that Content-Length exceeding max_resp_size is rejected with ResponseTooLarge.
+#[tokio::test]
+async fn test_execute_get_rejects_oversized_content_length() {
+    let mock_server = MockServer::start().await;
+
+    // Return a response with Content-Length > 100
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("x".repeat(200))
+                .insert_header("Content-Length", "200"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_max_resp_size(100)
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/oversized", mock_server.uri());
+    let result = crawler.get(&url).send().await;
+    assert!(
+        matches!(result, Err(CrawlerError::ResponseTooLarge { size: 200, max: 100 })),
+        "expected ResponseTooLarge, got {:?}",
+        result
+    );
+}
+
+/// Verifies that a response within max_resp_size passes through.
+#[tokio::test]
+async fn test_execute_get_accepts_within_max_resp_size() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("small body")
+                .insert_header("Content-Length", "10"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_max_resp_size(100)
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/small", mock_server.uri());
+    let result = crawler.get(&url).send().await;
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+    let resp = result.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+/// Verifies that when max_resp_size is None (default), no size check is performed.
+#[tokio::test]
+async fn test_execute_get_no_max_resp_size() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("x".repeat(500)),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/no-limit", mock_server.uri());
+    let result = crawler.get(&url).send().await;
+    assert!(result.is_ok(), "expected Ok with no limit, got {:?}", result);
+    let resp = result.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = resp.text().await.expect("response body should be readable");
+    assert_eq!(body.len(), 500);
+}
+
+// ---------------------------------------------------------------------------
+// fetch_text tests
+// ---------------------------------------------------------------------------
+
+/// Verifies that fetch_text rejects URLs exceeding MAX_URL_LENGTH.
+#[tokio::test]
+async fn test_fetch_text_rejects_long_url() {
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let long_url = "https://example.com/".to_string() + &"a".repeat(2048);
+    assert!(long_url.len() > 2048, "test URL must exceed MAX_URL_LENGTH");
+
+    let result = crawler.fetch_text(&long_url).await;
+    assert!(
+        matches!(result, Err(CrawlerError::InvalidUrl(_))),
+        "expected InvalidUrl, got {:?}", result
+    );
+}
+
+/// Verifies that fetch_text rejects unsupported URL schemes.
+#[tokio::test]
+async fn test_fetch_text_rejects_unsupported_scheme() {
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let result = crawler.fetch_text("ftp://example.com/file").await;
+    assert!(
+        matches!(result, Err(CrawlerError::InvalidUrl(_))),
+        "expected InvalidUrl, got {:?}", result
+    );
+}
+
+/// Verifies that fetch_text with max_resp_size rejects oversized responses
+/// (Content-Length exceeds max).
+#[tokio::test]
+async fn test_fetch_text_rejects_oversized_content_length() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("x".repeat(200))
+                .insert_header("Content-Length", "200"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_max_resp_size(100)
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/oversized", mock_server.uri());
+    let result = crawler.fetch_text(&url).await;
+    assert!(
+        matches!(result, Err(CrawlerError::ResponseTooLarge { size: 200, max: 100 })),
+        "expected ResponseTooLarge, got {:?}", result
+    );
+}
+
+/// Verifies that fetch_text with max_resp_size accepts responses within the limit.
+#[tokio::test]
+async fn test_fetch_text_accepts_within_max_resp_size() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("small body")
+                .insert_header("Content-Length", "10"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_max_resp_size(100)
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/small", mock_server.uri());
+    let result = crawler.fetch_text(&url).await;
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+    let (body, content_type) = result.unwrap();
+    assert_eq!(body, "small body");
+    assert_eq!(content_type, Some("text/plain".to_string()));
+}
+
+/// Verifies that fetch_text without max_resp_size returns the full body.
+#[tokio::test]
+async fn test_fetch_text_no_max_resp_size() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("x".repeat(500)),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/no-limit", mock_server.uri());
+    let result = crawler.fetch_text(&url).await;
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+    let (body, content_type) = result.unwrap();
+    assert_eq!(body.len(), 500);
+    assert_eq!(content_type, Some("text/plain".to_string()));
+}
+
+/// Verifies that fetch_text returns content-type header.
+#[tokio::test]
+async fn test_fetch_text_returns_content_type() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("hello"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/content-type", mock_server.uri());
+    let result = crawler.fetch_text(&url).await;
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+    let (body, content_type) = result.unwrap();
+    assert_eq!(body, "hello");
+    // wiremock defaults to text/plain for set_body_string
+    assert_eq!(content_type, Some("text/plain".to_string()));
+}
+
+/// Verifies that fetch_text handles responses without explicit Content-Type header.
+/// wiremock always sets a default Content-Type, so this tests that the header
+/// is captured correctly.
+#[tokio::test]
+async fn test_fetch_text_default_content_type() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("hello"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(10_000)
+        .build()
+        .expect("CrawlerBuilder::build() should succeed");
+
+    let url = format!("{}/no-content-type", mock_server.uri());
+    let result = crawler.fetch_text(&url).await;
+    assert!(result.is_ok(), "expected Ok, got {:?}", result);
+    let (body, content_type) = result.unwrap();
+    assert_eq!(body, "hello");
+    // wiremock defaults to text/plain
+    assert_eq!(content_type, Some("text/plain".to_string()));
+}

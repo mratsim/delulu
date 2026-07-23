@@ -26,7 +26,6 @@ pub mod core;
 use anyhow::{Context, Result};
 use core::{Paper, SearchQuery, SearchResult};
 use delulu_rate_limited_crawler::RateLimitedCrawler;
-use delulu_webfetch::WebbfetchClient;
 use urlencoding;
 use std::sync::Arc;
 
@@ -36,7 +35,6 @@ const BASE_URL: &str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 #[derive(Clone)]
 pub struct PubmedClient {
     crawler: Arc<RateLimitedCrawler>,
-    webfetch_client: Arc<WebbfetchClient>,
     base_url: String,
 }
 
@@ -52,10 +50,8 @@ impl PubmedClient {
             .with_connect_timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
             .context("Failed to create rate-limited crawler")?;
-        let webfetch_client = WebbfetchClient::new(120, 3);
         Ok(Self {
             crawler: Arc::new(crawler),
-            webfetch_client: Arc::new(webfetch_client),
             base_url,
         })
     }
@@ -117,18 +113,30 @@ impl PubmedClient {
 // ---------------------------------------------------------------------------
 // get_paper / get_paper_raw
 // ---------------------------------------------------------------------------
-
 impl PubmedClient {
     /// Download a PubMed Central paper by PMC ID and convert to markdown.
     ///
     /// Strips the leading "PMC" prefix if present, downloads the PDF from
-    /// PubMed Central, and converts to Markdown via xberg + webfetch.
+    /// PubMed Central via the rate-limited crawler, and converts to Markdown
+    /// via xberg + webfetch.
     pub async fn get_paper(&self, pmc_id: &str) -> Result<String> {
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
         let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
-        let result = delulu_webfetch::fetch_doc(&url, &self.webfetch_client)
+        let response = self.crawler.get(&url).send().await
+            .context("Failed to fetch PubMed paper PDF")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            anyhow::bail!("PubMed paper PDF returned HTTP {}: {}", status, response.text().await.unwrap_or_default());
+        }
+
+        let bytes = response.bytes().await
+            .map_err(|e| anyhow::anyhow!("Failed to read PDF bytes: {}", e))?;
+
+        let result = delulu_webfetch::process_doc_bytes(bytes.to_vec(), &url)
             .await
-            .context("Failed to fetch PubMed paper")?;
+            .context("Failed to process PubMed paper PDF")?;
+
         match result {
             delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
                 Ok(content_md.body)
@@ -160,7 +168,6 @@ mod tests {
 
     #[test]
     fn test_get_paper_url_with_pmc_prefix() {
-        // Test that PMC prefix is stripped and URL is constructed correctly
         let pmc_id = "PMC123456";
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
         let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
@@ -170,7 +177,6 @@ mod tests {
 
     #[test]
     fn test_get_paper_url_without_pmc_prefix() {
-        // Test that ID without PMC prefix is used as-is
         let pmc_id = "123456";
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
         let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
@@ -180,7 +186,6 @@ mod tests {
 
     #[test]
     fn test_get_paper_url_with_pmc_lowercase() {
-        // Test that lower-case 'pmc' is NOT stripped (only uppercase PMC)
         let pmc_id = "pmc123456";
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
         let url = format!("https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{id}/pdf/");
@@ -190,7 +195,6 @@ mod tests {
 
     #[test]
     fn test_get_paper_raw_url_construction() {
-        // Test get_paper_raw URL logic (same as get_paper)
         let pmc_id = "PMC987654";
         let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
         assert_eq!(id, "987654");

@@ -40,7 +40,6 @@ pub enum CrawlerError {
         /// HTTP status code from the last attempt, if it was an HTTP response.
         last_status: Option<u16>,
     },
-
     /// URL parsing failed.
     UrlParse(#[from] url::ParseError),
 
@@ -49,6 +48,16 @@ pub enum CrawlerError {
         /// The URL that caused the error.
         url: String,
     },
+
+    /// Response body exceeded the maximum allowed size.
+    ResponseTooLarge {
+        /// Actual body size in bytes.
+        size: usize,
+        /// Maximum allowed size in bytes.
+        max: usize,
+    },
+    /// Invalid URL: unsupported scheme, too long, or malformed.
+    InvalidUrl(String),
 }
 
 impl fmt::Display for CrawlerError {
@@ -79,6 +88,10 @@ impl fmt::Display for CrawlerError {
             }
             Self::UrlParse(e) => write!(f, "URL parse error: {e}"),
             Self::MissingDomain { url } => write!(f, "URL has no host: {url}"),
+            Self::ResponseTooLarge { size, max } => {
+                write!(f, "response body too large: {size} bytes (max {max})")
+            }
+            Self::InvalidUrl(msg) => write!(f, "invalid URL: {msg}"),
         }
     }
 }
@@ -96,9 +109,11 @@ impl CrawlerError {
             | CrawlerError::QpsZero
             | CrawlerError::BurstZero
             | CrawlerError::MaxDomainsZero
-            | CrawlerError::InvalidConfig { .. } => false,
-        }
+            | CrawlerError::InvalidConfig { .. }
+            | CrawlerError::ResponseTooLarge { .. }
+            | CrawlerError::InvalidUrl(..) => false,
     }
+}
 }
 
 impl From<wreq::Error> for CrawlerError {
