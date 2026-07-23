@@ -26,16 +26,26 @@ use delulu_mcp_server_helper::rmcp::handler::server::tool::ToolRouter;
 use delulu_mcp_server_helper::rmcp::handler::server::wrapper::Parameters;
 use delulu_mcp_server_helper::rmcp::tool;
 use delulu_mcp_server_helper::rmcp::tool_router;
-use delulu_mcp_server_helper::{McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing};
+use delulu_mcp_server_helper::{McpServerConfig, PeerAddr, impl_server_handler, run_http, run_stdio, setup_tracing};
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use delulu_webfetch::{ExtractionResult, RedditComment, MAX_BODY_SIZE, fetch_and_extract};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
+use std::net::IpAddr;
+use std::net::SocketAddr;
+use url::Host;
 
 #[derive(Parser, Debug)]
 #[command(name = "webfetch-mcp")]
 struct Args {
+    /// Allow fetching URLs that resolve to private/internal IP addresses.
+    /// By default, webfetch rejects requests to private IP ranges
+    /// (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
+    /// ::1, fc00::/7, and cloud metadata endpoints) to prevent SSRF.
+    #[arg(long)]
+    expose_local_networks: bool,
+
     #[command(subcommand)]
     command: McpServerConfig,
 }
@@ -58,13 +68,15 @@ struct FetchDocInput {
 #[derive(Clone)]
 struct WebfetchServer {
     crawler: Arc<RateLimitedCrawler>,
+    expose_local_networks: bool,
     tool_router: ToolRouter<Self>,
 }
 
 impl WebfetchServer {
-    fn new(crawler: Arc<RateLimitedCrawler>) -> Self {
+    fn new(crawler: Arc<RateLimitedCrawler>, expose_local_networks: bool) -> Self {
         Self {
             crawler,
+            expose_local_networks,
             tool_router: Self::tool_router(),
         }
     }
@@ -73,27 +85,26 @@ impl WebfetchServer {
 // ---------------------------------------------------------------------------
 // Tools
 //
-// ⚠️ KNOWN ISSUE: SSRF via arbitrary URL fetch
-// The webfetch and fetch_doc tools accept arbitrary URLs with no domain
-// allowlist, no IP-range validation, and no authentication. An attacker who
-// reaches the port can probe internal services, cloud metadata endpoints,
-// and localhost resources.
+// SSRF protection: by default, URLs that resolve to private/internal IP
+// ranges are rejected. Use --expose-local-networks to allow fetching from
+// local/private networks (intranet docs, private paper repositories).
 //
-// This is intentional: we assume the MCP server is only accessed by
-// trusted clients (e.g., bound to localhost, behind a reverse proxy with
-// auth, or over stdio). Adding URL validation would prevent fetching
-// internal network pages (intranet docs, private paper repositories).
-//
-// If deploying on a network with untrusted access, either:
-//   - Bind to 127.0.0.1 instead of 0.0.0.0
-//   - Use stdio transport instead of HTTP
+// External requestors get a generic "DNS resolution failed" error
+// regardless of whether the URL is invalid, the domain doesn't exist, or
+// the IP is private. This prevents the MCP server from being used as an
+// oracle to probe the internal LAN topology.
 // ---------------------------------------------------------------------------
 
 #[tool_router]
 impl WebfetchServer {
     #[tool(description = "Fetch a URL and return content as Markdown with YAML frontmatter")]
-    async fn webfetch(&self, params: Parameters<FetchInput>) -> Result<String, String> {
+    async fn webfetch(&self, params: Parameters<FetchInput>, peer: PeerAddr) -> Result<String, String> {
         let input = params.0;
+        let (remote_addr, local_addr) = match peer.0 {
+            Some(info) => (Some(info.remote_addr), Some(info.local_addr)),
+            None => (None, None),
+        };
+        validate_url(&input.url, self.expose_local_networks, remote_addr, local_addr).await?;
         match fetch_and_extract(
             &input.url,
             &self.crawler,
@@ -110,8 +121,13 @@ impl WebfetchServer {
     }
 
     #[tool(description = "Fetch a URL and return raw structured data as JSON")]
-    async fn webfetch_raw(&self, params: Parameters<FetchInput>) -> Result<String, String> {
+    async fn webfetch_raw(&self, params: Parameters<FetchInput>, peer: PeerAddr) -> Result<String, String> {
         let input = params.0;
+        let (remote_addr, local_addr) = match peer.0 {
+            Some(info) => (Some(info.remote_addr), Some(info.local_addr)),
+            None => (None, None),
+        };
+        validate_url(&input.url, self.expose_local_networks, remote_addr, local_addr).await?;
         match fetch_and_extract(
             &input.url,
             &self.crawler,
@@ -125,8 +141,13 @@ impl WebfetchServer {
     }
 
     #[tool(description = "Fetch a document (PDF, DOCX, etc.) and convert to markdown")]
-    async fn fetch_doc(&self, params: Parameters<FetchDocInput>) -> Result<String, String> {
+    async fn fetch_doc(&self, params: Parameters<FetchDocInput>, peer: PeerAddr) -> Result<String, String> {
         let input = params.0;
+        let (remote_addr, local_addr) = match peer.0 {
+            Some(info) => (Some(info.remote_addr), Some(info.local_addr)),
+            None => (None, None),
+        };
+        validate_url(&input.url, self.expose_local_networks, remote_addr, local_addr).await?;
         match delulu_webfetch::fetch_doc(&input.url, &self.crawler).await {
             Ok(result) => Ok(md_doc_to_string(result)),
             Err(e) => Ok(format!(
@@ -142,6 +163,117 @@ impl WebfetchServer {
 
 impl_server_handler!(WebfetchServer);
 
+// ---------------------------------------------------------------------------
+// URL validation (SSRF protection)
+// ---------------------------------------------------------------------------
+
+/// Validate that a URL does not target a private/internal IP address.
+///
+/// Returns `Ok(())` if the URL is safe to fetch, or an error message
+/// describing why it was rejected.
+///
+/// Skips validation entirely when `expose_local_networks` is true.
+///
+/// `local_addr` is the server's actual local address from the TCP connection
+/// (None for stdio). Used for same-subnet detection.
+///
+/// Error messages are tailored based on whether the requestor appears to be
+/// on the same subnet as the server (same /16 for IPv4, same /64 for IPv6).
+/// External requestors get a generic "DNS resolution failed" to prevent
+/// the MCP server from being used as an oracle to probe the internal LAN
+/// topology (distinguishing "domain exists but resolves to 10.x.x.x" from
+/// "domain doesn't exist").
+async fn validate_url(
+    url_str: &str,
+    expose_local_networks: bool,
+    peer_addr: Option<SocketAddr>,
+    local_addr: Option<SocketAddr>,
+) -> Result<(), String> {
+    if expose_local_networks {
+        return Ok(());
+    }
+
+    let parsed = url::Url::parse(url_str).map_err(|_| "DNS resolution failed".to_string())?;
+    let host = parsed.host().ok_or_else(|| "DNS resolution failed".to_string())?;
+
+    // Determine if the requestor is on the same subnet as the server.
+    // stdio (None) is always local — no network attacker can reach it.
+    // HTTP sharing the same /16 (/64 for IPv6) → likely same subnet, detailed error is safe.
+    // HTTP from a different subnet → could be external, use generic error.
+    let requestor_same_subnet = peer_addr.zip(local_addr)
+        .is_some_and(|(peer, server)| same_subnet_16(peer, server));
+    let requestor_is_stdio = peer_addr.is_none();
+
+    let blocked_msg = if requestor_is_stdio || requestor_same_subnet {
+        "URL resolves to a private IP address which is blocked by default. ".to_string()
+            + "Use --expose-local-networks to allow fetching from local/private networks."
+    } else {
+        "DNS resolution failed".to_string()
+    };
+
+    match host {
+        Host::Domain(domain) => {
+            let addrs = tokio::net::lookup_host((domain.as_ref(), 0))
+                .await
+                .map_err(|_| "DNS resolution failed".to_string())?;
+
+            for addr in addrs {
+                if is_private_ip(&addr.ip()) {
+                    return Err(blocked_msg);
+                }
+            }
+            Ok(())
+        }
+        Host::Ipv4(ip) => {
+            if is_private_ip(&IpAddr::V4(ip)) {
+                Err(blocked_msg)
+            } else {
+                Ok(())
+            }
+        }
+        Host::Ipv6(ip) => {
+            if is_private_ip(&IpAddr::V6(ip)) {
+                Err(blocked_msg)
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Check if an IP address is in a private/internal range.
+fn is_private_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()         // 127.0.0.0/8
+                || v4.is_private()    // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+                || v4.is_link_local() // 169.254.0.0/16 (includes cloud metadata 169.254.169.254)
+        }
+        IpAddr::V6(v6) => {
+            v6.is_loopback() // ::1
+                || is_ula(v6) // fc00::/7
+        }
+    }
+}
+
+/// Check if an IPv6 address is a Unique Local Address (fc00::/7).
+fn is_ula(v6: &std::net::Ipv6Addr) -> bool {
+    v6.octets()[0] & 0xfe == 0xfc
+}
+
+/// Check if two socket addresses share the same subnet.
+/// Uses /16 for IPv4, /64 for IPv6.
+fn same_subnet_16(a: SocketAddr, b: SocketAddr) -> bool {
+    match (a.ip(), b.ip()) {
+        (IpAddr::V4(a), IpAddr::V4(b)) => {
+            (u32::from(a) >> 16) == (u32::from(b) >> 16)
+        }
+        (IpAddr::V6(a), IpAddr::V6(b)) => {
+            (u128::from(a) >> 64) == (u128::from(b) >> 64)
+        }
+        _ => false,
+    }
+}
 // ---------------------------------------------------------------------------
 // md_doc_to_string: Convert ExtractionResult to a Markdown string
 // ---------------------------------------------------------------------------
@@ -244,11 +376,11 @@ async fn main() -> Result<(), Error> {
 
     match args.command {
         McpServerConfig::Stdio => {
-            let server = WebfetchServer::new(crawler);
+            let server = WebfetchServer::new(crawler, args.expose_local_networks);
             run_stdio(server).await?;
         }
         McpServerConfig::Http { host, port } => {
-            let server = WebfetchServer::new(crawler);
+            let server = WebfetchServer::new(crawler, args.expose_local_networks);
             run_http(server, host, port).await?;
         }
     }

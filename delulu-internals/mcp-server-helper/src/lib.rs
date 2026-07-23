@@ -27,12 +27,17 @@
 //! - Re-exports of `rmcp`, `clap`, `axum`, `tracing_subscriber` so callers
 //!   don't need to import them directly.
 
+use axum::extract::connect_info::Connected;
+use axum::serve::IncomingStream;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::{Context, Error, Result};
+use axum::extract::ConnectInfo;
 use clap::Subcommand;
+use rmcp::handler::server::common::FromContextPart;
 use rmcp::handler::server::ServerHandler;
+use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::service::serve_server;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
@@ -68,7 +73,7 @@ pub enum McpServerConfig {
     Stdio,
     /// Run MCP server over HTTP
     Http {
-        #[arg(long, default_value = "0.0.0.0")]
+        #[arg(long, default_value = "127.0.0.1")]
         host: String,
         /// Port to bind. Default 8080 (webfetch historically used 8081).
         #[arg(long, default_value = "8080")]
@@ -139,7 +144,7 @@ where
         .await
         .context("Failed to bind to address")?;
     tracing::debug!("Listening on {}", addr);
-    axum::serve(listener, app)
+    axum::serve(listener, app.into_make_service_with_connect_info::<PeerInfo>())
         .with_graceful_shutdown(async move {
             tokio::signal::ctrl_c().await.ok();
             tracing::info!("Shutting down HTTP server...");
@@ -234,4 +239,52 @@ macro_rules! impl_server_handler {
             }
         }
     };
+}
+
+// ---------------------------------------------------------------------------
+// PeerAddr extractor for tool handlers
+// ---------------------------------------------------------------------------
+
+/// Connection info for an MCP peer: both the client's address and the
+/// server's actual local address (the IP the client connected to).
+///
+/// For stdio transport, PeerAddr is None — no network addresses available.
+#[derive(Debug, Clone, Copy)]
+pub struct PeerInfo {
+    pub remote_addr: SocketAddr,
+    pub local_addr: SocketAddr,
+}
+
+impl Connected<IncomingStream<'_>> for PeerInfo {
+    fn connect_info(target: IncomingStream<'_>) -> Self {
+        Self {
+            remote_addr: target.remote_addr(),
+            local_addr: target.local_addr().unwrap_or_else(|_| {
+                SocketAddr::from(([0, 0, 0, 0], 0))
+            }),
+        }
+    }
+}
+
+/// Extracts the remote peer's connection info from the request context.
+///
+/// Returns `None` for stdio transport (no network addresses available).
+/// Returns `Some(PeerInfo)` for HTTP transport.
+#[derive(Debug, Clone, Copy)]
+pub struct PeerAddr(pub Option<PeerInfo>);
+
+impl<S> FromContextPart<ToolCallContext<'_, S>> for PeerAddr {
+    fn from_context_part(context: &mut ToolCallContext<S>) -> Result<Self, rmcp::ErrorData> {
+        let info = context
+            .request_context
+            .extensions
+            .get::<axum::http::request::Parts>()
+            .and_then(|parts| {
+                parts
+                    .extensions
+                    .get::<ConnectInfo<PeerInfo>>()
+                    .map(|ci| ci.0)
+            });
+        Ok(PeerAddr(info))
+    }
 }
