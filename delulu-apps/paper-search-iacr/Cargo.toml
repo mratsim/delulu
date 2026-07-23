@@ -20,7 +20,6 @@ delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-craw
 delulu-webfetch = { path = "../webfetch" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
 anyhow = "1.0"
-chrono = { version = "0.4.20", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 scraper = "0.17"

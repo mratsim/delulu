@@ -103,6 +103,11 @@ pub async fn fetch_and_extract(
         .await
         .map_err(|e| WebfetchError::Fetch(format!("HTTP request failed: {e}")))?;
 
+        let status = response.status();
+        if !status.is_success() {
+            return Err(WebfetchError::Fetch(format!("HTTP {}: {}", status.as_u16(), url)));
+        }
+
 
     let content_type = response
         .headers()

@@ -235,7 +235,6 @@ fn escape_markdown(text: &str) -> String {
             ')' => result.push_str("\\)"),
             '#' => result.push_str("\\#"),
             '+' => result.push_str("\\+"),
-            '-' => result.push_str("\\-"),
             '.' => result.push_str("\\."),
             '|' => result.push_str("\\|"),
             _ => result.push(ch),
