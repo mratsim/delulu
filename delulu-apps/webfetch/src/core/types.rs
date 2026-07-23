@@ -85,19 +85,6 @@ pub enum WebfetchError {
 }
 
 // ---------------------------------------------------------------------------
-// Response
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Response {
-    pub status: u16,
-    pub body: String,
-    /// MIME type / content-type header value from the HTTP response.
-    pub content_type: Option<String>,
-}
-
-
-// ---------------------------------------------------------------------------
 // MarkdownDocument
 // ---------------------------------------------------------------------------
 

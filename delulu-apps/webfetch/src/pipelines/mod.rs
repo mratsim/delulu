@@ -113,7 +113,7 @@ fn convert_node(
                 .collect();
 
             let mut children = Vec::new();
-            for (_i, child) in node.children().enumerate() {
+            for child in node.children() {
                 // TODO: Add fuzzing guard for large DOM trees
                 // Pass-through for now
                 convert_node(child, &mut children, depth + 1, total)?;
