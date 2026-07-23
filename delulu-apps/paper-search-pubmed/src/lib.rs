@@ -29,31 +29,46 @@ use delulu_rate_limited_crawler::RateLimitedCrawler;
 use urlencoding;
 use std::sync::Arc;
 
-const BASE_URL: &str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
+const API_URL: &str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
+const BASE_URL: &str = "https://www.ncbi.nlm.nih.gov/pmc";
 
-/// HTTP client for the NCBI PubMed E-utilities API.
+/// HTTP client for the NCBI PubMed E-utilities API and PubMed Central PDF downloads.
 #[derive(Clone)]
 pub struct PubmedClient {
     crawler: Arc<RateLimitedCrawler>,
-    base_url: String,
+    api_url: String,      // E-utilities API endpoint (search, summaries, etc.)
+    base_url: String,     // PubMed Central URL (PDF downloads)
 }
 
 impl PubmedClient {
     pub fn new(timeout_secs: u64) -> Result<Self> {
-        Self::with_base_url(timeout_secs, BASE_URL.to_string())
+        let crawler = Self::build_crawler(timeout_secs)?;
+        Ok(Self {
+            crawler: Arc::new(crawler),
+            api_url: API_URL.to_string(),
+            base_url: BASE_URL.to_string(),
+        })
     }
 
-    pub fn with_base_url(timeout_secs: u64, base_url: String) -> Result<Self> {
-        let crawler = RateLimitedCrawler::builder()
+    /// Set a custom E-utilities API URL (for tests or proxies).
+    pub fn with_api_url(mut self, api_url: String) -> Self {
+        self.api_url = api_url;
+        self
+    }
+
+    /// Set a custom PubMed Central base URL (for tests or proxies).
+    pub fn with_base_url(mut self, base_url: String) -> Self {
+        self.base_url = base_url;
+        self
+    }
+
+    fn build_crawler(timeout_secs: u64) -> Result<RateLimitedCrawler> {
+        RateLimitedCrawler::builder()
             .with_qps(3)
             .with_timeout(std::time::Duration::from_secs(timeout_secs))
             .with_connect_timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
-            .context("Failed to create rate-limited crawler")?;
-        Ok(Self {
-            crawler: Arc::new(crawler),
-            base_url,
-        })
+            .context("Failed to create rate-limited crawler")
     }
 
     async fn get_text(&self, url: &str) -> Result<String> {
@@ -74,19 +89,19 @@ impl PubmedClient {
 
     pub async fn search(&self, query: &SearchQuery) -> Result<SearchResult> {
         let query_string = query.to_query_string();
-        let url = format!("{}/esearch.fcgi?db=pubmed&{}&retmode=json", self.base_url, query_string);
+        let url = format!("{}/esearch.fcgi?db=pubmed&{}&retmode=json", self.api_url, query_string);
         let body = self.get_text(&url).await?;
         core::parse_search_json(&body).map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     pub async fn get_summaries(&self, ids: &str) -> Result<Vec<Paper>> {
-        let url = format!("{}/esummary.fcgi?db=pubmed&id={}&retmode=json", self.base_url, urlencoding::encode(ids));
+        let url = format!("{}/esummary.fcgi?db=pubmed&id={}&retmode=json", self.api_url, urlencoding::encode(ids));
         let body = self.get_text(&url).await?;
         core::parse_summary_json(&body).map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     pub async fn fetch_abstracts(&self, ids: &str) -> Result<Vec<(String, String)>> {
-        let url = format!("{}/efetch.fcgi?db=pubmed&id={}&rettype=medline&retmode=text", self.base_url, urlencoding::encode(ids));
+        let url = format!("{}/efetch.fcgi?db=pubmed&id={}&rettype=medline&retmode=text", self.api_url, urlencoding::encode(ids));
         let body = self.get_text(&url).await?;
         let abstracts = core::parse_abstract_text(&body);
         if abstracts.is_empty() && !ids.is_empty() {
@@ -96,19 +111,19 @@ impl PubmedClient {
     }
 
     pub async fn find_related(&self, ids: &str) -> Result<core::RelatedArticles> {
-        let url = format!("{}/elink.fcgi?dbfrom=pubmed&db=pubmed&id={}&retmode=json", self.base_url, urlencoding::encode(ids));
+        let url = format!("{}/elink.fcgi?dbfrom=pubmed&db=pubmed&id={}&retmode=json", self.api_url, urlencoding::encode(ids));
         let body = self.get_text(&url).await?;
         core::parse_elink_json(&body).map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     pub async fn get_database_info(&self) -> Result<core::DatabaseInfo> {
-        let url = format!("{}/einfo.fcgi?db=pubmed&retmode=json", self.base_url);
+        let url = format!("{}/einfo.fcgi?db=pubmed&retmode=json", self.api_url);
         let body = self.get_text(&url).await?;
         core::parse_einfo_json(&body).map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     pub async fn match_citation(&self, bdata: &str) -> Result<Vec<core::CitationMatch>> {
-        let url = format!("{}/ecitmatch.cgi?db=pubmed&bdata={}", self.base_url, urlencoding::encode(bdata));
+        let url = format!("{}/ecitmatch.cgi?db=pubmed&bdata={}", self.api_url, urlencoding::encode(bdata));
         let body = self.get_text(&url).await?;
         Ok(core::parse_ecitmatch_text(&body))
     }

@@ -37,9 +37,9 @@ fn test_new_creates_client_with_defaults() {
 }
 
 #[test]
-fn test_with_base_url_custom() {
-    let client = PubmedClient::with_base_url(30, "http://localhost:9999".to_string())
-        .expect("with_base_url should succeed");
+fn test_with_api_url_custom() {
+    let client = PubmedClient::new(30).unwrap().with_api_url("http://localhost:9999".to_string());
+        ;
     let _ = client;
 }
 
@@ -104,8 +104,7 @@ async fn test_search_with_fixture() {
     ).await;
     let server_url = format!("{}/entrez/eutils", url);
 
-    let client = PubmedClient::with_base_url(5, server_url)
-        .expect("failed to create client");
+    let client = PubmedClient::new(5).unwrap().with_api_url(server_url);
 
     let query = SearchQuery {
         query: "asthma[Title]".to_string(),
@@ -134,8 +133,7 @@ async fn test_get_summaries_with_fixture() {
     ).await;
     let server_url = format!("{}/entrez/eutils", url);
 
-    let client = PubmedClient::with_base_url(5, server_url)
-        .expect("failed to create client");
+    let client = PubmedClient::new(5).unwrap().with_api_url(server_url);
 
     let papers = client
         .get_summaries("42477534")
@@ -159,8 +157,7 @@ async fn test_fetch_abstracts_with_fixture() {
     ).await;
     let server_url = format!("{}/entrez/eutils", url);
 
-    let client = PubmedClient::with_base_url(5, server_url)
-        .expect("failed to create client");
+    let client = PubmedClient::new(5).unwrap().with_api_url(server_url);
 
     let abstracts = client
         .fetch_abstracts("42477534")
@@ -187,8 +184,7 @@ async fn test_find_related_with_fixture() {
     ).await;
     let server_url = format!("{}/entrez/eutils", url);
 
-    let client = PubmedClient::with_base_url(5, server_url)
-        .expect("failed to create client");
+    let client = PubmedClient::new(5).unwrap().with_api_url(server_url);
 
     let result = client.find_related("37994677").await;
     // Verify the HTTP roundtrip worked — if parsing fails, the error should be a parse error
@@ -215,8 +211,7 @@ async fn test_get_database_info_with_fixture() {
     ).await;
     let server_url = format!("{}/entrez/eutils", url);
 
-    let client = PubmedClient::with_base_url(5, server_url)
-        .expect("failed to create client");
+    let client = PubmedClient::new(5).unwrap().with_api_url(server_url);
 
     let info = client
         .get_database_info()
@@ -230,8 +225,7 @@ async fn test_get_database_info_with_fixture() {
 /// Test that a request to an unreachable server returns an error.
 #[tokio::test]
 async fn test_search_connection_refused() {
-    let client = PubmedClient::with_base_url(2, "http://127.0.0.1:1".to_string())
-        .expect("failed to create client");
+    let client = PubmedClient::new(2).unwrap().with_api_url("http://127.0.0.1:1".to_string());
 
     let query = SearchQuery {
         query: "test".to_string(),
@@ -257,8 +251,7 @@ async fn test_get_paper_with_fixture() {
     ).await;
     let server_url = url.clone();
 
-    let client = PubmedClient::with_base_url(5, server_url)
-        .expect("failed to create client");
+    let client = PubmedClient::new(5).unwrap().with_base_url(server_url);
 
     let result = client.get_paper("PMC9999999").await;
     // get_paper will try to process the bytes as a PDF, which will fail
@@ -282,8 +275,7 @@ async fn test_get_paper_raw_with_fixture() {
     ).await;
     let server_url = url.clone();
 
-    let client = PubmedClient::with_base_url(5, server_url)
-        .expect("failed to create client");
+    let client = PubmedClient::new(5).unwrap().with_base_url(server_url);
 
     let result = client.get_paper_raw("PMC9999999").await;
     assert!(result.is_ok(), "get_paper_raw should succeed when server responds");
