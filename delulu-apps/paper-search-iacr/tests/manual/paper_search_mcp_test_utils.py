@@ -33,11 +33,10 @@ def wait_for_server(port: int, timeout: float = 5.0) -> None:
     start = time.time()
     while time.time() - start < timeout:
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(0.1)
-            s.connect(("127.0.0.1", port))
-            s.close()
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.1)
+                s.connect(("127.0.0.1", port))
             return
-        except Exception:
+        except OSError:
             time.sleep(0.05)
     raise RuntimeError(f"Server not ready on port {port}")

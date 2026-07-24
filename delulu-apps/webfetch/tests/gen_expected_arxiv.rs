@@ -1,6 +1,7 @@
 //! Helper binary: run with `cargo test -p delulu-webfetch --test gen_expected_arxiv -- --nocapture`
 //! to regenerate expected.md.zst for all arXiv pipeline test fixtures.
 #[test]
+#[ignore = "manual: regenerates golden fixtures; run explicitly"]
 fn generate_expected_arxiv_output() {
     generate_for("attention-is-all-you-need");
     generate_for("valida-isa");

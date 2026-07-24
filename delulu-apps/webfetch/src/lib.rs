@@ -243,7 +243,7 @@ const MAX_DOC_SIZE: usize = 50 * 1024 * 1024;
 /// Fetch a document (PDF, DOCX, etc.) via xberg and convert to markdown.
 ///
 /// Downloads raw bytes via `crawler`, writes to a temporary file,
-/// runs xberg extraction with a 120-second timeout, then parses, filters, and
+/// runs xberg extraction with a 10-second timeout, then parses, filters, and
 /// lowers the resulting HTML to Markdown.
 ///
 /// # Arguments
@@ -301,7 +301,7 @@ pub async fn fetch_doc(
 
 /// Process raw document bytes through xberg extraction and return markdown.
 ///
-/// Writes bytes to a temporary file, runs xberg extraction with a 120-second timeout,
+/// Writes bytes to a temporary file, runs xberg extraction with a 10-second timeout,
 /// then parses, filters, and lowers the resulting HTML to Markdown.
 ///
 /// # Arguments

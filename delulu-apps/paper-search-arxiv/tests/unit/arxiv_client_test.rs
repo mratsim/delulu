@@ -69,28 +69,32 @@ fn test_with_api_url_after_with_base_url() {
 }
 
 // ---------------------------------------------------------------------------
-// URL construction tests
+// Base URL configuration tests
 // ---------------------------------------------------------------------------
 
+/// Verify that the default base_url is https://arxiv.org.
 #[test]
-fn test_get_paper_url() {
-    let arxiv_id = "1706.03762";
-    let url = format!("https://arxiv.org/html/{}", arxiv_id);
-    assert_eq!(url, "https://arxiv.org/html/1706.03762");
+fn test_base_url_default() {
+    let client = ArxivClient::new().expect("new should succeed");
+    assert_eq!(client.base_url, "https://arxiv.org");
 }
 
-/// Verify that get_paper URL uses self.base_url (testable via with_base_url).
+/// Verify that with_base_url overrides the base_url.
 #[test]
-fn test_get_paper_url_with_custom_base() {
-    let arxiv_id = "2301.12345";
-    let url = format!("http://localhost:9999/html/{}", arxiv_id);
-    assert_eq!(url, "http://localhost:9999/html/2301.12345");
+fn test_base_url_custom() {
+    let client = ArxivClient::new()
+        .expect("new should succeed")
+        .with_base_url("http://localhost:9999".to_string());
+    assert_eq!(client.base_url, "http://localhost:9999");
 }
 
+/// Verify that old-format arXiv IDs (e.g. cond-mat/0011267) don't cause formatting issues.
 #[test]
-fn test_get_paper_url_old_format_id() {
-    let arxiv_id = "cond-mat/0011267";
-    let url = format!("https://arxiv.org/html/{}", arxiv_id);
+fn test_old_format_id_does_not_crash_format() {
+    let client = ArxivClient::new().expect("new should succeed");
+    assert_eq!(client.base_url, "https://arxiv.org");
+    // Constructing a URL with an old-format ID should not panic
+    let url = format!("{}/html/{}", client.base_url, "cond-mat/0011267");
     assert_eq!(url, "https://arxiv.org/html/cond-mat/0011267");
 }
 

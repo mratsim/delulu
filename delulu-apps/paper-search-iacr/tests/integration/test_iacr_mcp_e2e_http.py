@@ -9,7 +9,7 @@ async def run_tests(mcp_port, config_path):
     with open(config_path) as f:
         config = json.load(f)
     url = f"http://127.0.0.1:{mcp_port}/mcp"
-    async with streamable_http_client(url) as (r, w, sid):
+    async with streamable_http_client(url) as (r, w, _sid):
         async with ClientSession(r, w) as session:
             r = await session.initialize()
             assert r.protocolVersion == "2025-03-26"

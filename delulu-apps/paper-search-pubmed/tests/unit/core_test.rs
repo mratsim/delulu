@@ -65,6 +65,36 @@ fn test_search_query_with_max_results() {
     assert!(s.contains("sort=relevance"));
 }
 
+#[test]
+fn test_search_query_sort_url_encoded() {
+    let q = SearchQuery {
+        query: "cancer".to_string(),
+        max_results: None,
+        sort: Some("pub date".to_string()), // contains space
+    };
+    let s = q.to_query_string();
+    assert!(
+        s.contains("sort=pub%20date") || s.contains("sort=pub+date"),
+        "sort value with spaces should be URL-encoded; got: {}",
+        s
+    );
+}
+
+#[test]
+fn test_search_query_sort_with_special_chars() {
+    let q = SearchQuery {
+        query: "test".to_string(),
+        max_results: None,
+        sort: Some("relevance&order=desc".to_string()), // contains &
+    };
+    let s = q.to_query_string();
+    assert!(
+        s.contains("sort=relevance%26order%3Ddesc"),
+        "sort value with special chars should be URL-encoded; got: {}",
+        s
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Search JSON parsing tests
 // ---------------------------------------------------------------------------

@@ -51,7 +51,7 @@ impl SearchQuery {
             parts.push(format!("retmax={}", max));
         }
         if let Some(sort) = &self.sort {
-            parts.push(format!("sort={}", sort));
+            parts.push(format!("sort={}", urlencoding::encode(sort)));
         }
 
         parts.join("&")

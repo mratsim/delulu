@@ -79,7 +79,7 @@ pub enum WebfetchError {
     IoError(String),
 
     /// Error returned by the xberg document-fetching backend.
-    /// Raised when xberg extraction fails or times out (120s timeout exceeded).
+    /// Raised when xberg extraction fails or times out (10s timeout exceeded).
     #[error("xberg error: {0}")]
     XbergError(String),
 }

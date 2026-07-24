@@ -15,7 +15,7 @@ def find_server_binary(binary_name: str) -> Path:
         workspace = workspace.parent
     if workspace.name != "delulu":
         # Try going up from the tests directory
-        workspace = tests_dir.parent.parent.parent.parent.parent
+        workspace = tests_dir.parent.parent.parent.parent
     for candidate in [
         workspace / "target" / "debug" / binary_name,
         workspace / "target" / "release" / binary_name,
@@ -33,11 +33,10 @@ def wait_for_server(port: int, timeout: float = 5.0) -> None:
     start = time.time()
     while time.time() - start < timeout:
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(0.1)
-            s.connect(("127.0.0.1", port))
-            s.close()
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.1)
+                s.connect(("127.0.0.1", port))
             return
-        except Exception:
+        except OSError:
             time.sleep(0.05)
     raise RuntimeError(f"Server not ready on port {port}")
