@@ -67,8 +67,15 @@ async fn spawn_test_server(
     let body_bytes = body.into_bytes();
     tokio::spawn(async move {
         let (mut socket, _) = listener.accept().await.unwrap();
+        let reason = if status == 200 {
+            "OK"
+        } else if status == 404 {
+            "Not Found"
+        } else {
+            "Unknown"
+        };
         let head = format!(
-            "HTTP/1.1 {status} OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body_bytes.len()
         );
         socket.write_all(head.as_bytes()).await.unwrap();

@@ -26,7 +26,9 @@ use delulu_mcp_server_helper::rmcp::handler::server::tool::ToolRouter;
 use delulu_mcp_server_helper::rmcp::handler::server::wrapper::Parameters;
 use delulu_mcp_server_helper::rmcp::tool;
 use delulu_mcp_server_helper::rmcp::tool_router;
-use delulu_mcp_server_helper::{McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing};
+use delulu_mcp_server_helper::{
+    McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing,
+};
 use delulu_travel_search::{
     Amenity, FlightSearchParams, GoogleFlightsClient, GoogleHotelsClient, HotelSearchParams, Seat,
     Trip,

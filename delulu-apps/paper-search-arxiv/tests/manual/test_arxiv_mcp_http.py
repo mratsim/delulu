@@ -59,7 +59,7 @@ async def run_all_tests():
         [str(server_binary), "http", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        preexec_fn=lambda: None if sys.platform == "win32" else os.setpgrp(),
+        preexec_fn=os.setpgrp if sys.platform != "win32" else None,
     )
 
     try:

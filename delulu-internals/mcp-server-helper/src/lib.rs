@@ -35,8 +35,8 @@ use std::sync::Arc;
 use anyhow::{Context, Error, Result};
 use axum::extract::ConnectInfo;
 use clap::Subcommand;
-use rmcp::handler::server::common::FromContextPart;
 use rmcp::handler::server::ServerHandler;
+use rmcp::handler::server::common::FromContextPart;
 use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::service::serve_server;
 use rmcp::transport::streamable_http_server::{
@@ -137,20 +137,22 @@ where
         stateful_mode: true,
         ..Default::default()
     };
-    let service =
-        StreamableHttpService::new(move || Ok(server.clone()), session_manager, config);
+    let service = StreamableHttpService::new(move || Ok(server.clone()), session_manager, config);
     let app = axum::Router::new().nest_service("/mcp", service);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .context("Failed to bind to address")?;
     tracing::debug!("Listening on {}", addr);
-    axum::serve(listener, app.into_make_service_with_connect_info::<PeerInfo>())
-        .with_graceful_shutdown(async move {
-            tokio::signal::ctrl_c().await.ok();
-            tracing::info!("Shutting down HTTP server...");
-        })
-        .await
-        .context("HTTP server error")?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<PeerInfo>(),
+    )
+    .with_graceful_shutdown(async move {
+        tokio::signal::ctrl_c().await.ok();
+        tracing::info!("Shutting down HTTP server...");
+    })
+    .await
+    .context("HTTP server error")?;
     Ok(())
 }
 
@@ -190,8 +192,8 @@ macro_rules! impl_server_handler {
                     $crate::rmcp::model::ListToolsResult,
                     $crate::rmcp::ErrorData,
                 >,
-            > + Send + '_
-            {
+            > + Send
+            + '_ {
                 tracing::debug!(
                     "list_tools called, tools count: {}",
                     self.tool_router.list_all().len()
@@ -212,8 +214,8 @@ macro_rules! impl_server_handler {
                     $crate::rmcp::model::CallToolResult,
                     $crate::rmcp::ErrorData,
                 >,
-            > + Send + '_
-            {
+            > + Send
+            + '_ {
                 let router = self.tool_router.clone();
                 let self_clone = self.clone();
                 Box::pin(async move {
@@ -259,9 +261,9 @@ impl Connected<IncomingStream<'_>> for PeerInfo {
     fn connect_info(target: IncomingStream<'_>) -> Self {
         Self {
             remote_addr: target.remote_addr(),
-            local_addr: target.local_addr().unwrap_or_else(|_| {
-                SocketAddr::from(([0, 0, 0, 0], 0))
-            }),
+            local_addr: target
+                .local_addr()
+                .unwrap_or_else(|_| SocketAddr::from(([0, 0, 0, 0], 0))),
         }
     }
 }

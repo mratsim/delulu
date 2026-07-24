@@ -6,9 +6,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axum::Router;
 use axum::http::StatusCode;
 use axum::routing::get;
-use axum::Router;
 
 /// Find the workspace root by walking up from the manifest dir
 /// until we find a Cargo.toml containing `[workspace]`.
@@ -45,7 +45,10 @@ pub fn fixture_path(crate_name: &str, name: &str) -> PathBuf {
 
 /// Spawn a local HTTP server that serves a `.zst` fixture at a given route path.
 /// Decompresses on each request — no pre-decompressed content held in memory.
-pub async fn serve_fixture(route: &str, zst_path: PathBuf) -> (String, tokio::sync::oneshot::Sender<()>) {
+pub async fn serve_fixture(
+    route: &str,
+    zst_path: PathBuf,
+) -> (String, tokio::sync::oneshot::Sender<()>) {
     let zst_path = Arc::new(zst_path);
     let route_str = route.to_string();
 
@@ -55,18 +58,23 @@ pub async fn serve_fixture(route: &str, zst_path: PathBuf) -> (String, tokio::sy
             let zst_path = zst_path.clone();
             async move {
                 match std::fs::read(&*zst_path) {
-                    Ok(compressed) => {
-                        match zstd::decode_all(compressed.as_slice()) {
-                            Ok(decompressed) => {
-                                match String::from_utf8(decompressed) {
-                                    Ok(body) => (StatusCode::OK, body),
-                                    Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("fixture not UTF-8: {e}")),
-                                }
-                            }
-                            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("zstd error: {e}")),
-                        }
-                    }
-                    Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("read error: {e}")),
+                    Ok(compressed) => match zstd::decode_all(compressed.as_slice()) {
+                        Ok(decompressed) => match String::from_utf8(decompressed) {
+                            Ok(body) => (StatusCode::OK, body),
+                            Err(e) => (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                format!("fixture not UTF-8: {e}"),
+                            ),
+                        },
+                        Err(e) => (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("zstd error: {e}"),
+                        ),
+                    },
+                    Err(e) => (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("read error: {e}"),
+                    ),
                 }
             }
         }),
@@ -82,7 +90,9 @@ pub async fn serve_fixture(route: &str, zst_path: PathBuf) -> (String, tokio::sy
 
     tokio::spawn(async move {
         axum::serve(listener, app)
-            .with_graceful_shutdown(async { rx.await.ok(); })
+            .with_graceful_shutdown(async {
+                rx.await.ok();
+            })
             .await
             .ok();
     });

@@ -5,9 +5,9 @@
 //! 2. Spawn MCP server in HTTP mode
 //! 3. Run Python script that connects via streamable_http_client
 
+use paper_search_test_utils::{fixture_path, serve_fixture};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
-use paper_search_test_utils::{fixture_path, serve_fixture};
 const PYTHON_SCRIPT: &str = "tests/integration/test_arxiv_mcp_e2e_http.py";
 const BINARY_NAME: &str = "delulu-arxiv-mcp";
 
