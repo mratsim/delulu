@@ -108,13 +108,15 @@ fn normalize_xml(raw: &str) -> String {
             let mut attr_end = i + 6;
             let mut in_value = false;
             let mut quote_char = '"';
+            let mut seen_opening_quote = false;
             while attr_end < len {
                 if !in_value {
                     if chars[attr_end] == '=' {
                         in_value = true;
                     }
                 } else if chars[attr_end] == '"' || chars[attr_end] == '\'' {
-                    if quote_char == '"' {
+                    if !seen_opening_quote {
+                        seen_opening_quote = true;
                         quote_char = chars[attr_end];
                     } else if chars[attr_end] == quote_char {
                         // End of attribute value
@@ -412,8 +414,10 @@ fn extract_arxiv_id(url: &str) -> String {
         .split('?').next().unwrap_or("")
         .split('#').next().unwrap_or("");
     // Strip version suffix (e.g. "2301.12345v2" → "2301.12345")
+    // Scan from end: find 'v' followed only by digits to end
     if let Some(v_pos) = id.rfind('v') {
-        if v_pos > 0 && id[v_pos..].len() > 1 && id[v_pos+1..].chars().all(|c| c.is_ascii_digit()) {
+        let suffix = &id[v_pos + 1..];
+        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
             return id[..v_pos].to_string();
         }
     }
