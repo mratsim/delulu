@@ -34,7 +34,7 @@ impl ProxyClient {
         tracing::debug!("Proxy GET: {}", url);
 
         match self.client.get(url.as_str()).send().await {
-            Ok(mut response) => Self::process_response(&mut response).await,
+            Ok(response) => Self::process_response(response).await,
             Err(e) => ProxyResponse::error(format!("Request failed: {}", e)),
         }
     }
@@ -79,14 +79,14 @@ impl ProxyClient {
             req
         };
         match req.send().await {
-            Ok(mut response) => Self::process_response(&mut response).await,
+            Ok(response) => Self::process_response(response).await,
             Err(e) => ProxyResponse::error(format!("Request failed: {}", e)),
         }
     }
 
     /// Process an HTTP response: check size limits, read body incrementally,
     /// parse JSON, and return a ProxyResponse.
-    async fn process_response(response: &mut wreq::Response) -> ProxyResponse {
+    async fn process_response(response: wreq::Response) -> ProxyResponse {
         let status = response.status();
 
         // Limit response to ~1M tokens (conservative 512KB) to fit in LLM context windows
@@ -106,17 +106,18 @@ impl ProxyClient {
 
         // Read body incrementally with size cap
         let mut body_bytes: Vec<u8> = Vec::new();
-        loop {
-            match response.chunk().await {
-                Ok(Some(chunk)) => {
-                    body_bytes.extend_from_slice(&chunk);
+        use futures::StreamExt;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(data) => {
+                    body_bytes.extend_from_slice(&data);
                     if body_bytes.len() > 524_288 {
                         return ProxyResponse::error(format!(
                             "Response body too large: exceeded 512KB limit"
                         ));
                     }
                 }
-                Ok(None) => break,
                 Err(e) => return ProxyResponse::error(format!("Body read failed: {}", e)),
             }
         }
