@@ -79,16 +79,16 @@ impl SearchQuery {
 /// Only matches inside XML tags to avoid false positives in text content.
 fn normalize_xml(raw: &str) -> String {
     let mut result = String::with_capacity(raw.len());
-    let chars: Vec<char> = raw.chars().collect();
-    let len = chars.len();
+    let bytes = raw.as_bytes();
+    let len = bytes.len();
     let mut i = 0;
     let mut in_tag = false;
 
     while i < len {
         // Track whether we're inside an XML tag
-        if chars[i] == '<' {
+        if bytes[i] == b'<' {
             in_tag = true;
-        } else if chars[i] == '>' {
+        } else if bytes[i] == b'>' {
             in_tag = false;
         }
 
@@ -96,12 +96,12 @@ fn normalize_xml(raw: &str) -> String {
         // Preceded by whitespace (<elem xmlns=...>) or by < (<feed xmlns=...>)
         if in_tag
             && i + 5 < len
-            && (chars[i].is_ascii_whitespace() || chars[i] == '<')
-            && chars[i + 1] == 'x'
-            && chars[i + 2] == 'm'
-            && chars[i + 3] == 'l'
-            && chars[i + 4] == 'n'
-            && chars[i + 5] == 's'
+            && (bytes[i].is_ascii_whitespace() || bytes[i] == b'<')
+            && bytes[i + 1] == b'x'
+            && bytes[i + 2] == b'm'
+            && bytes[i + 3] == b'l'
+            && bytes[i + 4] == b'n'
+            && bytes[i + 5] == b's'
         {
             // Skip past the entire xmlns="..." or xmlns:prefix="..."
             // Find the end of the attribute value
@@ -111,14 +111,14 @@ fn normalize_xml(raw: &str) -> String {
             let mut seen_opening_quote = false;
             while attr_end < len {
                 if !in_value {
-                    if chars[attr_end] == '=' {
+                    if bytes[attr_end] == b'=' {
                         in_value = true;
                     }
-                } else if chars[attr_end] == '"' || chars[attr_end] == '\'' {
+                } else if bytes[attr_end] == b'"' || bytes[attr_end] == b'\'' {
                     if !seen_opening_quote {
                         seen_opening_quote = true;
-                        quote_char = chars[attr_end];
-                    } else if chars[attr_end] == quote_char {
+                        quote_char = bytes[attr_end] as char;
+                    } else if bytes[attr_end] as char == quote_char {
                         // End of attribute value
                         i = attr_end + 1;
                         break;
@@ -127,26 +127,26 @@ fn normalize_xml(raw: &str) -> String {
                 attr_end += 1;
             }
             if attr_end >= len {
-                result.push(chars[i]);
+                result.push(bytes[i] as char);
                 i += 1;
             }
             continue;
         }
 
         // Rename prefixed elements: <arxiv:comment> → <arxiv_comment>
-        if chars[i] == '<' {
+        if bytes[i] == b'<' {
             // Look ahead for a colon in the tag name
-            let tag_start = if i + 1 < len && (chars[i + 1] == '/' || chars[i + 1] == '?') {
+            let tag_start = if i + 1 < len && (bytes[i + 1] == b'/' || bytes[i + 1] == b'?') {
                 i + 2
             } else {
                 i + 1
             };
             let mut colon_pos = None;
             for j in tag_start..len {
-                if chars[j] == '>' || chars[j] == ' ' || chars[j] == '/' || chars[j] == '?' {
+                if bytes[j] == b'>' || bytes[j] == b' ' || bytes[j] == b'/' || bytes[j] == b'?' {
                     break;
                 }
-                if chars[j] == ':' {
+                if bytes[j] == b':' {
                     colon_pos = Some(j);
                     break;
                 }
@@ -154,7 +154,7 @@ fn normalize_xml(raw: &str) -> String {
             if let Some(col) = colon_pos {
                 // Copy everything before the colon, replace colon with underscore, skip colon
                 for k in i..col {
-                    result.push(chars[k]);
+                    result.push(bytes[k] as char);
                 }
                 result.push('_');
                 i = col + 1;
@@ -162,7 +162,7 @@ fn normalize_xml(raw: &str) -> String {
             }
         }
 
-        result.push(chars[i]);
+        result.push(bytes[i] as char);
         i += 1;
     }
 
