@@ -338,7 +338,7 @@ pub async fn process_doc_bytes(
 
     let temp_path = temp_file.path().to_path_buf();
 
-    // 3. Run xberg with 120s timeout (hardcoded per spec requirement)
+    // 3. Run xberg with 10s timeout
     let config = ExtractionConfig {
         output_format: OutputFormat::Html,
         use_cache: false,
@@ -351,13 +351,13 @@ pub async fn process_doc_bytes(
     };
 
     let result = tokio::time::timeout(
-        Duration::from_secs(120),
+        Duration::from_secs(10),
         xberg_extract(input, &config),
     )
     .await
     .map_err(|_| {
         WebfetchError::XbergError(
-            "xberg extraction timed out after 120 seconds".into(),
+            "xberg extraction timed out after 10 seconds".into(),
         )
     })?
     .map_err(|e| WebfetchError::XbergError(e.to_string()))?;
