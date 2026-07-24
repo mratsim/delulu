@@ -1,6 +1,6 @@
 //! End-to-end stdio + HTTP tests for the PubMed MCP server.
 
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use paper_search_test_utils::{fixture_path, serve_fixture};
@@ -78,6 +78,14 @@ async fn test_pubmed_mcp_e2e_stdio() {
     let _ = std::fs::remove_file(&cfg_path);
     check_output(output);
 }
+struct ChildGuard(Child);
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
 
 #[tokio::test]
 async fn test_pubmed_mcp_e2e_http() {
@@ -118,13 +126,13 @@ async fn test_pubmed_mcp_e2e_http() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
+    let child = ChildGuard(child);
+
     let output = run_python(
         "test_pubmed_mcp_e2e_http.py",
         &[port.to_string(), cfg_path.to_string_lossy().to_string()],
     )
     .await;
-    let _ = child.kill();
-    let _ = child.wait();
     let _ = std::fs::remove_file(&cfg_path);
     check_output(output);
 }

@@ -5,9 +5,8 @@
 //! 2. Spawn MCP server in HTTP mode
 //! 3. Run Python script that connects via streamable_http_client
 
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
-
 use paper_search_test_utils::{fixture_path, serve_fixture};
 const PYTHON_SCRIPT: &str = "tests/integration/test_arxiv_mcp_e2e_http.py";
 const BINARY_NAME: &str = "delulu-arxiv-mcp";
@@ -33,6 +32,15 @@ fn find_binary() -> std::path::PathBuf {
 fn get_free_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     listener.local_addr().unwrap().port()
+}
+
+struct ChildGuard(Child);
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
 }
 
 #[tokio::test]
@@ -79,6 +87,8 @@ async fn test_arxiv_mcp_e2e_http() {
         }
     });
 
+    let mcp_child = ChildGuard(mcp_child);
+
     // Wait for MCP server to be ready
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(10);
@@ -121,9 +131,7 @@ async fn test_arxiv_mcp_e2e_http() {
         eprint!("{}", stderr);
     }
 
-    // Cleanup
-    let _ = mcp_child.kill();
-    let _ = mcp_child.wait();
+    // Cleanup (ChildGuard handles process kill via Drop)
     let _ = std::fs::remove_file(&config_path);
 
     assert!(
