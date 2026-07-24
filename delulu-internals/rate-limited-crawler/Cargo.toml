@@ -1,0 +1,22 @@
+[package]
+name = "delulu-rate-limited-crawler"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0"
+description = "Per-domain rate-limited HTTP client with GCRA gating, exponential retry, and LRU eviction of idle domain queues"
+
+[dependencies]
+wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing", "stream"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+wreq-util = "3.0.0-rc.9"
+quick_cache = "0.7"
+tokio = { version = "1", features = ["time", "rt", "macros"] }
+url = "2"
+rand = "0.8"
+tracing = "0.1"
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util", "rt-multi-thread", "macros"] }
+tracing-test = "0.2"
+wiremock = "0.6"

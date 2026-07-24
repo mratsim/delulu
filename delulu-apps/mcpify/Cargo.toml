@@ -17,7 +17,7 @@ mcp = [
 ]
 
 [dependencies]
-wreq = { version = "6.0.0-rc.26", features = ["json", "tracing", "brotli", "gzip", "zstd"] }
+wreq = { version = "6.0.0-rc.26", features = ["stream", "json", "tracing", "brotli", "gzip", "zstd"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "net", "signal"] }
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }

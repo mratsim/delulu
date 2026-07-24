@@ -660,19 +660,16 @@ fn test_dt_differential_vs_original_logic() {
     }
     // Phase 2: tree walker that sets metadata
     fn old_tree_walker(node: &mut DomNode) {
-        match node {
-            DomNode::Element { children, .. } => {
-                for child in children.iter_mut() {
-                    old_tree_walker(child);
-                }
-                let result = old_pure(node);
-                if let DomNode::Element { metadata, .. } = node {
-                    if let Some(val) = result {
-                        metadata.insert("is_data_table".to_string(), val);
-                    }
-                }
+        if let DomNode::Element { children, .. } = node {
+            for child in children.iter_mut() {
+                old_tree_walker(child);
             }
-            _ => {}
+            let result = old_pure(node);
+            if let DomNode::Element { metadata, .. } = node
+                && let Some(val) = result
+            {
+                metadata.insert("is_data_table".to_string(), val);
+            }
         }
     }
 

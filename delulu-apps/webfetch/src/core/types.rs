@@ -1,7 +1,6 @@
 use std::fmt;
 use std::str::FromStr;
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -14,6 +13,10 @@ pub enum SourceType {
     Reddit,
     Discourse,
     GenericHtml,
+    /// arXiv PDF documents fetched via the arXiv API.
+    ArxivPdf,
+    /// Generic document (PDF, plain text, etc.) fetched via xberg.
+    Document,
 }
 
 impl fmt::Display for SourceType {
@@ -22,6 +25,8 @@ impl fmt::Display for SourceType {
             Self::Reddit => write!(f, "reddit"),
             Self::Discourse => write!(f, "discourse"),
             Self::GenericHtml => write!(f, "generic_html"),
+            Self::ArxivPdf => write!(f, "arxiv_pdf"),
+            Self::Document => write!(f, "document"),
         }
     }
 }
@@ -34,17 +39,18 @@ impl FromStr for SourceType {
             "reddit" => Ok(Self::Reddit),
             "discourse" => Ok(Self::Discourse),
             "generic_html" | "generic" | "html" => Ok(Self::GenericHtml),
+            "arxiv_pdf" | "arxiv" => Ok(Self::ArxivPdf),
+            "document" | "doc" => Ok(Self::Document),
             _ => Err(format!("unknown source type: {s}")),
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// WebbfetchError
+// WebfetchError
 // ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize, Error)]
-pub enum WebbfetchError {
+pub enum WebfetchError {
     #[error("HTTP fetch error: {0}")]
     Fetch(String),
 
@@ -65,37 +71,17 @@ pub enum WebbfetchError {
 
     #[error("Authentication required: {0}")]
     AuthRequired(String),
-}
 
-// ---------------------------------------------------------------------------
-// Response
-// ---------------------------------------------------------------------------
+    /// I/O error from the underlying HTTP transport or filesystem.
+    /// Raised when temp file creation, writing, or document size checks fail
+    /// during document fetch (xberg pipeline).
+    #[error("I/O error: {0}")]
+    IoError(String),
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Response {
-    pub status: u16,
-    pub body: String,
-}
-
-// ---------------------------------------------------------------------------
-// HttpClient trait
-// ---------------------------------------------------------------------------
-
-#[async_trait]
-pub trait HttpClient: Send + Sync {
-    async fn get(&self, url: &str) -> Result<Response, WebbfetchError>;
-}
-
-// ---------------------------------------------------------------------------
-// FetchConfig
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FetchConfig {
-    /// Request timeout in seconds.
-    pub timeout_secs: u64,
-    /// Queries per second rate limit.
-    pub qps: u64,
+    /// Error returned by the xberg document-fetching backend.
+    /// Raised when xberg extraction fails or times out (10s timeout exceeded).
+    #[error("xberg error: {0}")]
+    XbergError(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -158,27 +144,6 @@ pub enum ExtractionResult {
     GenericHtml {
         content_md: MarkdownDocument,
     },
-}
-
-// ---------------------------------------------------------------------------
-// UrlInfo
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UrlInfo {
-    pub url: String,
-    pub source_type: SourceType,
-    pub domain: String,
-}
-
-// ---------------------------------------------------------------------------
-// FetchResult
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FetchResult {
-    pub url: UrlInfo,
-    pub content: ExtractionResult,
 }
 
 #[cfg(test)]

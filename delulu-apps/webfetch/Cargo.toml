@@ -9,24 +9,19 @@ description = "CLI tools and MCP server for web content fetching and markdown co
 default = ["cli", "mcp"]
 cli = ["dep:clap"]
 mcp = [
-    "dep:rmcp",
     "dep:schemars",
-    "dep:axum",
-    "tracing-subscriber/env-filter",
-    "tokio/signal",
-    "rmcp/transport-io",
-    "rmcp/transport-streamable-http-server",
+    "dep:rmcp",
+    "dep:delulu-mcp-server-helper",
   ]
 
 [dependencies]
-wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
-wreq-util = "3.0.0-rc.9"
 scraper = "0.17"
 ego-tree = "0.6"
 regex = { version = "1.10", default-features = false, features = ["unicode-perl", "unicode-case"] }
-delulu-query-queues = { path = "../../delulu-internals/query-queues" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util", "fs"] }
+delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util", "fs", "net"] }
 anyhow = "1.0"
+futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 clap = { version = "4", features = ["derive"], optional = true }
@@ -34,18 +29,20 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["time", "chrono"] }
 once_cell = "1.20"
 url = "2"
-rand = "0.8"
+delulu-mcp-server-helper = { path = "../../delulu-internals/mcp-server-helper", optional = true }
 schemars = { version = "1.0", features = ["derive"], optional = true }
-axum = { version = "0.7", optional = true }
 rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
 thiserror = "2"
-async-trait = "0.1"
+xberg = { version = "1.0.0-rc.32", default-features = false, features = ["html", "pdf", "tokio-runtime"] }
+tempfile = "3.10"
 
 [dev-dependencies]
 zstd = "0.13"
 regex = { version = "1.10", default-features = false, features = ["unicode-perl", "unicode-case"] }
 rayon = "1.12"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util", "fs", "process"] }
+axum = "0.7"
+wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing", "stream"] }
 
 [package.metadata.mcp]
 name = "delulu-webfetch"
@@ -70,3 +67,9 @@ path = "tests/pipeline_readability/diag_rd_pipeline.rs"
 name = "t_webfetch_mcp"
 path = "tests/t_webfetch_mcp.rs"
 required-features = ["mcp"]
+
+[[test]]
+name = "t_fetch_doc_e2e"
+path = "tests/t_fetch_doc_e2e.rs"
+[package.metadata.cargo-machete]
+ignored = ["rmcp"]

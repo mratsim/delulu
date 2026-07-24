@@ -1,0 +1,15 @@
+[package]
+name = "delulu-mcp-server-helper"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0"
+description = "Shared MCP server helper for delulu MCP servers — provides common CLI args, stdio/HTTP dispatch, tracing setup, and ServerHandler boilerplate"
+
+[dependencies]
+rmcp = { version = "0.13", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
+axum = "0.7"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["time", "chrono", "env-filter"] }

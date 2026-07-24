@@ -29,7 +29,6 @@ fn with_captured_tracing<F: FnOnce()>(f: F) -> Arc<Mutex<Vec<u8>>> {
 // ── pass_keep_qualifying_siblings ─────────────────────────────────────
 
 #[test]
-#[test]
 fn test_qualifying_sibling_candidate_relative_floor() {
     // Best child score = 50, sibling score = 12.
     // Old floor (global_max * 0.2): if global_max > 60, floor > 12 → removed.

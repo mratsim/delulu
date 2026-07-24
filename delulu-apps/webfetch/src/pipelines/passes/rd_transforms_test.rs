@@ -786,10 +786,8 @@ fn test_clean_styles_removes_style_attr() {
                 DomNode::Element { tag, attrs, .. } if tag == "div" => {
                     return attrs.iter().any(|(k, _)| k == "style");
                 }
-                DomNode::Element { children, .. } => {
-                    if has_style_attr(children) {
-                        return true;
-                    }
+                DomNode::Element { children, .. } if has_style_attr(children) => {
+                    return true;
                 }
                 _ => {}
             }
@@ -823,10 +821,8 @@ fn test_clean_styles_removes_event_handler() {
                 DomNode::Element { tag, attrs, .. } if tag == "button" => {
                     return attrs.iter().any(|(k, _)| k == "onclick");
                 }
-                DomNode::Element { children, .. } => {
-                    if has_onclick(children) {
-                        return true;
-                    }
+                DomNode::Element { children, .. } if has_onclick(children) => {
+                    return true;
                 }
                 _ => {}
             }
@@ -907,10 +903,8 @@ fn test_clean_classes_removes_class_attr() {
                 DomNode::Element { tag, attrs, .. } if tag == "div" => {
                     return attrs.iter().any(|(k, _)| k == "class");
                 }
-                DomNode::Element { children, .. } => {
-                    if has_class_attr(children) {
-                        return true;
-                    }
+                DomNode::Element { children, .. } if has_class_attr(children) => {
+                    return true;
                 }
                 _ => {}
             }
@@ -969,10 +963,8 @@ fn test_clean_classes_preserves_other_attrs() {
                 DomNode::Element { tag, attrs, .. } if tag == "div" => {
                     return attrs.iter().any(|(k, _)| k == "class");
                 }
-                DomNode::Element { children, .. } => {
-                    if has_class_attr(children) {
-                        return true;
-                    }
+                DomNode::Element { children, .. } if has_class_attr(children) => {
+                    return true;
                 }
                 _ => {}
             }

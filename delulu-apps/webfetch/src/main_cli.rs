@@ -8,20 +8,41 @@
 //! delulu-fetch -i <FILE> --output-format html
 //! delulu-fetch -u <URL> --timeout 120
 //! echo '<html>...</html>' | delulu-fetch -i -
+//! delulu-fetch doc <URL>
+//! delulu-fetch doc <URL> --output-format html
 //! ```
 
 use anyhow::{Context, Error, Result};
-use clap::Parser;
+use clap::{Parser, Subcommand};
+use delulu_rate_limited_crawler::RateLimitedCrawler;
 use delulu_webfetch::{
-    ExtractionResult, MarkdownDocument, RedditComment, WebbfetchClient, fetch_and_extract,
+    ExtractionResult, MAX_BODY_SIZE, MarkdownDocument, RedditComment, fetch_and_extract,
+    fetch_raw_html,
 };
 use std::io::Read;
+use std::time::Duration;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 // ---------------------------------------------------------------------------
-// Args
+// Subcommand enum
 // ---------------------------------------------------------------------------
 
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Fetch a document (PDF, Word, etc.) and convert to markdown/html.
+    Doc(DocArgs),
+}
+
+#[derive(Parser, Debug)]
+#[command(name = "delulu-fetch")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+// ---------------------------------------------------------------------------
+// Args (flat, backward-compatible with prior versions)
+// ---------------------------------------------------------------------------
 #[derive(Parser, Debug)]
 #[command(name = "delulu-fetch")]
 struct Args {
@@ -52,6 +73,23 @@ struct Args {
     /// Pipeline to use: "rd" (default, Mozilla Readability) or "tf" (Trafilatura).
     #[arg(long, default_value = "rd")]
     pipeline: String,
+}
+
+// ---------------------------------------------------------------------------
+// Doc subcommand args
+// ---------------------------------------------------------------------------
+
+#[derive(Parser, Debug)]
+#[command(name = "doc")]
+struct DocArgs {
+    /// URL of the document to fetch
+    url: String,
+    /// Output format: markdown (default) or html
+    #[arg(long)]
+    output_format: Option<String>,
+    /// Fetch timeout in seconds
+    #[arg(long, default_value = "120")]
+    timeout: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -157,8 +195,19 @@ async fn main() -> Result<(), Error> {
         )
         .init();
 
-    let args = Args::parse();
+    // Try clap subcommand parsing first (for "doc" subcommand)
+    if let Ok(cli) = Cli::try_parse() {
+        if let Some(Command::Doc(doc_args)) = cli.command {
+            return run_doc(doc_args).await;
+        }
+    }
 
+    // Fallback to flat args (backward-compatible with prior versions)
+    let args = Args::parse();
+    run_fetch(args).await
+}
+
+async fn run_fetch(args: Args) -> Result<(), Error> {
     if let Some(file) = &args.input_file {
         // File/stdin mode
         let html = if file == "-" {
@@ -227,35 +276,29 @@ async fn main() -> Result<(), Error> {
             .as_deref()
             .context("Either -u <URL> or -i <FILE> is required")?;
 
-        let client = WebbfetchClient::new(args.timeout, args.qps);
+        let crawler = RateLimitedCrawler::builder()
+            .with_qps(args.qps)
+            .with_max_resp_size(MAX_BODY_SIZE)
+            .with_timeout(Duration::from_secs(args.timeout))
+            .with_connect_timeout(Duration::from_secs(args.timeout))
+            .build()
+            .context("Failed to create rate-limited crawler")?;
 
         match args.output_format.as_deref() {
             Some("html") => {
-                let fetch_result = client
-                    .fetch(url)
+                let raw_html = fetch_raw_html(url, &crawler)
                     .await
-                    .map_err(|e| anyhow::anyhow!("Fetch error: {e}"))?;
-                let body = match &fetch_result.content {
-                    ExtractionResult::GenericHtml { content_md } => content_md.body.clone(),
-                    _ => anyhow::bail!("Unexpected content type from fetch"),
-                };
-                let mut dom = delulu_webfetch::pipelines::parse_html(&body)
-                    .map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
-                let pipeline = select_pipeline(&args.pipeline);
-                for pass in pipeline {
-                    pass(&mut dom);
-                }
-                let out_html = delulu_webfetch::generators::gen_html::dom_nodes_to_html(&dom);
-                println!("{out_html}");
+                    .context("Fetch raw HTML failed")?;
+                println!("{raw_html}");
             }
             None if args.raw => {
-                let result = fetch_and_extract(url, &client, select_pipeline(&args.pipeline))
+                let result = fetch_and_extract(url, &crawler, select_pipeline(&args.pipeline))
                     .await
                     .context("Fetch and extract failed")?;
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
             Some("markdown") | None => {
-                let result = fetch_and_extract(url, &client, select_pipeline(&args.pipeline))
+                let result = fetch_and_extract(url, &crawler, select_pipeline(&args.pipeline))
                     .await
                     .context("Fetch and extract failed")?;
                 let md = md_doc_to_string(result);
@@ -263,12 +306,40 @@ async fn main() -> Result<(), Error> {
             }
             _ => {
                 tracing::warn!("unknown output format, falling back to markdown");
-                let result = fetch_and_extract(url, &client, select_pipeline(&args.pipeline))
+                let result = fetch_and_extract(url, &crawler, select_pipeline(&args.pipeline))
                     .await
                     .context("Fetch and extract failed")?;
                 let md = md_doc_to_string(result);
                 println!("{md}");
             }
+        }
+    }
+
+    Ok(())
+}
+
+async fn run_doc(args: DocArgs) -> Result<(), Error> {
+    let crawler = RateLimitedCrawler::builder()
+        .with_qps(2)
+        .with_max_resp_size(MAX_BODY_SIZE)
+        .with_timeout(Duration::from_secs(args.timeout))
+        .with_connect_timeout(Duration::from_secs(args.timeout))
+        .build()
+        .context("Failed to create rate-limited crawler")?;
+
+    match args.output_format.as_deref() {
+        Some("html") => {
+            let html = delulu_webfetch::fetch_doc_as_html(&args.url, &crawler)
+                .await
+                .context("Document fetch failed")?;
+            println!("{}", html);
+        }
+        _ => {
+            let result = delulu_webfetch::fetch_doc(&args.url, &crawler)
+                .await
+                .context("Document fetch failed")?;
+            let md = md_doc_to_string(result);
+            println!("{md}");
         }
     }
 

@@ -1,3 +1,5 @@
+pub mod dl_arxiv;
+pub mod dl_doc;
 pub mod rd_analysis;
 pub mod rd_extraction;
 pub mod rd_filters;

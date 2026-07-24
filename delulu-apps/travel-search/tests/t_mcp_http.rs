@@ -31,7 +31,6 @@ use tokio::net::TcpStream;
 use tokio::process::Command;
 use tokio::time::Duration;
 use tracing::{debug, instrument};
-use tracing_subscriber;
 use tracing_subscriber::EnvFilter;
 
 mod mcp_helpers;
@@ -101,16 +100,16 @@ async fn mcp_http_initialize(stream: &mut TcpStream, port: u16) -> Result<String
                     break;
                 }
 
-                if let Ok(json_response) = serde_json::from_str::<Value>(&response_str) {
-                    if json_response.is_object() {
-                        let obj = json_response.as_object().unwrap();
-                        if obj.contains_key("id") && obj.contains_key("result") {
-                            debug!(
-                                "Complete JSON-RPC response received after {:?}",
-                                start.elapsed()
-                            );
-                            break;
-                        }
+                if let Ok(json_response) = serde_json::from_str::<Value>(&response_str)
+                    && json_response.is_object()
+                {
+                    let obj = json_response.as_object().unwrap();
+                    if obj.contains_key("id") && obj.contains_key("result") {
+                        debug!(
+                            "Complete JSON-RPC response received after {:?}",
+                            start.elapsed()
+                        );
+                        break;
                     }
                 }
 
@@ -192,18 +191,18 @@ async fn mcp_http_send(stream: &mut TcpStream, session_id: &str, request: &str) 
                     break;
                 }
 
-                if let Ok(json_response) = serde_json::from_str::<Value>(&response_str) {
-                    if json_response.is_object() {
-                        let obj = json_response.as_object().unwrap();
-                        if obj.contains_key("id")
-                            && (obj.contains_key("result") || obj.contains_key("error"))
-                        {
-                            debug!(
-                                "Complete JSON-RPC response received after {:?}",
-                                start.elapsed()
-                            );
-                            break;
-                        }
+                if let Ok(json_response) = serde_json::from_str::<Value>(&response_str)
+                    && json_response.is_object()
+                {
+                    let obj = json_response.as_object().unwrap();
+                    if obj.contains_key("id")
+                        && (obj.contains_key("result") || obj.contains_key("error"))
+                    {
+                        debug!(
+                            "Complete JSON-RPC response received after {:?}",
+                            start.elapsed()
+                        );
+                        break;
                     }
                 }
 

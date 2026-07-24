@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::core::types::{DiscoursePost, MarkdownDocument, WebbfetchError};
+use crate::core::types::{DiscoursePost, MarkdownDocument, WebfetchError};
 
 // ---------------------------------------------------------------------------
 // DiscourseData
@@ -48,11 +48,11 @@ impl DiscourseExtractor {
     ///
     /// # Errors
     ///
-    /// Returns [`WebbfetchError::Parse`] when the JSON is malformed or missing
+    /// Returns [`WebfetchError::Parse`] when the JSON is malformed or missing
     /// required fields.
-    pub fn extract(json_str: &str) -> Result<DiscourseData, WebbfetchError> {
+    pub fn extract(json_str: &str) -> Result<DiscourseData, WebfetchError> {
         let api_response: DiscourseApiResponse = serde_json::from_str(json_str)
-            .map_err(|e| WebbfetchError::Parse(format!("Failed to parse Discourse JSON: {e}")))?;
+            .map_err(|e| WebfetchError::Parse(format!("Failed to parse Discourse JSON: {e}")))?;
 
         let mut posts = api_response.post_stream.posts;
         let post_count = api_response.posts_count;

@@ -1,5 +1,4 @@
 use axum::{Json, Router, routing::get};
-use serde_json;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;

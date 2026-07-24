@@ -343,7 +343,7 @@ fn parse_layovers_from_card(
 
     for container in card.select(&selectors.stops_container) {
         if let Some(aria_label) = container.value().attr("aria-label") {
-            for cap in LAYOVER_ARIA_RE.captures_iter(&aria_label) {
+            for cap in LAYOVER_ARIA_RE.captures_iter(aria_label) {
                 let hours = cap.get(1).map(|m| m.as_str()).unwrap_or("");
                 let mins = cap.get(2).map(|m| m.as_str()).unwrap_or("0");
                 let duration_str = format!("{}h {}m", hours, mins);
@@ -500,15 +500,9 @@ mod tests {
         }
         eprintln!("Total layovers: {}", layovers.len());
         assert_eq!(layovers.len(), 2);
-        assert_eq!(
-            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
-            Some("Los Angeles")
-        );
+        assert_eq!(layovers[0].airport_city.as_deref(), Some("Los Angeles"));
         assert_eq!(layovers[0].duration_minutes, Some(689)); // 11h 29m
-        assert_eq!(
-            layovers[1].airport_city.as_ref().map(|s| s.as_str()),
-            Some("Nadi")
-        );
+        assert_eq!(layovers[1].airport_city.as_deref(), Some("Nadi"));
         assert_eq!(layovers[1].duration_minutes, Some(180)); // 3h
     }
 
@@ -533,10 +527,7 @@ mod tests {
             });
         }
         assert_eq!(layovers.len(), 1);
-        assert_eq!(
-            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
-            Some("Los Angeles")
-        );
+        assert_eq!(layovers[0].airport_city.as_deref(), Some("Los Angeles"));
         assert_eq!(layovers[0].duration_minutes, Some(547)); // 9h 7m
     }
 
@@ -561,10 +552,7 @@ mod tests {
             });
         }
         assert_eq!(layovers.len(), 1);
-        assert_eq!(
-            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
-            Some("Tel-Aviv")
-        );
+        assert_eq!(layovers[0].airport_city.as_deref(), Some("Tel-Aviv"));
         assert_eq!(layovers[0].duration_minutes, Some(120)); // 2h
     }
 
@@ -589,10 +577,7 @@ mod tests {
             });
         }
         assert_eq!(layovers.len(), 1);
-        assert_eq!(
-            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
-            Some("Montréal")
-        );
+        assert_eq!(layovers[0].airport_city.as_deref(), Some("Montréal"));
         assert_eq!(layovers[0].duration_minutes, Some(90)); // 1h 30m
     }
 
@@ -617,15 +602,9 @@ mod tests {
             });
         }
         assert_eq!(layovers.len(), 2);
-        assert_eq!(
-            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
-            Some("Paris")
-        );
+        assert_eq!(layovers[0].airport_city.as_deref(), Some("Paris"));
         assert_eq!(layovers[0].duration_minutes, Some(240)); // 4h
-        assert_eq!(
-            layovers[1].airport_city.as_ref().map(|s| s.as_str()),
-            Some("Tel-Aviv")
-        );
+        assert_eq!(layovers[1].airport_city.as_deref(), Some("Tel-Aviv"));
         assert_eq!(layovers[1].duration_minutes, Some(120)); // 2h
     }
 
@@ -650,10 +629,7 @@ mod tests {
             });
         }
         assert_eq!(layovers.len(), 1);
-        assert_eq!(
-            layovers[0].airport_city.as_ref().map(|s| s.as_str()),
-            Some("New York")
-        );
+        assert_eq!(layovers[0].airport_city.as_deref(), Some("New York"));
         assert_eq!(layovers[0].duration_minutes, Some(120)); // 2h
     }
 }

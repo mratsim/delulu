@@ -1,5 +1,4 @@
 use super::*;
-use crate::pipelines::passes::rd_analysis::rd_score_mozilla_readability;
 use crate::pipelines::{parse_html, walk_pre_mut};
 
 // ── 1. remove_style_elements ──────────────────────────────────────────

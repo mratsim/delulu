@@ -163,14 +163,14 @@ fn test_parser_fixtures() {
                 );
 
                 // Spot-check a few itineraries have reasonable data
-                if let Some(first) = parsed.itineraries.first() {
-                    if let Some(seg) = first.flights.first() {
-                        assert!(
-                            seg.airline.is_some() && !seg.airline.as_ref().unwrap().is_empty(),
-                            "{}: First itinerary has empty airline",
-                            case.name
-                        );
-                    }
+                if let Some(first) = parsed.itineraries.first()
+                    && let Some(seg) = first.flights.first()
+                {
+                    assert!(
+                        seg.airline.is_some() && !seg.airline.as_ref().unwrap().is_empty(),
+                        "{}: First itinerary has empty airline",
+                        case.name
+                    );
                 }
 
                 println!("✓ {}: {} itineraries extracted", case.name, itinerary_count);
@@ -259,7 +259,7 @@ fn test_overnight_sfo_lhr_economy() {
     let layover_itineraries: Vec<_> = result
         .itineraries
         .iter()
-        .filter(|i| i.layovers.len() > 0)
+        .filter(|i| !i.layovers.is_empty())
         .collect();
 
     println!(

@@ -160,10 +160,10 @@ fn test_extract_partial_data() {
 fn test_extract_invalid_json() {
     let result = DiscourseExtractor::extract("this is not valid JSON");
     match result {
-        Err(WebbfetchError::Parse(msg)) => {
+        Err(WebfetchError::Parse(msg)) => {
             assert!(!msg.is_empty(), "parse error message should not be empty");
         }
-        other => panic!("expected WebbfetchError::Parse, got {:?}", other),
+        other => panic!("expected WebfetchError::Parse, got {:?}", other),
     }
 }
 
@@ -171,8 +171,8 @@ fn test_extract_invalid_json() {
 fn test_extract_invalid_json_empty() {
     let result = DiscourseExtractor::extract("");
     match result {
-        Err(WebbfetchError::Parse(_)) => {} // expected
-        other => panic!("expected WebbfetchError::Parse, got {:?}", other),
+        Err(WebfetchError::Parse(_)) => {} // expected
+        other => panic!("expected WebfetchError::Parse, got {:?}", other),
     }
 }
 
@@ -180,8 +180,8 @@ fn test_extract_invalid_json_empty() {
 fn test_extract_invalid_json_missing_fields() {
     let result = DiscourseExtractor::extract(r#"{"title":"no posts"}"#);
     match result {
-        Err(WebbfetchError::Parse(_)) => {} // expected
-        other => panic!("expected WebbfetchError::Parse, got {:?}", other),
+        Err(WebfetchError::Parse(_)) => {} // expected
+        other => panic!("expected WebfetchError::Parse, got {:?}", other),
     }
 }
 

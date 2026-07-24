@@ -40,15 +40,15 @@ impl McpifyServer {
         let mut tools = Vec::new();
 
         for (path, path_item) in spec.paths.iter() {
-            if let Some(op) = &path_item.get {
-                if let Some(entry) = Self::build_tool(&base_url, path, op, "GET", proxy.clone())? {
-                    tools.push(entry);
-                }
+            if let Some(op) = &path_item.get
+                && let Some(entry) = Self::build_tool(&base_url, path, op, "GET", proxy.clone())?
+            {
+                tools.push(entry);
             }
-            if let Some(op) = &path_item.post {
-                if let Some(entry) = Self::build_tool(&base_url, path, op, "POST", proxy.clone())? {
-                    tools.push(entry);
-                }
+            if let Some(op) = &path_item.post
+                && let Some(entry) = Self::build_tool(&base_url, path, op, "POST", proxy.clone())?
+            {
+                tools.push(entry);
             }
         }
 
@@ -217,25 +217,25 @@ fn build_input_schema(op: &Operation) -> Value {
     }
 
     // Include request_body schema properties for POST operations
-    if let Some(rb) = &op.request_body {
-        if let Some(content) = &rb.content {
-            // Prefer application/json media type, fall back to first available
-            let media_type = content
-                .get("application/json")
-                .or_else(|| content.values().next());
-            if let Some(mt) = media_type {
-                if let Some(schema) = &mt.schema {
-                    let body_schema = param_schema_to_json_schema(schema);
-                    let body_key = if properties.contains_key("body") {
-                        "_request_body"
-                    } else {
-                        "body"
-                    };
-                    properties.insert(body_key.to_string(), body_schema);
-                    if rb.required {
-                        required.push(body_key.to_string());
-                    }
-                }
+    if let Some(rb) = &op.request_body
+        && let Some(content) = &rb.content
+    {
+        // Prefer application/json media type, fall back to first available
+        let media_type = content
+            .get("application/json")
+            .or_else(|| content.values().next());
+        if let Some(mt) = media_type
+            && let Some(schema) = &mt.schema
+        {
+            let body_schema = param_schema_to_json_schema(schema);
+            let body_key = if properties.contains_key("body") {
+                "_request_body"
+            } else {
+                "body"
+            };
+            properties.insert(body_key.to_string(), body_schema);
+            if rb.required {
+                required.push(body_key.to_string());
             }
         }
     }
@@ -342,9 +342,8 @@ impl ServerHandler for McpifyServer {
                 .ok_or_else(|| rmcp::ErrorData::invalid_params("tool not found", None))?;
 
             let call_ctx = ToolCallContext::new(self, request, context);
-            let result = (tool.handler)(call_ctx).await;
 
-            result
+            (tool.handler)(call_ctx).await
         }
     }
 

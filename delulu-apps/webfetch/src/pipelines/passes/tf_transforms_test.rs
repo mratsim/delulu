@@ -56,7 +56,7 @@ fn find_node_matching<'a>(node: &'a DomNode, tag: &str) -> Option<&'a DomNode> {
     match node {
         DomNode::Element {
             tag: t, children, ..
-        } if t == tag => return Some(node),
+        } if t == tag => Some(node),
         DomNode::Element { children, .. } => {
             for child in children {
                 if let Some(found) = find_node_matching(child, tag) {

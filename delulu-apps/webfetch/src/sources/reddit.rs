@@ -1,4 +1,4 @@
-use crate::core::types::{MarkdownDocument, RedditComment, WebbfetchError};
+use crate::core::types::{MarkdownDocument, RedditComment, WebfetchError};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -67,28 +67,28 @@ impl RedditExtractor {
     ///
     /// - `post_listing["data"]["children"][0]["data"]` contains post metadata.
     /// - `comments_listing["data"]["children"]` is the comments array.
-    pub fn extract(json_str: &str) -> Result<RedditData, WebbfetchError> {
+    pub fn extract(json_str: &str) -> Result<RedditData, WebfetchError> {
         // Pre-check for known error shapes before full parse.
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str)
             && let Some(err) = val.get("error").and_then(|e| e.as_i64())
             && err == 403
         {
-            return Err(WebbfetchError::AuthRequired(
+            return Err(WebfetchError::AuthRequired(
                 "Reddit API returned HTTP 403 — content may be private, removed, or quarantined"
                     .into(),
             ));
         }
 
         let response: RedditApiResponse = serde_json::from_str(json_str).map_err(|e| {
-            WebbfetchError::Parse(format!("Failed to parse Reddit JSON response: {e}"))
+            WebfetchError::Parse(format!("Failed to parse Reddit JSON response: {e}"))
         })?;
 
         // --- Extract post info ---
         let post_listing = response.0.first().ok_or_else(|| {
-            WebbfetchError::Parse("Reddit response: missing post listing (index 0)".into())
+            WebfetchError::Parse("Reddit response: missing post listing (index 0)".into())
         })?;
         let post_child = post_listing.data.children.first().ok_or_else(|| {
-            WebbfetchError::Parse("Reddit response: missing post child in listing".into())
+            WebfetchError::Parse("Reddit response: missing post child in listing".into())
         })?;
 
         let post_data = &post_child.data;

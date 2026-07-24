@@ -201,23 +201,21 @@ fn find_tag(node: &DomNode, tag: &str) -> bool {
     match node {
         DomNode::Element {
             tag: t, children, ..
-        } if t == tag => return true,
+        } if t == tag => true,
         DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
         _ => false,
     }
 }
 
 fn inject_max_score(node: &mut DomNode, score: f64) {
-    match node {
-        DomNode::Element {
-            metadata, children, ..
-        } => {
-            metadata.insert("md_rd_subtree_max_score".to_string(), score.to_string());
-            for child in children.iter_mut() {
-                inject_max_score(child, score);
-            }
+    if let DomNode::Element {
+        metadata, children, ..
+    } = node
+    {
+        metadata.insert("md_rd_subtree_max_score".to_string(), score.to_string());
+        for child in children.iter_mut() {
+            inject_max_score(child, score);
         }
-        _ => {}
     }
 }
 
@@ -228,24 +226,22 @@ fn inject_score_for_tag(node: &mut DomNode, target_tag: &str, high_score: f64) {
 }
 
 fn set_score_recursive(node: &mut DomNode, low_score: f64, target_tag: &str, high_score: f64) {
-    match node {
-        DomNode::Element {
-            tag,
-            metadata,
-            children,
-            ..
-        } => {
-            let score = if tag == target_tag {
-                high_score
-            } else {
-                low_score
-            };
-            metadata.insert("md_rd_subtree_max_score".to_string(), score.to_string());
-            for child in children.iter_mut() {
-                set_score_recursive(child, low_score, target_tag, high_score);
-            }
+    if let DomNode::Element {
+        tag,
+        metadata,
+        children,
+        ..
+    } = node
+    {
+        let score = if tag == target_tag {
+            high_score
+        } else {
+            low_score
+        };
+        metadata.insert("md_rd_subtree_max_score".to_string(), score.to_string());
+        for child in children.iter_mut() {
+            set_score_recursive(child, low_score, target_tag, high_score);
         }
-        _ => {}
     }
 }
 
@@ -397,7 +393,7 @@ fn test_isolate_container_first_match_wins() {
 
 #[test]
 fn test_isolate_container_no_match_noop() {
-    let mut nodes = parse_html("<div><p>A</p><span>B</span></div>").unwrap();
+    let _nodes = parse_html("<div><p>A</p><span>B</span></div>").unwrap();
     let mut nodes = vec![parse_html("<div><p>A</p><span>B</span></div>").unwrap()];
     let original = nodes.clone();
     tf_isolate_content_container(&mut nodes[0]);
@@ -644,7 +640,7 @@ fn test_isolate_container_count_p_text_no_p_elements() {
     let mut nodes = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![],
+        children: vec![container],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
@@ -677,7 +673,7 @@ fn test_isolate_container_non_p_text_not_counted() {
     let mut nodes = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![],
+        children: vec![container],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
@@ -750,7 +746,7 @@ fn test_isolate_container_whitespace_only_p_not_counted() {
     let mut nodes = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![],
+        children: vec![container],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
@@ -772,7 +768,7 @@ fn test_isolate_container_empty_container_rejected() {
     let mut nodes = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![],
+        children: vec![container],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
@@ -842,18 +838,23 @@ fn test_isolate_container_integration_sidebar_vs_article() {
     let mut nodes = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![],
+        children: vec![sidebar, article_body],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
     tf_isolate_content_container(&mut nodes);
-    if let DomNode::Element { attrs, .. } = &nodes {
-        assert!(
-            attrs
-                .iter()
-                .any(|(k, v)| k == "class" && v == "main-content"),
-            "surviving div should have main-content class"
-        );
+    if let DomNode::Element { children, .. } = &nodes {
+        assert_eq!(children.len(), 1, "should keep one container");
+        if let DomNode::Element { attrs, .. } = &children[0] {
+            assert!(
+                attrs
+                    .iter()
+                    .any(|(k, v)| k == "class" && v == "main-content"),
+                "surviving div should have main-content class"
+            );
+        } else {
+            panic!("expected Element child");
+        }
     } else {
         panic!("expected Element node");
     }

@@ -1,0 +1,11 @@
+[package]
+name = "paper-search-test-utils"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0"
+description = "Shared test utilities for paper-search integration tests"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+axum = "0.7"
+zstd = { version = "0.13", features = ["experimental"] }

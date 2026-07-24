@@ -1,4 +1,5 @@
 use crate::pipelines::DomNode;
+use std::fmt::Write;
 
 /// Maximum output size in bytes. Output exceeding this is truncated.
 const MAX_OUTPUT_SIZE: usize = 500 * 1024; // 500 KiB
@@ -93,10 +94,128 @@ fn collect_cells(nodes: &[DomNode]) -> Vec<DomNode> {
     cells
 }
 
+/// Check if a table element has colspan, rowspan, or block content in any cell.
+/// Such tables cannot be represented as GFM pipe tables and must be emitted as raw HTML.
+fn table_is_complex(node: &DomNode) -> bool {
+    if let DomNode::Element {
+        tag,
+        attrs,
+        children,
+        ..
+    } = node
+    {
+        if tag == "td" || tag == "th" {
+            // Check for colspan/rowspan
+            if let Some(v) = get_attr(attrs, "colspan")
+                && v != "1"
+            {
+                return true;
+            }
+            if let Some(v) = get_attr(attrs, "rowspan")
+                && v != "1"
+            {
+                return true;
+            }
+            // Check for block elements inside the cell
+            for child in children {
+                if let DomNode::Element { tag: t, .. } = child {
+                    match t.as_str() {
+                        "ul" | "ol" | "pre" | "blockquote" | "table" => return true,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        // Recurse into children
+        for child in children {
+            if table_is_complex(child) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Convert math alttext to LaTeX. Returns None if alttext is empty
+/// (caller should render children as fallback).
+fn math_to_latex(alttext: &str, display: &str) -> Option<String> {
+    if alttext.is_empty() {
+        return None;
+    }
+    if display == "block" || display == "display" {
+        Some(format!("$$\\displaystyle {alttext}$$\n"))
+    } else {
+        Some(format!("${alttext}$"))
+    }
+}
+/// Serialize a DomNode tree to an HTML string.
+fn serialize_node_to_html(node: &DomNode) -> String {
+    match node {
+        DomNode::Text(text) => {
+            // Escape HTML special characters
+            let mut out = String::with_capacity(text.len());
+            for ch in text.chars() {
+                match ch {
+                    '&' => out.push_str("&amp;"),
+                    '<' => out.push_str("&lt;"),
+                    '>' => out.push_str("&gt;"),
+                    '"' => out.push_str("&quot;"),
+                    _ => out.push(ch),
+                }
+            }
+            out
+        }
+        DomNode::Element {
+            tag,
+            attrs,
+            children,
+            ..
+        } => {
+            // Special case: convert <math> to inline/display LaTeX
+            if tag == "math" {
+                let alttext = get_attr(attrs, "alttext").unwrap_or("");
+                let display = get_attr(attrs, "display").unwrap_or("inline");
+                if let Some(latex) = math_to_latex(alttext, display) {
+                    return latex;
+                }
+                // No alttext — render children as fallback
+                return children
+                    .iter()
+                    .map(serialize_node_to_html)
+                    .collect::<String>();
+            }
+            let mut out = String::new();
+            let _ = write!(out, "<{}", tag);
+            for (k, v) in attrs {
+                let _ = write!(out, " {}=\"{}\"", k, v.replace('"', "&quot;"));
+            }
+            if children.is_empty() {
+                let _ = write!(out, " />");
+            } else {
+                out.push('>');
+                for child in children {
+                    out.push_str(&serialize_node_to_html(child));
+                }
+                let _ = write!(out, "</{}>", tag);
+            }
+            out
+        }
+        DomNode::Comment(comment) => {
+            format!("<!--{}-->", comment)
+        }
+        DomNode::Doctype(dtd) => {
+            format!("<!DOCTYPE {}>", dtd)
+        }
+    }
+}
+
 /// Resolve a potentially relative URL against a base URL.
 fn resolve_url(url: &str, base_url: Option<&str>) -> String {
-    if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("//") {
+    if url.starts_with("http://") || url.starts_with("https://") {
         return url.to_string();
+    }
+    if url.starts_with("//") {
+        return format!("https:{}", url);
     }
     if url.starts_with("mailto:") || url.starts_with("javascript:") || url.starts_with("#") {
         return url.to_string();
@@ -142,7 +261,6 @@ fn escape_markdown(text: &str) -> String {
             ')' => result.push_str("\\)"),
             '#' => result.push_str("\\#"),
             '+' => result.push_str("\\+"),
-            '-' => result.push_str("\\-"),
             '.' => result.push_str("\\."),
             '|' => result.push_str("\\|"),
             _ => result.push(ch),
@@ -166,7 +284,7 @@ impl MarkdownLowerer {
     /// in `<a href="…">` and `<img src="…">` elements.
     pub fn lower(node: &DomNode, base_url: Option<&str>) -> String {
         let mut out = String::new();
-        Self::lower_nodes(&[node.clone()], base_url, &mut out, 0);
+        Self::lower_nodes(std::slice::from_ref(node), base_url, &mut out, 0);
         Self::cap_size(out)
     }
 }
@@ -189,12 +307,7 @@ impl MarkdownLowerer {
             DomNode::Text(text) => {
                 out.push_str(&escape_markdown(text));
             }
-            DomNode::Element {
-                tag,
-                attrs,
-                children,
-                ..
-            } => Self::lower_element(tag, attrs, children, base_url, out, indent),
+            el @ DomNode::Element { .. } => Self::lower_element(el, base_url, out, indent),
             DomNode::Comment(_) | DomNode::Doctype(_) => {
                 // Comments and doctypes are not rendered in Markdown.
             }
@@ -203,15 +316,17 @@ impl MarkdownLowerer {
 
     /// Lower an element node.
     #[allow(clippy::too_many_lines)]
-    fn lower_element(
-        tag: &str,
-        attrs: &[(String, String)],
-        children: &[DomNode],
-        base_url: Option<&str>,
-        out: &mut String,
-        indent: usize,
-    ) {
-        match tag {
+    fn lower_element(node: &DomNode, base_url: Option<&str>, out: &mut String, indent: usize) {
+        let DomNode::Element {
+            tag,
+            attrs,
+            children,
+            ..
+        } = node
+        else {
+            return;
+        };
+        match tag.as_str() {
             // ── Headings ───────────────────────────────────────────────
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 let level = tag[1..].parse::<usize>().unwrap_or(1);
@@ -329,6 +444,19 @@ impl MarkdownLowerer {
                 out.push('`');
             }
 
+            // ── Math (LaTeXML MathML) ────────────────────────────────
+            "math" => {
+                let alttext = get_attr(attrs, "alttext").unwrap_or("");
+                let display = get_attr(attrs, "display").unwrap_or("inline");
+                if let Some(latex) = math_to_latex(alttext, display) {
+                    out.push_str(&latex);
+                } else {
+                    // Fallback: render text content
+                    let text = collect_text(children);
+                    out.push_str(&text);
+                }
+            }
+
             // ── Horizontal rule ────────────────────────────────────────
             "hr" => {
                 out.push_str("---\n\n");
@@ -336,7 +464,7 @@ impl MarkdownLowerer {
 
             // ── Tables ─────────────────────────────────────────────────
             "table" => {
-                Self::lower_table(children, base_url, out);
+                Self::lower_table(node, base_url, out);
             }
 
             // ── Fallback: render inner text only ───────────────────────
@@ -411,7 +539,23 @@ impl MarkdownLowerer {
     }
 
     /// Lower a table into GFM pipe-table format.
-    fn lower_table(children: &[DomNode], base_url: Option<&str>, out: &mut String) {
+    /// Lower a table. Dispatches to raw HTML for complex tables (colspan,
+    /// rowspan, block content in cells) or GFM pipe tables for simple tables.
+    fn lower_table(node: &DomNode, base_url: Option<&str>, out: &mut String) {
+        let DomNode::Element { children, .. } = node else {
+            return;
+        };
+
+        // Check if the table is complex
+        if table_is_complex(node) {
+            // Emit as raw HTML
+            let html = serialize_node_to_html(node);
+            out.push_str("<div>\n");
+            out.push_str(&html);
+            out.push_str("\n</div>\n\n");
+            return;
+        }
+
         let rows = collect_table_rows(children);
         if rows.is_empty() {
             return;

@@ -2,6 +2,9 @@
 members = [
     "delulu-apps/*",
     "delulu-internals/query-queues",
+    "delulu-internals/rate-limited-crawler",
+    "delulu-internals/mcp-server-helper",
+    "delulu-internals/paper-search-test-utils",
 ]
 resolver = "2"
 

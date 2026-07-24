@@ -148,7 +148,7 @@ fn test_extract_error_403() {
     let json = r#"{"error": 403, "reason": "private", "message": "Forbidden"}"#;
     let err = RedditExtractor::extract(json).unwrap_err();
     match err {
-        WebbfetchError::AuthRequired(msg) => {
+        WebfetchError::AuthRequired(msg) => {
             assert!(msg.contains("403") || msg.contains("private"));
         }
         other => panic!("Expected AuthRequired, got {other:?}"),

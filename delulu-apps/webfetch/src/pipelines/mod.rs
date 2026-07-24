@@ -3,15 +3,16 @@ use std::collections::HashMap;
 use ego_tree::NodeRef;
 use scraper::Node as ScraperNode;
 
-use crate::core::types::WebbfetchError;
+use crate::core::types::WebfetchError;
 
+pub use passes::{dl_arxiv, dl_doc};
 pub mod error;
 pub mod mozilla_readability;
 pub mod passes;
 pub mod trafilatura;
 pub mod walkers;
 
-pub use self::walkers::{PassFn, WalkerAction, walk_pre_mut};
+pub use self::walkers::{PassFn, WalkerAction, walk_post_mut, walk_pre_mut};
 pub use error::PipelineError;
 // ---------------------------------------------------------------------------
 // Constants
@@ -53,7 +54,7 @@ pub enum DomNode {
 // From/TryFrom cannot be used here due to orphan rules (both
 // scraper::Html and Result/Vec are foreign types).
 
-fn convert_tree(html: &scraper::Html) -> Result<DomNode, WebbfetchError> {
+fn convert_tree(html: &scraper::Html) -> Result<DomNode, WebfetchError> {
     let root = html.tree.root();
     let mut nodes = Vec::new();
     let mut total = 0usize;
@@ -83,7 +84,7 @@ fn convert_node(
     result: &mut Vec<DomNode>,
     depth: usize,
     total: &mut usize,
-) -> Result<(), WebbfetchError> {
+) -> Result<(), WebfetchError> {
     *total += 1;
     // TODO: fuzz/hardening — total is incremented but never enforced. Add a
     // MAX_NODES check that returns Err when exceeded (DoS guard for deeply
@@ -112,7 +113,7 @@ fn convert_node(
                 .collect();
 
             let mut children = Vec::new();
-            for (i, child) in node.children().enumerate() {
+            for child in node.children() {
                 // TODO: Add fuzzing guard for large DOM trees
                 // Pass-through for now
                 convert_node(child, &mut children, depth + 1, total)?;
@@ -151,7 +152,7 @@ fn convert_node(
 ///
 /// Strips Document-level noise and returns the `<html>` element as the single root.
 /// For empty input, returns a default empty `DomNode::Element { tag: "html", ... }`.
-pub fn parse_html(html: &str) -> Result<DomNode, WebbfetchError> {
+pub fn parse_html(html: &str) -> Result<DomNode, WebfetchError> {
     // Guard: empty HTML should return a default empty html element.
     if html.trim().is_empty() {
         return Ok(DomNode::Element {
