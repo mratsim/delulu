@@ -197,5 +197,5 @@ pub fn all_phrasing(children: &[DomNode]) -> bool {
 }
 
 #[cfg(test)]
-#[path = "rd_utils_test.rs"]
+#[path = "../../../tests/unit/pipelines/passes/rd_utils_test.rs"]
 mod tests;

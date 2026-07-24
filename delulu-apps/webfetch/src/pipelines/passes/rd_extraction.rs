@@ -628,5 +628,5 @@ pub fn pass_promote_content_child(node: &mut DomNode) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "rd_extraction_test.rs"]
+#[path = "../../../tests/unit/pipelines/passes/rd_extraction_test.rs"]
 mod tests;

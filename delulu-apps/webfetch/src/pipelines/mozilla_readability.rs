@@ -286,5 +286,5 @@ pub fn filter_mozilla_readability(node: &mut DomNode) {
 }
 
 #[cfg(test)]
-#[path = "mozilla_readability_test.rs"]
+#[path = "../../tests/unit/pipelines/mozilla_readability_test.rs"]
 mod tests;

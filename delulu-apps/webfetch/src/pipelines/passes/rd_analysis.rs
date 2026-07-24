@@ -484,5 +484,5 @@ pub(crate) fn mark_data_tables_inside_figures(node: &mut DomNode) {
 }
 
 #[cfg(test)]
-#[path = "rd_analysis_test.rs"]
+#[path = "../../../tests/unit/pipelines/passes/rd_analysis_test.rs"]
 mod tests;

@@ -187,5 +187,5 @@ pub(crate) fn is_bot_detected(body: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "detect_test.rs"]
+#[path = "../../tests/unit/core/detect_test.rs"]
 mod tests;

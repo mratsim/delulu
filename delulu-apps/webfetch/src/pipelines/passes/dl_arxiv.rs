@@ -123,5 +123,5 @@ fn get_id(attrs: &[(String, String)]) -> Option<&str> {
 }
 
 #[cfg(test)]
-#[path = "dl_arxiv_test.rs"]
+#[path = "../../../tests/unit/pipelines/passes/dl_arxiv_test.rs"]
 mod tests;

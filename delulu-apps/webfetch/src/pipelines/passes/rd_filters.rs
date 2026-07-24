@@ -1569,5 +1569,5 @@ pub fn clean_matched_nodes(node: &mut DomNode) -> WalkerAction {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "rd_filters_test.rs"]
+#[path = "../../../tests/unit/pipelines/passes/rd_filters_test.rs"]
 mod tests;

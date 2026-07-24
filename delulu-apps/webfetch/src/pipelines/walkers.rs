@@ -252,5 +252,5 @@ pub fn walk_pre_mut(node: &mut DomNode, f: &impl Fn(&mut DomNode) -> WalkerActio
 }
 
 #[cfg(test)]
-#[path = "walkers_test.rs"]
+#[path = "../../tests/unit/pipelines/walkers_test.rs"]
 mod tests;

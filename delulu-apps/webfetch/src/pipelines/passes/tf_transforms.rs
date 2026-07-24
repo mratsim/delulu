@@ -265,5 +265,5 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "tf_transforms_test.rs"]
+#[path = "../../../tests/unit/pipelines/passes/tf_transforms_test.rs"]
 mod tests;

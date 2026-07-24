@@ -64,5 +64,5 @@ fn is_void_element(tag: &str) -> bool {
 }
 
 #[cfg(test)]
-#[path = "dl_doc_test.rs"]
+#[path = "../../../tests/unit/pipelines/passes/dl_doc_test.rs"]
 mod tests;

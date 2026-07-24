@@ -708,5 +708,5 @@ pub fn wrap_readability_output(node: &mut DomNode) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "rd_transforms_test.rs"]
+#[path = "../../../tests/unit/pipelines/passes/rd_transforms_test.rs"]
 mod tests;

@@ -657,5 +657,5 @@ impl MarkdownLowerer {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "gen_md_test.rs"]
+#[path = "../../tests/unit/generators/gen_md_test.rs"]
 mod tests;

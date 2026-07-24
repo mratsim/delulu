@@ -140,5 +140,5 @@ impl TryFrom<DiscourseData> for serde_json::Value {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "discourse_test.rs"]
+#[path = "../../tests/unit/sources/discourse_test.rs"]
 mod tests;

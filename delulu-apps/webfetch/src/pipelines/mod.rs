@@ -168,5 +168,5 @@ pub fn parse_html(html: &str) -> Result<DomNode, WebfetchError> {
 }
 
 #[cfg(test)]
-#[path = "mod_test.rs"]
+#[path = "../../tests/unit/pipelines/mod_test.rs"]
 mod tests;

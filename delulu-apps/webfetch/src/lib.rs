@@ -661,5 +661,5 @@ pub fn same_subnet_16(a: SocketAddr, b: SocketAddr) -> bool {
 }
 
 #[cfg(test)]
-#[path = "lib_test.rs"]
+#[path = "../tests/unit/lib_test.rs"]
 mod tests;

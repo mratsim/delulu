@@ -661,5 +661,5 @@ fn isolate_container_recursive(nodes: &mut Vec<DomNode>) -> bool {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "tf_filters_test.rs"]
+#[path = "../../../tests/unit/pipelines/passes/tf_filters_test.rs"]
 mod tests;

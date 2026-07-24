@@ -341,5 +341,5 @@ impl From<RedditData> for serde_json::Value {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[path = "reddit_test.rs"]
+#[path = "../../tests/unit/sources/reddit_test.rs"]
 mod tests;

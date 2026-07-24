@@ -147,5 +147,5 @@ pub enum ExtractionResult {
 }
 
 #[cfg(test)]
-#[path = "types_test.rs"]
+#[path = "../../tests/unit/core/types_test.rs"]
 mod tests;
