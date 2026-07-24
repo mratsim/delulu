@@ -673,3 +673,36 @@ async fn test_fetch_and_extract_stale_discourse_markers_falls_back_to_generic_ht
         other => panic!("Expected ExtractionResult::GenericHtml, got {other:?}"),
     }
 }
+
+// ---------------------------------------------------------------------------
+// arXiv HTML5 pipeline
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_fetch_and_extract_arxiv_valida_isa() {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture_path = manifest.join("tests/fixtures-arxiv/valida-isa/source.html.zst");
+    let compressed = std::fs::read(&fixture_path).unwrap();
+    let decompressed = zstd::decode_all(compressed.as_slice()).unwrap();
+    let html = String::from_utf8(decompressed).unwrap();
+
+    // Run the arXiv HTML5 pipeline directly (same as gen_expected_arxiv)
+    let mut dom = delulu_webfetch::pipelines::parse_html(&html).unwrap();
+    delulu_webfetch::pipelines::dl_arxiv::filter_arxiv(&mut dom);
+    let md = delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(&dom, None);
+
+    assert!(
+        md.contains("Valida"),
+        "body should contain 'Valida', got: {}",
+        &md[..500.min(md.len())],
+    );
+    assert!(
+        md.contains("Instruction Set Architecture"),
+        "body should contain paper title"
+    );
+    assert!(
+        md.len() > 1000,
+        "markdown output should be substantial, got {} chars",
+        md.len(),
+    );
+}
