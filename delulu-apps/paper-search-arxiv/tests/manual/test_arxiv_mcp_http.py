@@ -2,6 +2,7 @@
 """MCP HTTP transport integration tests for paper-search-arxiv."""
 
 import asyncio
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -48,18 +49,25 @@ async def test_list_tools(session) -> bool:
     return True
 
 
+def find_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
+
 async def run_all_tests():
     server_binary = find_server_binary("delulu-arxiv-mcp")
     print(f"Using server binary: {server_binary}")
 
-    port = 9876
+    port = find_free_port()
     server_url = f"http://127.0.0.1:{port}/mcp"
 
     child = subprocess.Popen(
         [str(server_binary), "http", "--port", str(port)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        preexec_fn=os.setpgrp if sys.platform != "win32" else None,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
     )
 
     try:

@@ -630,7 +630,7 @@ fn test_isolate_container_fallthrough_to_next_pattern() {
 
 #[test]
 fn test_isolate_container_count_p_text_no_p_elements() {
-    let _container = DomNode::Element {
+    let container = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "post".into())],
         children: vec![DomNode::Text("text without p tags".into())],
@@ -640,7 +640,7 @@ fn test_isolate_container_count_p_text_no_p_elements() {
     let mut nodes = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![],
+        children: vec![container],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
@@ -657,7 +657,7 @@ fn test_isolate_container_count_p_text_no_p_elements() {
 #[test]
 fn test_isolate_container_non_p_text_not_counted() {
     let long_text: String = "x".repeat(500);
-    let _container = DomNode::Element {
+    let container = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "post".into())],
         children: vec![DomNode::Element {
@@ -673,7 +673,7 @@ fn test_isolate_container_non_p_text_not_counted() {
     let mut nodes = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![],
+        children: vec![container],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
@@ -730,7 +730,7 @@ fn test_isolate_container_249_rejected() {
 
 #[test]
 fn test_isolate_container_whitespace_only_p_not_counted() {
-    let _container = DomNode::Element {
+    let container = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "post".into())],
         children: vec![DomNode::Element {
@@ -746,7 +746,7 @@ fn test_isolate_container_whitespace_only_p_not_counted() {
     let mut nodes = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![],
+        children: vec![container],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
@@ -758,7 +758,7 @@ fn test_isolate_container_whitespace_only_p_not_counted() {
 
 #[test]
 fn test_isolate_container_empty_container_rejected() {
-    let _container = DomNode::Element {
+    let container = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "post".into())],
         children: vec![],
@@ -768,7 +768,7 @@ fn test_isolate_container_empty_container_rejected() {
     let mut nodes = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![],
+        children: vec![container],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
@@ -803,7 +803,7 @@ fn test_isolate_container_sibling_both_match_short_first() {
 fn test_isolate_container_integration_sidebar_vs_article() {
     // Realistic scenario: sidebar nav div with class "content" but no real p text
     // Article body with class "main-content" having enough p text
-    let _sidebar = DomNode::Element {
+    let sidebar = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "content".into())],
         children: vec![DomNode::Element {
@@ -822,7 +822,7 @@ fn test_isolate_container_integration_sidebar_vs_article() {
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
-    let _article_body = DomNode::Element {
+    let article_body = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "main-content".into())],
         children: vec![DomNode::Element {
@@ -838,18 +838,23 @@ fn test_isolate_container_integration_sidebar_vs_article() {
     let mut nodes = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![],
+        children: vec![sidebar, article_body],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
     tf_isolate_content_container(&mut nodes);
-    if let DomNode::Element { attrs, .. } = &nodes {
-        assert!(
-            attrs
-                .iter()
-                .any(|(k, v)| k == "class" && v == "main-content"),
-            "surviving div should have main-content class"
-        );
+    if let DomNode::Element { children, .. } = &nodes {
+        assert_eq!(children.len(), 1, "should keep one container");
+        if let DomNode::Element { attrs, .. } = &children[0] {
+            assert!(
+                attrs
+                    .iter()
+                    .any(|(k, v)| k == "class" && v == "main-content"),
+                "surviving div should have main-content class"
+            );
+        } else {
+            panic!("expected Element child");
+        }
     } else {
         panic!("expected Element node");
     }

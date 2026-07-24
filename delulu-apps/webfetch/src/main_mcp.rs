@@ -284,13 +284,15 @@ fn is_private_ip(ip: &IpAddr) -> bool {
                 || v4.is_private()    // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
                 || v4.is_link_local() // 169.254.0.0/16 (includes cloud metadata 169.254.169.254)
         }
-        IpAddr::V6(v6) => v6.is_loopback()
-            || v6.is_unspecified()
-            || is_ula(v6)
-            || is_link_local(v6)
-            || is_ipv4_mapped(v6)
-            || is_ipv4_compatible(v6)
-            || is_documentation(v6),
+        IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || is_ula(v6)
+                || is_link_local(v6)
+                || is_ipv4_mapped(v6)
+                || is_ipv4_compatible(v6)
+                || is_documentation(v6)
+        }
     }
 }
 

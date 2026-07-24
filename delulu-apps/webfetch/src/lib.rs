@@ -14,9 +14,7 @@ use crate::pipelines::DomNode;
 use crate::pipelines::PassFn;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use futures_util::StreamExt;
-use std::io::Write;
 use std::time::Duration;
-use tempfile::Builder;
 use xberg::{ExtractInput, ExtractionConfig, OutputFormat, extract as xberg_extract};
 
 /// Maximum response body size (50 MB).
@@ -46,6 +44,20 @@ pub async fn fetch_and_extract(
 ) -> Result<ExtractionResult, WebfetchError> {
     // Step 1: URL-based detection (primary dispatch)
     let url_source_type = detect_source_type(url);
+
+    // Validate URL before any processing
+    let trimmed_input = url.trim();
+    if trimmed_input.len() > 2048 {
+        return Err(WebfetchError::Fetch(
+            "URL exceeds maximum length".to_string(),
+        ));
+    }
+    if !trimmed_input.starts_with("http://") && !trimmed_input.starts_with("https://") {
+        return Err(WebfetchError::Fetch(format!(
+            "Unsupported URL scheme: '{}'",
+            trimmed_input.split(':').next().unwrap_or("")
+        )));
+    }
 
     // Step 2: Check source type BEFORE HTTP fetch
     match url_source_type {
@@ -85,20 +97,6 @@ pub async fn fetch_and_extract(
         url.to_string()
     };
 
-    // Validate URL before making the request
-    let trimmed = fetch_url.trim();
-    if trimmed.len() > 2048 {
-        return Err(WebfetchError::Fetch(
-            "URL exceeds maximum length".to_string(),
-        ));
-    }
-    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
-        return Err(WebfetchError::Fetch(format!(
-            "Unsupported URL scheme: '{}'",
-            trimmed.split(':').next().unwrap_or("")
-        )));
-    }
-
     let response = crawler
         .get(&fetch_url)
         .send()
@@ -125,6 +123,15 @@ pub async fn fetch_and_extract(
         && !mime.is_empty()
         && crate::core::detect::detect_from_mime_type(mime).is_some()
     {
+        // Reject oversized responses before consuming
+        if let Some(len) = response.content_length()
+            && len as usize > MAX_BODY_SIZE
+        {
+            return Err(WebfetchError::IoError(format!(
+                "Document too large: Content-Length {len} bytes (max {} MB)",
+                MAX_BODY_SIZE / (1024 * 1024),
+            )));
+        }
         let bytes = response
             .bytes()
             .await
@@ -329,15 +336,25 @@ pub async fn doc_to_html(bytes: Vec<u8>, url: &str) -> Result<String, WebfetchEr
         })
         .unwrap_or_default();
 
-    // 3. Write to temp file
-    let mut temp_file = Builder::new()
-        .suffix(&extension)
-        .tempfile()
-        .map_err(|e| WebfetchError::IoError(format!("Failed to create temp file: {e}")))?;
-    temp_file
-        .write_all(&bytes)
-        .map_err(|e| WebfetchError::IoError(format!("Failed to write temp file: {e}")))?;
-    let temp_path = temp_file.path().to_path_buf();
+    // 3. Write to temp file (blocking I/O, run on blocking thread pool)
+    let temp_file = tokio::task::spawn_blocking({
+        let extension = extension.clone();
+        let bytes = bytes.clone();
+        move || -> Result<_, WebfetchError> {
+            let mut temp_file = tempfile::Builder::new()
+                .suffix(&extension)
+                .tempfile()
+                .map_err(|e| WebfetchError::IoError(format!("Failed to create temp file: {e}")))?;
+            use std::io::Write;
+            temp_file
+                .write_all(&bytes)
+                .map_err(|e| WebfetchError::IoError(format!("Failed to write temp file: {e}")))?;
+            Ok(temp_file)
+        }
+    })
+    .await
+    .map_err(|e| WebfetchError::IoError(format!("Temp file task panicked: {e}")))?;
+    let temp_path = temp_file?.path().to_path_buf();
 
     // 4. Run xberg with 10s timeout
     let config = ExtractionConfig {
@@ -397,7 +414,6 @@ pub async fn fetch_doc(
     })
 }
 
-
 // ---------------------------------------------------------------------------
 // Helper: fetch_url_text
 // ---------------------------------------------------------------------------
@@ -431,6 +447,32 @@ async fn fetch_url_text(
     }
 
     Ok((body, content_type))
+}
+
+// ---------------------------------------------------------------------------
+// fetch_raw_html
+// ---------------------------------------------------------------------------
+
+/// Fetch a URL and return the raw HTTP response body as a string.
+/// Skips the extraction pipeline entirely — just returns the raw HTML.
+pub async fn fetch_raw_html(
+    url: &str,
+    crawler: &RateLimitedCrawler,
+) -> Result<String, WebfetchError> {
+    let response = crawler
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| WebfetchError::Fetch(format!("HTTP request failed: {e}")))?;
+    let status = response.status().as_u16();
+    if !(200..300).contains(&status) {
+        return Err(WebfetchError::Fetch(format!("HTTP error {status}")));
+    }
+    let body = response
+        .text()
+        .await
+        .map_err(|e| WebfetchError::Fetch(format!("Failed to read response: {e}")))?;
+    Ok(body)
 }
 
 // ---------------------------------------------------------------------------

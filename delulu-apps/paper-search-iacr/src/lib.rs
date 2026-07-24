@@ -186,11 +186,14 @@ impl IacrClient {
             let chunk = chunk.context("Failed to read PDF chunk")?;
             bytes.extend_from_slice(&chunk);
             if bytes.len() > MAX_DOC_SIZE {
-                anyhow::bail!("IACR paper PDF exceeds maximum size of {} bytes", MAX_DOC_SIZE);
+                anyhow::bail!(
+                    "IACR paper PDF exceeds maximum size of {} bytes",
+                    MAX_DOC_SIZE
+                );
             }
         }
         Ok(bytes)
-}
+    }
 }
 // Return the IACR ePrint PDF URL for a given year and number.
 // Zero-pads the number to 3 digits for pre-2005 papers.

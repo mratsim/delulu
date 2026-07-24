@@ -17,6 +17,7 @@ use clap::Parser;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use delulu_webfetch::{
     ExtractionResult, MAX_BODY_SIZE, MarkdownDocument, RedditComment, fetch_and_extract,
+    fetch_raw_html,
 };
 use std::io::Read;
 use std::time::Duration;
@@ -275,25 +276,10 @@ async fn run_fetch(args: Args) -> Result<(), Error> {
 
         match args.output_format.as_deref() {
             Some("html") => {
-                let fetch_result =
-                    fetch_and_extract(url, &crawler, select_pipeline(&args.pipeline))
-                        .await
-                        .context("Fetch and extract failed")?;
-                let body = match &fetch_result {
-                    ExtractionResult::GenericHtml { content_md } => content_md.body.clone(),
-                    ExtractionResult::Reddit { selftext, .. } => selftext.clone(),
-                    ExtractionResult::Discourse { .. } => {
-                        anyhow::bail!("HTML output not supported for Discourse results")
-                    }
-                };
-                let mut dom = delulu_webfetch::pipelines::parse_html(&body)
-                    .map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
-                let pipeline = select_pipeline(&args.pipeline);
-                for pass in pipeline {
-                    pass(&mut dom);
-                }
-                let out_html = delulu_webfetch::generators::gen_html::dom_nodes_to_html(&dom);
-                println!("{out_html}");
+                let raw_html = fetch_raw_html(url, &crawler)
+                    .await
+                    .context("Fetch raw HTML failed")?;
+                println!("{raw_html}");
             }
             None if args.raw => {
                 let result = fetch_and_extract(url, &crawler, select_pipeline(&args.pipeline))
