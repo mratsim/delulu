@@ -163,7 +163,7 @@ async fn test_search_papers_connection_refused() {
     // Use a port that's unlikely to have anything listening
     let client = ArxivClient::new()
         .expect("failed to create client")
-        .with_base_url("http://127.0.0.1:1/".to_string());
+        .with_api_url("http://127.0.0.1:1/".to_string());
 
     let query = SearchQuery {
         query: "test".to_string(),
