@@ -23,8 +23,8 @@
 //! NOTE: This file is included via `#[path]` in `src/lib.rs`, so all paths
 //! are relative to the crate root (`crate::`).
 
-use crate::core::SearchQuery;
 use crate::ArxivClient;
+use crate::core::SearchQuery;
 
 // ---------------------------------------------------------------------------
 // Builder / configuration tests
@@ -93,7 +93,6 @@ fn test_get_paper_url_old_format_id() {
     let url = format!("https://arxiv.org/html/{}", arxiv_id);
     assert_eq!(url, "https://arxiv.org/html/cond-mat/0011267");
 }
-
 
 // ---------------------------------------------------------------------------
 // HTTP integration tests with fixture data

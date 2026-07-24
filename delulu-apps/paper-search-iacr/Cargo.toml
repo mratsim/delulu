@@ -15,7 +15,6 @@ mcp = [
 ]
 
 [dependencies]
-wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
 delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
 delulu-webfetch = { path = "../webfetch" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
@@ -27,7 +26,6 @@ regex = { version = "1.10", default-features = false, features = ["unicode-perl"
 clap = { version = "4", features = ["derive"], optional = true }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["time", "chrono"] }
-urlencoding = "2"
 delulu-mcp-server-helper = { path = "../../delulu-internals/mcp-server-helper", optional = true }
 schemars = { version = "1.0", features = ["derive"], optional = true }
 rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
@@ -63,3 +61,6 @@ path = "tests/integration/iacr_integration_test.rs"
 name = "iacr_mcp_e2e"
 path = "tests/integration/iacr_mcp_e2e_test.rs"
 required-features = ["mcp"]
+
+[package.metadata.cargo-machete]
+ignored = ["rmcp"]

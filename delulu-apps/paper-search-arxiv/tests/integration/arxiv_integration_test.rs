@@ -29,9 +29,18 @@ async fn test_arxiv_search_with_fixture() {
     assert!(!papers[0].id.is_empty(), "paper should have an ID");
     assert!(!papers[0].title.is_empty(), "paper should have a title");
     assert!(!papers[0].authors.is_empty(), "paper should have authors");
-    assert!(!papers[0].primary_category.is_empty(), "paper should have a primary category");
-    assert!(papers[0].abs_url.contains("arxiv.org"), "paper should have an HTML URL");
-    assert!(papers[0].pdf_url.contains("arxiv.org"), "paper should have a PDF URL");
+    assert!(
+        !papers[0].primary_category.is_empty(),
+        "paper should have a primary category"
+    );
+    assert!(
+        papers[0].abs_url.contains("arxiv.org"),
+        "paper should have an HTML URL"
+    );
+    assert!(
+        papers[0].pdf_url.contains("arxiv.org"),
+        "paper should have a PDF URL"
+    );
 }
 
 /// Test that the arXiv client can fetch papers by ID using fixture data.

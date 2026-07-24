@@ -23,8 +23,8 @@
 //! NOTE: This file is included via `#[path]` in `src/lib.rs`, so all paths
 //! are relative to the crate root (`crate::`).
 
-use crate::core::SearchQuery;
 use crate::PubmedClient;
+use crate::core::SearchQuery;
 
 // ---------------------------------------------------------------------------
 // Builder / configuration tests
@@ -38,7 +38,9 @@ fn test_new_creates_client_with_defaults() {
 
 #[test]
 fn test_with_api_url_custom() {
-    let client = PubmedClient::new().unwrap().with_api_url("http://localhost:9999".to_string());
+    let client = PubmedClient::new()
+        .unwrap()
+        .with_api_url("http://localhost:9999".to_string());
     let _ = client;
 }
 
@@ -83,7 +85,10 @@ fn test_get_paper_raw_url_construction_custom_base() {
     let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
     let url = format!("{}/articles/PMC{id}/pdf/", base_url.trim_end_matches('/'));
     assert_eq!(id, "987654");
-    assert_eq!(url, "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC987654/pdf/");
+    assert_eq!(
+        url,
+        "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC987654/pdf/"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -93,14 +98,10 @@ fn test_get_paper_raw_url_construction_custom_base() {
 /// Test that the PubMed client can search using fixture data.
 #[tokio::test]
 async fn test_search_with_fixture() {
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-pubmed",
-        "pubmed-search.json.zst",
-    );
-    let (url, _shutdown) = paper_search_test_utils::serve_fixture(
-        "/entrez/eutils/esearch.fcgi",
-        path,
-    ).await;
+    let path =
+        paper_search_test_utils::fixture_path("paper-search-pubmed", "pubmed-search.json.zst");
+    let (url, _shutdown) =
+        paper_search_test_utils::serve_fixture("/entrez/eutils/esearch.fcgi", path).await;
     let server_url = format!("{}/entrez/eutils", url);
 
     let client = PubmedClient::new().unwrap().with_api_url(server_url);
@@ -110,10 +111,7 @@ async fn test_search_with_fixture() {
         max_results: Some(3),
         sort: None,
     };
-    let result = client
-        .search(&query)
-        .await
-        .expect("search should succeed");
+    let result = client.search(&query).await.expect("search should succeed");
 
     assert!(result.total_count > 0, "should have results");
     assert!(!result.pmids.is_empty(), "should have PMIDs");
@@ -122,14 +120,10 @@ async fn test_search_with_fixture() {
 /// Test that the PubMed client can get summaries using fixture data.
 #[tokio::test]
 async fn test_get_summaries_with_fixture() {
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-pubmed",
-        "pubmed-summary.json.zst",
-    );
-    let (url, _shutdown) = paper_search_test_utils::serve_fixture(
-        "/entrez/eutils/esummary.fcgi",
-        path,
-    ).await;
+    let path =
+        paper_search_test_utils::fixture_path("paper-search-pubmed", "pubmed-summary.json.zst");
+    let (url, _shutdown) =
+        paper_search_test_utils::serve_fixture("/entrez/eutils/esummary.fcgi", path).await;
     let server_url = format!("{}/entrez/eutils", url);
 
     let client = PubmedClient::new().unwrap().with_api_url(server_url);
@@ -146,14 +140,10 @@ async fn test_get_summaries_with_fixture() {
 /// Test that the PubMed client can fetch abstracts using fixture data.
 #[tokio::test]
 async fn test_fetch_abstracts_with_fixture() {
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-pubmed",
-        "pubmed-abstract.txt.zst",
-    );
-    let (url, _shutdown) = paper_search_test_utils::serve_fixture(
-        "/entrez/eutils/efetch.fcgi",
-        path,
-    ).await;
+    let path =
+        paper_search_test_utils::fixture_path("paper-search-pubmed", "pubmed-abstract.txt.zst");
+    let (url, _shutdown) =
+        paper_search_test_utils::serve_fixture("/entrez/eutils/efetch.fcgi", path).await;
     let server_url = format!("{}/entrez/eutils", url);
 
     let client = PubmedClient::new().unwrap().with_api_url(server_url);
@@ -173,14 +163,10 @@ async fn test_find_related_with_fixture() {
     // Test that find_related sends a request to the correct path.
     // The URL construction is: {base_url}/elink.fcgi?dbfrom=pubmed&db=pubmed&id=...
     // We verify by serving a fixture at the expected path.
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-pubmed",
-        "pubmed-elink.json.zst",
-    );
-    let (url, _shutdown) = paper_search_test_utils::serve_fixture(
-        "/entrez/eutils/elink.fcgi",
-        path,
-    ).await;
+    let path =
+        paper_search_test_utils::fixture_path("paper-search-pubmed", "pubmed-elink.json.zst");
+    let (url, _shutdown) =
+        paper_search_test_utils::serve_fixture("/entrez/eutils/elink.fcgi", path).await;
     let server_url = format!("{}/entrez/eutils", url);
 
     let client = PubmedClient::new().unwrap().with_api_url(server_url);
@@ -200,14 +186,10 @@ async fn test_find_related_with_fixture() {
 /// Test that the PubMed client can get database info using fixture data.
 #[tokio::test]
 async fn test_get_database_info_with_fixture() {
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-pubmed",
-        "pubmed-einfo.json.zst",
-    );
-    let (url, _shutdown) = paper_search_test_utils::serve_fixture(
-        "/entrez/eutils/einfo.fcgi",
-        path,
-    ).await;
+    let path =
+        paper_search_test_utils::fixture_path("paper-search-pubmed", "pubmed-einfo.json.zst");
+    let (url, _shutdown) =
+        paper_search_test_utils::serve_fixture("/entrez/eutils/einfo.fcgi", path).await;
     let server_url = format!("{}/entrez/eutils", url);
 
     let client = PubmedClient::new().unwrap().with_api_url(server_url);
@@ -224,7 +206,9 @@ async fn test_get_database_info_with_fixture() {
 /// Test that a request to an unreachable server returns an error.
 #[tokio::test]
 async fn test_search_connection_refused() {
-    let client = PubmedClient::new().unwrap().with_api_url("http://127.0.0.1:1".to_string());
+    let client = PubmedClient::new()
+        .unwrap()
+        .with_api_url("http://127.0.0.1:1".to_string());
 
     let query = SearchQuery {
         query: "test".to_string(),
@@ -240,14 +224,10 @@ async fn test_search_connection_refused() {
 async fn test_get_paper_with_fixture() {
     // get_paper doesn't check HTTP status, so we test that it
     // successfully fetches content from a matching server route.
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-pubmed",
-        "pubmed-search.json.zst",
-    );
-    let (url, _shutdown) = paper_search_test_utils::serve_fixture(
-        "/articles/PMC9999999/pdf/",
-        path,
-    ).await;
+    let path =
+        paper_search_test_utils::fixture_path("paper-search-pubmed", "pubmed-search.json.zst");
+    let (url, _shutdown) =
+        paper_search_test_utils::serve_fixture("/articles/PMC9999999/pdf/", path).await;
     let server_url = url.clone();
 
     let client = PubmedClient::new().unwrap().with_base_url(server_url);
@@ -256,7 +236,10 @@ async fn test_get_paper_with_fixture() {
     // get_paper will try to process the bytes as a PDF, which will fail
     // because the fixture is JSON. But the request should succeed.
     // The error will be from PDF processing, not HTTP.
-    assert!(result.is_err(), "get_paper should fail when content is not a PDF");
+    assert!(
+        result.is_err(),
+        "get_paper should fail when content is not a PDF"
+    );
 }
 
 /// Test that get_paper_raw fetches raw bytes from the server.
@@ -264,19 +247,18 @@ async fn test_get_paper_with_fixture() {
 async fn test_get_paper_raw_with_fixture() {
     // get_paper_raw doesn't check HTTP status, so we test that it
     // successfully fetches bytes from a matching server route.
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-pubmed",
-        "pubmed-search.json.zst",
-    );
-    let (url, _shutdown) = paper_search_test_utils::serve_fixture(
-        "/articles/PMC9999999/pdf/",
-        path,
-    ).await;
+    let path =
+        paper_search_test_utils::fixture_path("paper-search-pubmed", "pubmed-search.json.zst");
+    let (url, _shutdown) =
+        paper_search_test_utils::serve_fixture("/articles/PMC9999999/pdf/", path).await;
     let server_url = url.clone();
 
     let client = PubmedClient::new().unwrap().with_base_url(server_url);
 
     let result = client.get_paper_raw("PMC9999999").await;
-    assert!(result.is_ok(), "get_paper_raw should succeed when server responds");
+    assert!(
+        result.is_ok(),
+        "get_paper_raw should succeed when server responds"
+    );
     assert!(!result.unwrap().is_empty(), "should return non-empty bytes");
 }

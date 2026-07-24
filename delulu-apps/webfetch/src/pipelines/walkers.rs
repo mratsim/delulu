@@ -85,7 +85,7 @@ pub fn walk_post_mut(
         let mut i = 0;
         while i < children.len() {
             // Post-order: recurse into children FIRST
-            if should_descend.map_or(true, |pred| pred(&children[i])) {
+            if should_descend.is_none_or(|pred| pred(&children[i])) {
                 walk_post_mut(&mut children[i], filters, should_descend);
             } else {
                 tracing::debug!("should_descend blocked descent into element");
@@ -162,7 +162,7 @@ pub fn walk_post_acc_mut<A: Default>(
     let mut results = Vec::with_capacity(nodes.len());
     let mut i = 0;
     while i < nodes.len() {
-        let child_results = if should_descend.map_or(true, |pred| pred(&nodes[i])) {
+        let child_results = if should_descend.is_none_or(|pred| pred(&nodes[i])) {
             if let DomNode::Element { children, .. } = &mut nodes[i] {
                 walk_post_acc_mut(children, should_descend, filter)
             } else {

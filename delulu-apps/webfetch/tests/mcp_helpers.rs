@@ -56,12 +56,11 @@ pub fn find_binary() -> Result<PathBuf> {
     if let Ok(output) = std::process::Command::new("which")
         .arg("delulu-webfetch-mcp")
         .output()
+        && output.status.success()
     {
-        if output.status.success() {
-            let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path_str.is_empty() {
-                return Ok(PathBuf::from(path_str));
-            }
+        let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !path_str.is_empty() {
+            return Ok(PathBuf::from(path_str));
         }
     }
     anyhow::bail!(
@@ -209,21 +208,21 @@ pub async fn read_json_response(
             anyhow::bail!("Stdout closed without receiving a valid JSON-RPC response");
         }
 
-        if let Ok(response) = serde_json::from_str::<Value>(&line_buf) {
-            if let Some(obj) = response.as_object() {
-                // Skip notifications (no "id" field)
-                if !obj.contains_key("id") {
-                    continue;
-                }
-                // If expected_id is set, skip responses that don't match
-                if let Some(eid) = expected_id {
-                    if obj.get("id").and_then(|v| v.as_u64()) != Some(eid) {
-                        continue;
-                    }
-                }
-                if obj.contains_key("result") || obj.contains_key("error") {
-                    return Ok(response);
-                }
+        if let Ok(response) = serde_json::from_str::<Value>(&line_buf)
+            && let Some(obj) = response.as_object()
+        {
+            // Skip notifications (no "id" field)
+            if !obj.contains_key("id") {
+                continue;
+            }
+            // If expected_id is set, skip responses that don't match
+            if let Some(eid) = expected_id
+                && obj.get("id").and_then(|v| v.as_u64()) != Some(eid)
+            {
+                continue;
+            }
+            if obj.contains_key("result") || obj.contains_key("error") {
+                return Ok(response);
             }
         }
     }

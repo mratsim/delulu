@@ -223,13 +223,11 @@ pub fn mark_data_tables_by_structure(node: &mut DomNode) {
             metadata,
             ..
         } = n
+            && tag == "table"
+            && !is_layout_table(attrs)
+            && is_data_table_by_structure(attrs, children)
         {
-            if tag == "table"
-                && !is_layout_table(attrs)
-                && is_data_table_by_structure(attrs, children)
-            {
-                metadata.insert("is_data_table".into(), "true".into());
-            }
+            metadata.insert("is_data_table".into(), "true".into());
         }
         WalkerAction::Continue
     };

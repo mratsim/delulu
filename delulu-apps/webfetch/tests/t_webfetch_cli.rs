@@ -177,8 +177,10 @@ fn test_cli_doc_subcommand_is_registered() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("required") || stderr.contains("error") || stderr.contains("url")
-        || stderr.contains("URL"),
+        stderr.contains("required")
+            || stderr.contains("error")
+            || stderr.contains("url")
+            || stderr.contains("URL"),
         "stderr should indicate missing URL argument, got: {stderr}"
     );
 }
@@ -203,4 +205,3 @@ fn test_cli_doc_subcommand_help_shows_url_arg() {
         "doc --help should mention URL argument, got: {stdout}"
     );
 }
-

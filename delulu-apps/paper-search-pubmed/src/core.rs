@@ -18,7 +18,7 @@
 //! # Core — PubMed E-utilities Response Parsers
 //!
 //! Pure data structures and parsing logic for NCBI E-utilities JSON and text responses.
-//! No I/O — suitable for testing without network access.
+//! Pure data structures and parsing logic for NCBI E-utilities JSON and text responses.
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -285,7 +285,9 @@ pub struct CitationMatch {
 // ---------------------------------------------------------------------------
 
 /// Deserialize a JSON value that may be either a string or an integer into Option<String>.
-fn deserialize_string_or_int<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+fn deserialize_string_or_int<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<String>, D::Error> {
     match Value::deserialize(d) {
         Ok(Value::String(s)) => Ok(Some(s)),
         Ok(Value::Number(n)) => Ok(Some(n.to_string())),
@@ -300,22 +302,17 @@ fn deserialize_string_or_int<'de, D: serde::Deserializer<'de>>(d: D) -> Result<O
 ///
 /// Returns an error if the JSON is malformed or required fields are missing.
 pub fn parse_search_json(json: &str) -> Result<SearchResult, String> {
-
     let resp: ESearchResponse =
         serde_json::from_str(json).map_err(|e| format!("JSON parse error: {}", e))?;
 
-    let count: u64 = resp
-        .result
-        .count
-        .parse()
-        .unwrap_or_else(|_| {
-            tracing::warn!(
-                "Failed to parse PubMed count '{}', falling back to id_list.len() ({})",
-                resp.result.count,
-                resp.result.id_list.len(),
-            );
-            resp.result.id_list.len() as u64
-        });
+    let count: u64 = resp.result.count.parse().unwrap_or_else(|_| {
+        tracing::warn!(
+            "Failed to parse PubMed count '{}', falling back to id_list.len() ({})",
+            resp.result.count,
+            resp.result.id_list.len(),
+        );
+        resp.result.id_list.len() as u64
+    });
 
     Ok(SearchResult {
         total_count: count,
@@ -395,14 +392,14 @@ pub fn parse_summary_json(json: &str) -> Result<Vec<Paper>, String> {
 /// Extract PMC ID from a DocSum.
 fn extract_pmc_id(doc: &DocSum) -> Option<String> {
     // PMC ID might be in the elocationid as "doi: 10.xxxx/PMC1234567"
-    if let Some(ref eid) = doc.elocationid {
-        if eid.to_lowercase().contains("pmc") {
-            let parts: Vec<&str> = eid.split('/').collect();
-            for part in parts {
-                let trimmed = part.trim();
-                if trimmed.to_uppercase().starts_with("PMC") {
-                    return Some(trimmed.to_string());
-                }
+    if let Some(ref eid) = doc.elocationid
+        && eid.to_lowercase().contains("pmc")
+    {
+        let parts: Vec<&str> = eid.split('/').collect();
+        for part in parts {
+            let trimmed = part.trim();
+            if trimmed.to_uppercase().starts_with("PMC") {
+                return Some(trimmed.to_string());
             }
         }
     }
@@ -434,14 +431,23 @@ pub fn parse_abstract_text(text: &str) -> Vec<(String, String)> {
                 }
                 current_abstract.clear();
             }
-            current_pmid = Some(line[6..].trim().to_string());
+            current_pmid = Some(
+                line.strip_prefix("PM  -")
+                    .unwrap_or(line)
+                    .trim()
+                    .to_string(),
+            );
             collecting = false;
             continue;
         }
 
         if line.starts_with("AB  -") {
             collecting = true;
-            let rest = line[5..].trim().to_string();
+            let rest = line
+                .strip_prefix("AB  -")
+                .unwrap_or(line)
+                .trim()
+                .to_string();
             if !rest.is_empty() {
                 current_abstract.push(rest);
             }
@@ -489,10 +495,10 @@ pub fn parse_elink_json(json: &str) -> Result<RelatedArticles, String> {
         // Collect input PMIDs (global for output)
         if let Some(ref ids) = linkset.ids {
             for id_entry in ids {
-                if let Some(ref id) = id_entry.id {
-                    if seen_input.insert(id.clone()) {
-                        input_pmids.push(id.clone());
-                    }
+                if let Some(ref id) = id_entry.id
+                    && seen_input.insert(id.clone())
+                {
+                    input_pmids.push(id.clone());
                 }
             }
         }
@@ -501,15 +507,18 @@ pub fn parse_elink_json(json: &str) -> Result<RelatedArticles, String> {
         let current_ids: Vec<String> = linkset
             .ids
             .as_ref()
-            .map(|ids| ids.iter().filter_map(|id_entry| id_entry.id.clone()).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id_entry| id_entry.id.clone())
+                    .collect()
+            })
             .unwrap_or_default();
 
         // Collect related PMIDs
         if let Some(ref linksetdbs) = linkset.linksetdbs {
             for lsdb in linksetdbs {
                 if let Some(ref links) = lsdb.links {
-                    let pmids: Vec<String> =
-                        links.iter().filter_map(|l| l.id.clone()).collect();
+                    let pmids: Vec<String> = links.iter().filter_map(|l| l.id.clone()).collect();
 
                     // Associate with each input PMID from THIS LinkSet only
                     for input_id in &current_ids {
@@ -552,12 +561,7 @@ pub fn parse_einfo_json(json: &str) -> Result<DatabaseInfo, String> {
     let db_name = dinfo.dbname.unwrap_or_default();
     let menu_name = dinfo.menuname.unwrap_or_default();
     let description = dinfo.description.unwrap_or_default();
-    let count: u64 = dinfo
-        .count
-        .as_deref()
-        .unwrap_or("0")
-        .parse()
-        .unwrap_or(0);
+    let count: u64 = dinfo.count.as_deref().unwrap_or("0").parse().unwrap_or(0);
     let last_update = dinfo.lastupdate.unwrap_or_default();
 
     let fields = dinfo
@@ -610,7 +614,6 @@ pub fn parse_ecitmatch_text(text: &str) -> Vec<CitationMatch> {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-
 
 // Tests — auto-pulled by paper-search-pubmed/src/core.rs
 // ---------------------------------------------------------------------------

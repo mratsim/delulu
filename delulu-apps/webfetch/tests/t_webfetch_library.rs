@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use delulu_rate_limited_crawler::RateLimitedCrawler;
-use delulu_webfetch::{fetch_and_extract, types::*};
 use delulu_webfetch::sources::reddit::RedditExtractor;
+use delulu_webfetch::{fetch_and_extract, types::*};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 
@@ -79,7 +79,7 @@ async fn spawn_test_server(
 }
 
 /// Create a RateLimitedCrawler pointed at a local test server.
-fn test_crawler_for(addr: std::net::SocketAddr) -> RateLimitedCrawler {
+fn test_crawler_for(_addr: std::net::SocketAddr) -> RateLimitedCrawler {
     let raw_client = wreq::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -104,8 +104,7 @@ async fn test_fetch_and_extract_reddit_from_fixture() {
     // (title, author, score, selftext, permalink) and top-level comments
     // from a real Reddit JSON API fixture.
     let body = reddit_fixture_body();
-    let data = RedditExtractor::extract(&body)
-        .expect("RedditExtractor::extract should succeed");
+    let data = RedditExtractor::extract(&body).expect("RedditExtractor::extract should succeed");
 
     assert_eq!(data.title, "Hello World from Reddit");
     assert_eq!(data.author, "reddit_user");
@@ -126,8 +125,7 @@ async fn test_fetch_and_extract_reddit_replies_are_threaded() {
     // structure: comments with replies are threaded (not flattened).
     // At least one comment should contain a nested reply with "Nested reply".
     let body = reddit_fixture_body();
-    let data = RedditExtractor::extract(&body)
-        .expect("RedditExtractor::extract should succeed");
+    let data = RedditExtractor::extract(&body).expect("RedditExtractor::extract should succeed");
 
     let has_nested_reply = data
         .comments
@@ -155,7 +153,7 @@ async fn test_fetch_and_extract_discourse_from_fixture() {
 
     let html_bytes = html_body.as_bytes().to_vec();
     let json_bytes = json_body.as_bytes().to_vec();
-    let serve_html = std::sync::atomic::AtomicBool::new(true);
+    let _serve_html = std::sync::atomic::AtomicBool::new(true);
 
     tokio::spawn(async move {
         // First connection: serve HTML
@@ -316,9 +314,7 @@ async fn test_fetch_and_extract_generic_html_from_fixture() {
                 "frontmatter should indicate generic_html"
             );
             assert!(
-                content_md
-                    .frontmatter
-                    .contains("source_url:"),
+                content_md.frontmatter.contains("source_url:"),
                 "frontmatter should contain source URL"
             );
         }
@@ -447,8 +443,7 @@ async fn test_fetch_and_extract_reddit_with_trailing_slash() {
     // Verifies that RedditExtractor works correctly with fixture data.
     // URL trailing-slash handling is tested separately in detect_test.rs.
     let body = reddit_fixture_body();
-    let data = RedditExtractor::extract(&body)
-        .expect("RedditExtractor::extract should succeed");
+    let data = RedditExtractor::extract(&body).expect("RedditExtractor::extract should succeed");
 
     assert_eq!(data.title, "Hello World from Reddit");
 }

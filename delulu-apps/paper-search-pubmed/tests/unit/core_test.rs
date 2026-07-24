@@ -19,21 +19,18 @@
 //!
 //! Uses `#[path]` to include the core module for direct testing of
 
-
 use crate::core::{
-    extract_pmc_id, parse_abstract_text, parse_ecitmatch_text, parse_einfo_json,
-    parse_elink_json, parse_search_json, parse_summary_json, DocSum, SearchQuery,
+    DocSum, SearchQuery, extract_pmc_id, parse_abstract_text, parse_ecitmatch_text,
+    parse_einfo_json, parse_elink_json, parse_search_json, parse_summary_json,
 };
 
 const FIXTURES_DIR: &str = "tests/fixtures";
 
 fn read_fixture(name: &str) -> String {
     let path = format!("{}/{}", FIXTURES_DIR, name);
-    let compressed = std::fs::read(&path).unwrap_or_else(|e| {
-        panic!("Failed to read fixture '{}': {}", path, e)
-    });
-    let decompressed = zstd::decode_all(compressed.as_slice())
-        .expect("zstd decompression failed");
+    let compressed =
+        std::fs::read(&path).unwrap_or_else(|e| panic!("Failed to read fixture '{}': {}", path, e));
+    let decompressed = zstd::decode_all(compressed.as_slice()).expect("zstd decompression failed");
     String::from_utf8(decompressed)
         .unwrap_or_else(|e| panic!("Fixture '{}' is not UTF-8: {}", path, e))
 }
@@ -99,7 +96,10 @@ fn test_parse_summary_json_from_fixture() {
     let papers = parse_summary_json(&json).unwrap();
     assert_eq!(papers.len(), 1);
     assert_eq!(papers[0].pmid, "42477534");
-    assert!(papers[0].title.contains("Non-pharmacological"), "title should match fixture");
+    assert!(
+        papers[0].title.contains("Non-pharmacological"),
+        "title should match fixture"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -112,7 +112,10 @@ fn test_parse_abstract_text_from_fixture() {
     let results = parse_abstract_text(&text);
     assert!(!results.is_empty(), "should parse at least one abstract");
     assert_eq!(results[0].0, "42477534", "should match fixture PMID");
-    assert!(results[0].1.contains("Emergence delirium"), "abstract should contain expected text");
+    assert!(
+        results[0].1.contains("Emergence delirium"),
+        "abstract should contain expected text"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +146,8 @@ fn test_parse_elink_json_basic() {
 
 #[test]
 fn test_parse_elink_json_no_related() {
-    let json = r#"{"linksets": [{"dbfrom": "pubmed", "ids": [{"id": "37994677"}], "linksetdbs": []}]}"#;
+    let json =
+        r#"{"linksets": [{"dbfrom": "pubmed", "ids": [{"id": "37994677"}], "linksetdbs": []}]}"#;
     let result = parse_elink_json(json).unwrap();
     assert_eq!(result.input_pmids, vec!["37994677"]);
     assert!(result.related.is_empty() || result.related["37994677"].is_empty());
@@ -239,7 +243,9 @@ fn test_extract_pmc_id_no_match() {
 
 #[test]
 fn test_extract_pmc_id_none_elocationid() {
-    let doc = DocSum { ..Default::default() };
+    let doc = DocSum {
+        ..Default::default()
+    };
     assert_eq!(extract_pmc_id(&doc), None);
 }
 

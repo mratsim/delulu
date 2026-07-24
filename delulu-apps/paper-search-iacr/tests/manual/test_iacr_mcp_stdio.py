@@ -24,7 +24,7 @@ async def test_list_tools(session):
     print(f"  Tools: {names}")
     assert "list_recent_papers" in names
     assert "get_paper_details" in names
-    assert "download_paper_pdf" in names
+    assert "paper_pdf_url" in names
     return True
 
 async def test_list_recent_papers(session):

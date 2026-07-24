@@ -16,14 +16,14 @@ use anyhow::{Context, Error, Result};
 use clap::Parser;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use delulu_webfetch::{
-    ExtractionResult, MarkdownDocument, RedditComment, MAX_BODY_SIZE, fetch_and_extract,
+    ExtractionResult, MAX_BODY_SIZE, MarkdownDocument, RedditComment, fetch_and_extract,
 };
 use std::io::Read;
 use std::time::Duration;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 // ---------------------------------------------------------------------------
-// Args (flat, backward-compatible)
+// Args (flat, backward-compatible with prior versions)
 // ---------------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
@@ -190,7 +190,7 @@ async fn main() -> Result<(), Error> {
         let doc_args = DocArgs::parse_from(&doc_argv);
         return run_doc(doc_args).await;
     } else {
-        // Use original flat-args parsing (backward compatible)
+        // Use original flat-args parsing (backward-compatible with prior versions)
         let args = Args::parse();
         run_fetch(args).await
     }
@@ -275,9 +275,10 @@ async fn run_fetch(args: Args) -> Result<(), Error> {
 
         match args.output_format.as_deref() {
             Some("html") => {
-                let fetch_result = fetch_and_extract(url, &crawler, select_pipeline(&args.pipeline))
-                    .await
-                    .context("Fetch and extract failed")?;
+                let fetch_result =
+                    fetch_and_extract(url, &crawler, select_pipeline(&args.pipeline))
+                        .await
+                        .context("Fetch and extract failed")?;
                 let body = match &fetch_result {
                     ExtractionResult::GenericHtml { content_md } => content_md.body.clone(),
                     ExtractionResult::Reddit { selftext, .. } => selftext.clone(),

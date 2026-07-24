@@ -27,25 +27,25 @@ fn load_fixture(name: &str) -> (String, Option<String>) {
     let source_display = source_path.display();
     let compressed = std::fs::read(&source_path)
         .unwrap_or_else(|e| panic!("Failed to read {}: {}", source_display, e));
-    let source_bytes =
-        zstd::decode_all(compressed.as_slice())
-            .unwrap_or_else(|e| panic!("Failed to decompress {}: {}", source_display, e));
+    let source_bytes = zstd::decode_all(compressed.as_slice())
+        .unwrap_or_else(|e| panic!("Failed to decompress {}: {}", source_display, e));
     let source_html = String::from_utf8(source_bytes)
         .unwrap_or_else(|e| panic!("Source {} is not UTF-8: {}", source_display, e));
 
     // Load expected markdown if it exists
     let expected_path = dir.join("expected.md.zst");
     let expected_display = expected_path.display();
-    let expected = match std::fs::read(&expected_path) {
-        Ok(compressed) => {
-            let bytes = zstd::decode_all(compressed.as_slice())
-                .unwrap_or_else(|e| panic!("Failed to decompress {}: {}", expected_display, e));
-            Some(String::from_utf8(bytes).unwrap_or_else(|e| {
-                panic!("Expected {} is not UTF-8: {}", expected_display, e)
-            }))
-        }
-        Err(_) => None,
-    };
+    let expected =
+        match std::fs::read(&expected_path) {
+            Ok(compressed) => {
+                let bytes = zstd::decode_all(compressed.as_slice())
+                    .unwrap_or_else(|e| panic!("Failed to decompress {}: {}", expected_display, e));
+                Some(String::from_utf8(bytes).unwrap_or_else(|e| {
+                    panic!("Expected {} is not UTF-8: {}", expected_display, e)
+                }))
+            }
+            Err(_) => None,
+        };
 
     (source_html, expected)
 }
@@ -108,7 +108,10 @@ fn test_arxiv_attention_is_all_you_need() {
     );
 
     // Verify BLEU scores are present (Table 2 content)
-    assert!(md.contains("BLEU"), "should contain BLEU scores from Table 2");
+    assert!(
+        md.contains("BLEU"),
+        "should contain BLEU scores from Table 2"
+    );
 
     // Verify LaTeX math is rendered as $...$ or $$...$$
     assert!(
@@ -142,8 +145,12 @@ fn test_arxiv_empty_html() {
 /// Verify the pipeline handles HTML with no arXiv chrome gracefully.
 #[test]
 fn test_arxiv_no_chrome() {
-    let html = r#"<html><body><article><h1>Test Paper</h1><p>Some content.</p></article></body></html>"#;
+    let html =
+        r#"<html><body><article><h1>Test Paper</h1><p>Some content.</p></article></body></html>"#;
     let md = run_arxiv_pipeline(html);
-    assert!(md.contains("Test Paper"), "should preserve non-arXiv content");
+    assert!(
+        md.contains("Test Paper"),
+        "should preserve non-arXiv content"
+    );
     assert!(md.contains("Some content"), "should preserve plain content");
 }

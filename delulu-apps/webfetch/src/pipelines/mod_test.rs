@@ -103,7 +103,7 @@ fn test_parse_html_simple() {
         match node {
             DomNode::Element {
                 tag: t, children, ..
-            } if t == tag => return true,
+            } if t == tag => true,
             DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
             _ => false,
         }
@@ -176,8 +176,8 @@ fn test_parse_html_comment() {
 
     fn find_comment(node: &DomNode) -> bool {
         match node {
-            DomNode::Comment(_) => return true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_comment(c)),
+            DomNode::Comment(_) => true,
+            DomNode::Element { children, .. } => children.iter().any(find_comment),
             _ => false,
         }
     }

@@ -9,7 +9,7 @@ pub mod sources;
 pub use crate::core::detect::detect_source_type;
 pub use crate::core::types::WebfetchError;
 
-use crate::core::types::{SourceType};
+use crate::core::types::SourceType;
 use crate::pipelines::DomNode;
 use crate::pipelines::PassFn;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
@@ -17,11 +17,10 @@ use futures_util::StreamExt;
 use std::io::Write;
 use std::time::Duration;
 use tempfile::Builder;
-use xberg::{extract as xberg_extract, ExtractInput, ExtractionConfig, OutputFormat};
+use xberg::{ExtractInput, ExtractionConfig, OutputFormat, extract as xberg_extract};
 
 /// Maximum response body size (50 MB).
 pub const MAX_BODY_SIZE: usize = 50 * 1024 * 1024;
-
 
 // ---------------------------------------------------------------------------
 // fetch_and_extract
@@ -89,12 +88,15 @@ pub async fn fetch_and_extract(
     // Validate URL before making the request
     let trimmed = fetch_url.trim();
     if trimmed.len() > 2048 {
-        return Err(WebfetchError::Fetch("URL exceeds maximum length".to_string()));
+        return Err(WebfetchError::Fetch(
+            "URL exceeds maximum length".to_string(),
+        ));
     }
     if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
         return Err(WebfetchError::Fetch(format!(
             "Unsupported URL scheme: '{}'",
-            trimmed.split(':').next().unwrap_or(""))));
+            trimmed.split(':').next().unwrap_or("")
+        )));
     }
 
     let response = crawler
@@ -103,11 +105,14 @@ pub async fn fetch_and_extract(
         .await
         .map_err(|e| WebfetchError::Fetch(format!("HTTP request failed: {e}")))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            return Err(WebfetchError::Fetch(format!("HTTP {}: {}", status.as_u16(), url)));
-        }
-
+    let status = response.status();
+    if !status.is_success() {
+        return Err(WebfetchError::Fetch(format!(
+            "HTTP {}: {}",
+            status.as_u16(),
+            url
+        )));
+    }
 
     let content_type = response
         .headers()
@@ -116,14 +121,15 @@ pub async fn fetch_and_extract(
 
     // If the response is a document (PDF, DOCX, etc.), consume as bytes
     // before the body is corrupted by text conversion.
-    if let Some(ref mime) = content_type {
-        if !mime.is_empty() && crate::core::detect::detect_from_mime_type(mime).is_some() {
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|e| WebfetchError::Fetch(format!("Failed to read response: {e}")))?;
-            return process_doc_bytes(bytes.to_vec(), url).await;
-        }
+    if let Some(ref mime) = content_type
+        && !mime.is_empty()
+        && crate::core::detect::detect_from_mime_type(mime).is_some()
+    {
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| WebfetchError::Fetch(format!("Failed to read response: {e}")))?;
+        return process_doc_bytes(bytes.to_vec(), url).await;
     }
 
     // Step 4: Consume body as text (safe now — confirmed not a document MIME)
@@ -266,13 +272,13 @@ pub async fn fetch_doc(
     }
 
     // Reject oversized responses before streaming
-    if let Some(len) = response.content_length() {
-        if len as usize > MAX_DOC_SIZE {
-            return Err(WebfetchError::IoError(format!(
-                "Document too large: Content-Length {len} bytes (max {} MB)",
-                MAX_DOC_SIZE / (1024 * 1024),
-            )));
-        }
+    if let Some(len) = response.content_length()
+        && len as usize > MAX_DOC_SIZE
+    {
+        return Err(WebfetchError::IoError(format!(
+            "Document too large: Content-Length {len} bytes (max {} MB)",
+            MAX_DOC_SIZE / (1024 * 1024),
+        )));
     }
 
     // Stream chunks with size limit enforcement
@@ -350,17 +356,12 @@ pub async fn process_doc_bytes(
         ..Default::default()
     };
 
-    let result = tokio::time::timeout(
-        Duration::from_secs(10),
-        xberg_extract(input, &config),
-    )
-    .await
-    .map_err(|_| {
-        WebfetchError::XbergError(
-            "xberg extraction timed out after 10 seconds".into(),
-        )
-    })?
-    .map_err(|e| WebfetchError::XbergError(e.to_string()))?;
+    let result = tokio::time::timeout(Duration::from_secs(10), xberg_extract(input, &config))
+        .await
+        .map_err(|_| {
+            WebfetchError::XbergError("xberg extraction timed out after 10 seconds".into())
+        })?
+        .map_err(|e| WebfetchError::XbergError(e.to_string()))?;
 
     let html = result
         .results
@@ -375,10 +376,7 @@ pub async fn process_doc_bytes(
     // 5. Return GenericHtml with source_type: "document"
     Ok(ExtractionResult::GenericHtml {
         content_md: MarkdownDocument {
-            frontmatter: format!(
-                "title: {}\nsource_type: document\nsource_url: {}",
-                "", url
-            ),
+            frontmatter: format!("title: {}\nsource_type: document\nsource_url: {}", "", url),
             body: markdown,
         },
     })

@@ -42,16 +42,23 @@ fn test_filter_doc_removes_scripts() {
     let mut dom = parse_html(html).unwrap();
     filter_doc(&mut dom);
     assert!(!has_element(&dom, "script"), "scripts should be removed");
-    assert!(text_content(&dom).contains("Hello"), "content should be preserved");
+    assert!(
+        text_content(&dom).contains("Hello"),
+        "content should be preserved"
+    );
 }
 
 #[test]
 fn test_filter_doc_removes_styles() {
-    let html = r#"<html><head><style>body { color: red; }</style></head><body><p>Text</p></body></html>"#;
+    let html =
+        r#"<html><head><style>body { color: red; }</style></head><body><p>Text</p></body></html>"#;
     let mut dom = parse_html(html).unwrap();
     filter_doc(&mut dom);
     assert!(!has_element(&dom, "style"), "styles should be removed");
-    assert!(text_content(&dom).contains("Text"), "content should be preserved");
+    assert!(
+        text_content(&dom).contains("Text"),
+        "content should be preserved"
+    );
 }
 
 #[test]
@@ -60,10 +67,15 @@ fn test_filter_doc_removes_empty_elements() {
     let mut dom = parse_html(html).unwrap();
     filter_doc(&mut dom);
     // Empty div should be removed
-    assert!(!text_content(&dom).contains("Content") || has_element(&dom, "div"),
-        "non-empty div should remain");
+    assert!(
+        !text_content(&dom).contains("Content") || has_element(&dom, "div"),
+        "non-empty div should remain"
+    );
     // The non-empty div should remain
-    assert!(text_content(&dom).contains("Content"), "content should be preserved");
+    assert!(
+        text_content(&dom).contains("Content"),
+        "content should be preserved"
+    );
 }
 
 #[test]
@@ -103,10 +115,22 @@ fn test_filter_doc_preserves_content() {
     let html = r#"<html><body><h1>Title</h1><p>Paragraph text</p><ul><li>Item 1</li><li>Item 2</li></ul></body></html>"#;
     let mut dom = parse_html(html).unwrap();
     filter_doc(&mut dom);
-    assert!(text_content(&dom).contains("Title"), "h1 content should be preserved");
-    assert!(text_content(&dom).contains("Paragraph text"), "paragraph content should be preserved");
-    assert!(text_content(&dom).contains("Item 1"), "list item content should be preserved");
-    assert!(text_content(&dom).contains("Item 2"), "list item content should be preserved");
+    assert!(
+        text_content(&dom).contains("Title"),
+        "h1 content should be preserved"
+    );
+    assert!(
+        text_content(&dom).contains("Paragraph text"),
+        "paragraph content should be preserved"
+    );
+    assert!(
+        text_content(&dom).contains("Item 1"),
+        "list item content should be preserved"
+    );
+    assert!(
+        text_content(&dom).contains("Item 2"),
+        "list item content should be preserved"
+    );
 }
 
 #[test]
@@ -116,7 +140,10 @@ fn test_filter_doc_removes_both_script_and_style() {
     filter_doc(&mut dom);
     assert!(!has_element(&dom, "script"), "scripts should be removed");
     assert!(!has_element(&dom, "style"), "styles should be removed");
-    assert!(text_content(&dom).contains("Survivor"), "remaining content should be preserved");
+    assert!(
+        text_content(&dom).contains("Survivor"),
+        "remaining content should be preserved"
+    );
 }
 
 #[test]
@@ -125,5 +152,8 @@ fn test_filter_doc_removes_nested_empty_elements() {
     let mut dom = parse_html(html).unwrap();
     filter_doc(&mut dom);
     // The text "Content" should be present
-    assert!(text_content(&dom).contains("Content"), "content should survive");
+    assert!(
+        text_content(&dom).contains("Content"),
+        "content should survive"
+    );
 }

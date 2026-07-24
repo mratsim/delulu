@@ -163,9 +163,7 @@ async fn test_fetch_and_extract_generic_html() {
                 "frontmatter should indicate generic_html"
             );
             assert!(
-                content_md
-                    .frontmatter
-                    .contains("source_url:"),
+                content_md.frontmatter.contains("source_url:"),
                 "frontmatter should contain source URL"
             );
         }
@@ -245,7 +243,8 @@ async fn test_fetch_url_too_long() {
         "expected Fetch, got {err:?}"
     );
     assert!(
-        err.to_string().contains("invalid URL") || err.to_string().contains("exceeds maximum length"),
+        err.to_string().contains("invalid URL")
+            || err.to_string().contains("exceeds maximum length"),
         "error should mention invalid URL or too long, got: {err}"
     );
 }
@@ -257,7 +256,10 @@ fn test_xberg_html_to_markdown_plain_html() {
     let html = "<html><body><h1>Title</h1><p>Paragraph</p></body></html>";
     let result = xberg_html_to_markdown(html, None).unwrap();
     assert!(result.contains("Title"), "should contain title text");
-    assert!(result.contains("Paragraph"), "should contain paragraph text");
+    assert!(
+        result.contains("Paragraph"),
+        "should contain paragraph text"
+    );
 }
 
 #[test]
@@ -270,7 +272,8 @@ fn test_xberg_html_to_markdown_removes_scripts() {
 
 #[test]
 fn test_xberg_html_to_markdown_removes_styles() {
-    let html = r#"<html><head><style>body{color:red}</style></head><body><p>Text</p></body></html>"#;
+    let html =
+        r#"<html><head><style>body{color:red}</style></head><body><p>Text</p></body></html>"#;
     let result = xberg_html_to_markdown(html, None).unwrap();
     assert!(!result.contains("color:red"), "styles should be removed");
     assert!(result.contains("Text"), "content should remain");
@@ -281,8 +284,7 @@ fn test_xberg_html_to_markdown_with_base_url() {
     let html = r#"<html><body><a href="/relative">Link</a></body></html>"#;
     let result = xberg_html_to_markdown(html, Some("https://example.com")).unwrap();
     assert!(
-        result.contains("https://example.com/relative")
-            || result.contains("/relative"),
+        result.contains("https://example.com/relative") || result.contains("/relative"),
         "expected resolved URL in markdown output, got: {result}"
     );
     assert!(result.contains("Link"), "should contain link text");
@@ -292,14 +294,20 @@ fn test_xberg_html_to_markdown_with_base_url() {
 fn test_xberg_html_to_markdown_empty_html() {
     let html = "";
     let result = xberg_html_to_markdown(html, None).unwrap();
-    assert!(result.trim().is_empty() || result.is_empty(), "empty HTML should produce empty output");
+    assert!(
+        result.trim().is_empty() || result.is_empty(),
+        "empty HTML should produce empty output"
+    );
 }
 
 #[test]
 fn test_xberg_html_to_markdown_preserves_img() {
     let html = r#"<html><body><img src="pic.png" alt="Pic"/><p>Text</p></body></html>"#;
     let result = xberg_html_to_markdown(html, None).unwrap();
-    assert!(result.contains("pic.png") || result.contains("Pic"), "image should be preserved");
+    assert!(
+        result.contains("pic.png") || result.contains("Pic"),
+        "image should be preserved"
+    );
     assert!(result.contains("Text"), "text should be preserved");
 }
 
@@ -315,10 +323,7 @@ fn test_xberg_html_to_markdown_public_api() {
 fn test_xberg_html_to_markdown_parse_error() {
     let bad_html = "<html><body><p>unclosed";
     let result = xberg_html_to_markdown(bad_html, None);
-    assert!(
-        result.is_err(),
-        "malformed HTML should produce an error"
-    );
+    assert!(result.is_err(), "malformed HTML should produce an error");
     match result {
         Err(WebfetchError::Parse(_)) => {} // expected
         Err(other) => panic!("Expected Parse error, got: {other:?}"),

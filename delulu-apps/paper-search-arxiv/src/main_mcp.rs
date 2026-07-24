@@ -26,19 +26,17 @@ use delulu_mcp_server_helper::rmcp::handler::server::tool::ToolRouter;
 use delulu_mcp_server_helper::rmcp::handler::server::wrapper::Parameters;
 use delulu_mcp_server_helper::rmcp::tool;
 use delulu_mcp_server_helper::rmcp::tool_router;
-use delulu_mcp_server_helper::{McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing};
-use delulu_paper_search_arxiv::{core::SearchQuery, ArxivClient};
+use delulu_mcp_server_helper::{
+    McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing,
+};
+use delulu_paper_search_arxiv::{ArxivClient, core::SearchQuery};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-arxiv-mcp")]
-#[command(
-    author,
-    version,
-    about = "MCP server for arXiv paper search"
-)]
+#[command(author, version, about = "MCP server for arXiv paper search")]
 struct Args {
     /// Base URL for the arXiv API (default: https://export.arxiv.org/api/query)
     #[arg(long, default_value = "https://export.arxiv.org/api/query")]
@@ -74,7 +72,6 @@ pub struct GetPapersByIdInput {
     pub ids: String,
 }
 
-
 /// Input parameters for fetching a full paper as markdown.
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct GetPaperInput {
@@ -102,10 +99,7 @@ impl ArxivMcpServer {
         name = "search_papers",
         description = "Search for papers on arXiv by keyword, title, author, or abstract. Parameters: query (arXiv search syntax), max_results, start, sort_by (relevance/lastUpdatedDate/submittedDate), sort_order (ascending/descending)."
     )]
-    async fn search_papers(
-        &self,
-        params: Parameters<SearchPapersInput>,
-    ) -> Result<String, String> {
+    async fn search_papers(&self, params: Parameters<SearchPapersInput>) -> Result<String, String> {
         let input = params.0;
         let query = SearchQuery {
             query: input.query,
@@ -146,10 +140,7 @@ impl ArxivMcpServer {
         name = "get_paper",
         description = "Fetch a full paper from arXiv as markdown. Downloads the arXiv HTML5 version, strips navigation chrome, and converts to markdown with LaTeX math preserved. Parameters: arxiv_id (arXiv ID, e.g. '1706.03762')."
     )]
-    async fn get_paper(
-        &self,
-        params: Parameters<GetPaperInput>,
-    ) -> Result<String, String> {
+    async fn get_paper(&self, params: Parameters<GetPaperInput>) -> Result<String, String> {
         let input = params.0;
         let md = self
             .client

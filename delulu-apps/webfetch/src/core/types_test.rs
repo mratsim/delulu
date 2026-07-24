@@ -154,10 +154,7 @@ fn test_source_type_from_str_arxiv_pdf() {
 
 #[test]
 fn test_source_type_from_str_arxiv() {
-    assert_eq!(
-        "arxiv".parse::<SourceType>().unwrap(),
-        SourceType::ArxivPdf
-    );
+    assert_eq!("arxiv".parse::<SourceType>().unwrap(), SourceType::ArxivPdf);
 }
 
 #[test]
@@ -170,10 +167,7 @@ fn test_source_type_from_str_document() {
 
 #[test]
 fn test_source_type_from_str_doc() {
-    assert_eq!(
-        "doc".parse::<SourceType>().unwrap(),
-        SourceType::Document
-    );
+    assert_eq!("doc".parse::<SourceType>().unwrap(), SourceType::Document);
 }
 
 #[test]
@@ -182,10 +176,7 @@ fn test_source_type_from_str_arxiv_pdf_case_insensitive() {
         "ArXiv_PDF".parse::<SourceType>().unwrap(),
         SourceType::ArxivPdf
     );
-    assert_eq!(
-        "ARXIV".parse::<SourceType>().unwrap(),
-        SourceType::ArxivPdf
-    );
+    assert_eq!("ARXIV".parse::<SourceType>().unwrap(), SourceType::ArxivPdf);
 }
 
 #[test]
@@ -194,18 +185,12 @@ fn test_source_type_from_str_document_case_insensitive() {
         "DOCUMENT".parse::<SourceType>().unwrap(),
         SourceType::Document
     );
-    assert_eq!(
-        "Doc".parse::<SourceType>().unwrap(),
-        SourceType::Document
-    );
+    assert_eq!("Doc".parse::<SourceType>().unwrap(), SourceType::Document);
 }
 
 #[test]
 fn test_source_type_round_trip_includes_new() {
-    for variant in [
-        SourceType::ArxivPdf,
-        SourceType::Document,
-    ] {
+    for variant in [SourceType::ArxivPdf, SourceType::Document] {
         let display = variant.to_string();
         let parsed: SourceType = display.parse().unwrap();
         assert_eq!(parsed, variant);
@@ -225,4 +210,3 @@ fn test_error_xberg() {
     let e = WebfetchError::XbergError("xberg service unavailable".into());
     assert_eq!(e.to_string(), "xberg error: xberg service unavailable");
 }
-

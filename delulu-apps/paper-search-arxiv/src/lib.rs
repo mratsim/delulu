@@ -91,7 +91,10 @@ impl ArxivClient {
             );
         }
 
-        let body = response.text().await.context("Failed to read response body")?;
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body")?;
         let papers = core::parse_atom_response(&body)
             .map_err(|e| anyhow::anyhow!("Failed to parse arXiv response: {}", e))?;
 
@@ -119,12 +122,15 @@ impl ArxivClient {
             );
         }
 
-        let body = response.text().await.context("Failed to read response body")?;
+        let body = response
+            .text()
+            .await
+            .context("Failed to read response body")?;
         let papers = core::parse_atom_response(&body)
             .map_err(|e| anyhow::anyhow!("Failed to parse arXiv response: {}", e))?;
 
         Ok(papers)
-}
+    }
 
     /// Fetch the full paper as markdown from arXiv HTML5.
     ///
@@ -153,7 +159,8 @@ impl ArxivClient {
         if !status.is_success() {
             anyhow::bail!(
                 "arXiv HTML5 returned HTTP {} for paper '{}'",
-                status, arxiv_id,
+                status,
+                arxiv_id,
             );
         }
 
@@ -162,8 +169,8 @@ impl ArxivClient {
             .await
             .context("Failed to read arXiv HTML5 body")?;
 
-        let mut dom = delulu_webfetch::pipelines::parse_html(&body)
-            .context("Failed to parse arXiv HTML")?;
+        let mut dom =
+            delulu_webfetch::pipelines::parse_html(&body).context("Failed to parse arXiv HTML")?;
         delulu_webfetch::pipelines::dl_arxiv::filter_arxiv(&mut dom);
         let md = delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(&dom, None);
 

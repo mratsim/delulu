@@ -26,20 +26,18 @@ use delulu_mcp_server_helper::rmcp::handler::server::tool::ToolRouter;
 use delulu_mcp_server_helper::rmcp::handler::server::wrapper::Parameters;
 use delulu_mcp_server_helper::rmcp::tool;
 use delulu_mcp_server_helper::rmcp::tool_router;
-use delulu_mcp_server_helper::{McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing};
-use delulu_paper_search_pubmed::core::SearchQuery;
+use delulu_mcp_server_helper::{
+    McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing,
+};
 use delulu_paper_search_pubmed::PubmedClient;
+use delulu_paper_search_pubmed::core::SearchQuery;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-pubmed-mcp")]
-#[command(
-    author,
-    version,
-    about = "MCP server for PubMed paper search"
-)]
+#[command(author, version, about = "MCP server for PubMed paper search")]
 struct Args {
     #[arg(long, default_value = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils")]
     api_base_url: String,
@@ -125,10 +123,7 @@ impl PubmedMcpServer {
         name = "search_pubmed",
         description = "Search for articles in PubMed by keyword, author, or date. Parameters: query (PubMed search syntax, e.g. 'asthma[Title] AND 2023[pdat]'), max_results (default 20), sort (relevance/pub_date/author/journal)."
     )]
-    async fn search_pubmed(
-        &self,
-        params: Parameters<SearchPubmedInput>,
-    ) -> Result<String, String> {
+    async fn search_pubmed(&self, params: Parameters<SearchPubmedInput>) -> Result<String, String> {
         let input = params.0;
         let query = SearchQuery {
             query: input.query,
@@ -149,10 +144,7 @@ impl PubmedMcpServer {
         name = "get_summaries",
         description = "Get document summaries for a list of PubMed IDs. Returns metadata including title, authors, journal, and publication date. Parameters: ids (comma-separated PMIDs, e.g. '37994677,19393038')."
     )]
-    async fn get_summaries(
-        &self,
-        params: Parameters<GetSummariesInput>,
-    ) -> Result<String, String> {
+    async fn get_summaries(&self, params: Parameters<GetSummariesInput>) -> Result<String, String> {
         let input = params.0;
         let papers = self
             .client
@@ -185,10 +177,7 @@ impl PubmedMcpServer {
         name = "find_related",
         description = "Find articles related to a list of PubMed IDs. Returns related PMIDs for each input PMID. Parameters: ids (comma-separated PMIDs, e.g. '37994677,19393038')."
     )]
-    async fn find_related(
-        &self,
-        params: Parameters<FindRelatedInput>,
-    ) -> Result<String, String> {
+    async fn find_related(&self, params: Parameters<FindRelatedInput>) -> Result<String, String> {
         let input = params.0;
         let related = self
             .client
@@ -238,10 +227,7 @@ impl PubmedMcpServer {
         name = "get_paper",
         description = "Fetch a full paper from PubMed Central as markdown. Downloads the PDF and converts via xberg. Parameters: pmc_id (PubMed Central ID, e.g. 'PMC1234567' or '1234567')."
     )]
-    async fn get_paper(
-        &self,
-        params: Parameters<GetPaperInput>,
-    ) -> Result<String, String> {
+    async fn get_paper(&self, params: Parameters<GetPaperInput>) -> Result<String, String> {
         let input = params.0;
         let md = self
             .client
@@ -264,7 +250,9 @@ async fn main() -> Result<(), Error> {
 
     tracing::debug!("Creating PubMed client...");
     let client = Arc::new(
-        PubmedClient::new().context("Failed to create PubMed client")?.with_api_url(args.api_base_url.clone()),
+        PubmedClient::new()
+            .context("Failed to create PubMed client")?
+            .with_api_url(args.api_base_url.clone()),
     );
 
     match args.command {

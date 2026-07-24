@@ -67,7 +67,11 @@ impl fmt::Display for CrawlerError {
             Self::QpsZero => write!(f, "qps must be > 0, got 0"),
             Self::BurstZero => write!(f, "burst must be > 0, got 0"),
             Self::MaxDomainsZero => write!(f, "max_domains must be > 0, got 0"),
-            Self::InvalidConfig { field, value, reason } => {
+            Self::InvalidConfig {
+                field,
+                value,
+                reason,
+            } => {
                 write!(f, "invalid config: {field}={value} — {reason}")
             }
             Self::RetryExhausted {
@@ -112,8 +116,8 @@ impl CrawlerError {
             | CrawlerError::InvalidConfig { .. }
             | CrawlerError::ResponseTooLarge { .. }
             | CrawlerError::InvalidUrl(..) => false,
+        }
     }
-}
 }
 
 impl From<wreq::Error> for CrawlerError {

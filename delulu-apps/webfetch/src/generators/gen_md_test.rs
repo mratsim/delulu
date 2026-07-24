@@ -5,7 +5,7 @@ use crate::core::types::MarkdownDocument;
 
 #[test]
 fn test_lower_heading() {
-    let nodes = vec![DomNode::Element {
+    let nodes = [DomNode::Element {
         tag: "h1".into(),
         attrs: vec![],
         children: vec![DomNode::Text("Title".into())],
@@ -20,7 +20,7 @@ fn test_lower_heading() {
 
 #[test]
 fn test_lower_link() {
-    let nodes = vec![DomNode::Element {
+    let nodes = [DomNode::Element {
         tag: "a".into(),
         attrs: vec![("href".into(), "https://example.com".into())],
         children: vec![DomNode::Text("link".into())],
@@ -35,7 +35,7 @@ fn test_lower_link() {
 
 #[test]
 fn test_lower_unordered_list() {
-    let nodes = vec![DomNode::Element {
+    let nodes = [DomNode::Element {
         tag: "ul".into(),
         attrs: vec![],
         children: vec![
@@ -66,7 +66,7 @@ fn test_lower_unordered_list() {
 
 #[test]
 fn test_lower_code_block() {
-    let nodes = vec![DomNode::Element {
+    let nodes = [DomNode::Element {
         tag: "pre".into(),
         attrs: vec![],
         children: vec![DomNode::Element {
@@ -89,7 +89,7 @@ fn test_lower_code_block() {
 
 #[test]
 fn test_lower_table() {
-    let nodes = vec![DomNode::Element {
+    let nodes = [DomNode::Element {
         tag: "table".into(),
         attrs: vec![],
         children: vec![
@@ -163,7 +163,7 @@ fn test_lower_table() {
 
 #[test]
 fn test_lower_special_chars() {
-    let nodes = vec![DomNode::Element {
+    let nodes = [DomNode::Element {
         tag: "p".into(),
         attrs: vec![],
         children: vec![DomNode::Text("escape *stars* and _underscores_".into())],
@@ -179,7 +179,7 @@ fn test_lower_special_chars() {
 
 #[test]
 fn test_lower_document_with_frontmatter() {
-    let nodes = vec![DomNode::Element {
+    let nodes = [DomNode::Element {
         tag: "p".into(),
         attrs: vec![],
         children: vec![DomNode::Text("Hello, world!".into())],
@@ -203,7 +203,7 @@ fn test_lower_document_with_frontmatter() {
 fn test_output_size_cap() {
     // Create a huge paragraph of text
     let huge_text = "A".repeat(600_000);
-    let nodes = vec![DomNode::Element {
+    let nodes = [DomNode::Element {
         tag: "p".into(),
         attrs: vec![],
         children: vec![DomNode::Text(huge_text.clone())],
@@ -222,7 +222,7 @@ fn test_output_size_cap() {
 
 #[test]
 fn test_dom_nodes_to_html() {
-    let nodes = vec![DomNode::Element {
+    let nodes = [DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "container".into())],
         children: vec![
@@ -377,7 +377,11 @@ fn test_lower_display_math() {
         metadata: std::collections::HashMap::new(),
     };
     let md = MarkdownLowerer::lower(&node, None);
-    assert!(md.contains("$$\\displaystyle \\sum_{i=1}^n$$"), "display math: {}", md);
+    assert!(
+        md.contains("$$\\displaystyle \\sum_{i=1}^n$$"),
+        "display math: {}",
+        md
+    );
 }
 
 #[test]

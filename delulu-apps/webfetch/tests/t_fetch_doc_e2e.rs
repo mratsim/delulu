@@ -12,13 +12,13 @@ use std::time::Duration;
 
 /// Start a local axum server that serves a PDF fixture at /test.pdf.
 /// Returns the fixture URL and a shutdown sender.
-async fn serve_pdf_fixture(zst_path: &str) -> Result<(String, tokio::sync::oneshot::Sender<()>), anyhow::Error> {
-    let data = std::fs::read(zst_path)
-        .with_context(|| format!("Failed to read fixture: {zst_path}"))?;
-    let pdf_bytes = Arc::new(
-        zstd::decode_all(data.as_slice())
-            .context("Failed to decompress fixture")?
-    );
+async fn serve_pdf_fixture(
+    zst_path: &str,
+) -> Result<(String, tokio::sync::oneshot::Sender<()>), anyhow::Error> {
+    let data =
+        std::fs::read(zst_path).with_context(|| format!("Failed to read fixture: {zst_path}"))?;
+    let pdf_bytes =
+        Arc::new(zstd::decode_all(data.as_slice()).context("Failed to decompress fixture")?);
 
     let app = axum::Router::new().route(
         "/test.pdf",
@@ -40,7 +40,11 @@ async fn serve_pdf_fixture(zst_path: &str) -> Result<(String, tokio::sync::onesh
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     tokio::spawn(async move {
         let server = axum::serve(listener, app);
-        let _ = server.with_graceful_shutdown(async { shutdown_rx.await.ok(); }).await;
+        let _ = server
+            .with_graceful_shutdown(async {
+                shutdown_rx.await.ok();
+            })
+            .await;
     });
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -49,7 +53,11 @@ async fn serve_pdf_fixture(zst_path: &str) -> Result<(String, tokio::sync::onesh
 
 fn fixture_path(name: &str) -> String {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest.join("tests/fixtures-webfetch/pdf").join(name).to_string_lossy().to_string()
+    manifest
+        .join("tests/fixtures-webfetch/pdf")
+        .join(name)
+        .to_string_lossy()
+        .to_string()
 }
 
 fn test_crawler() -> RateLimitedCrawler {
@@ -69,12 +77,20 @@ async fn test_fetch_doc_iacr_2010_354() -> Result<()> {
 
     match result {
         delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
-            assert!(content_md.body.len() > 100, "Output too short: {} chars", content_md.body.len());
+            assert!(
+                content_md.body.len() > 100,
+                "Output too short: {} chars",
+                content_md.body.len()
+            );
             assert!(content_md.frontmatter.contains("source_type: document"));
-            assert!(content_md.body.contains("efficient") || content_md.body.contains("protocol")
-                || content_md.body.contains("scheme") || content_md.body.contains("signature"),
+            assert!(
+                content_md.body.contains("efficient")
+                    || content_md.body.contains("protocol")
+                    || content_md.body.contains("scheme")
+                    || content_md.body.contains("signature"),
                 "Expected paper content in output:\n{}",
-                &content_md.body[..300.min(content_md.body.len())]);
+                &content_md.body[..300.min(content_md.body.len())]
+            );
         }
         _ => panic!("Expected GenericHtml result"),
     }
@@ -89,11 +105,18 @@ async fn test_fetch_doc_iacr_2023_kzg() -> Result<()> {
 
     match result {
         delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
-            assert!(content_md.body.len() > 200, "Output too short: {} chars", content_md.body.len());
-            assert!(content_md.body.contains("KZG") || content_md.body.contains("proof")
-                || content_md.body.contains("commitment"),
+            assert!(
+                content_md.body.len() > 200,
+                "Output too short: {} chars",
+                content_md.body.len()
+            );
+            assert!(
+                content_md.body.contains("KZG")
+                    || content_md.body.contains("proof")
+                    || content_md.body.contains("commitment"),
                 "Expected KZG paper content:\n{}",
-                &content_md.body[..300.min(content_md.body.len())]);
+                &content_md.body[..300.min(content_md.body.len())]
+            );
         }
         _ => panic!("Expected GenericHtml result"),
     }
@@ -108,11 +131,19 @@ async fn test_fetch_doc_iacr_2023_das() -> Result<()> {
 
     match result {
         delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
-            assert!(content_md.body.len() > 200, "Output too short: {} chars", content_md.body.len());
-            assert!(content_md.body.contains("Data Availability") || content_md.body.contains("sampling")
-                || content_md.body.contains("DA") || content_md.body.contains("availability"),
+            assert!(
+                content_md.body.len() > 200,
+                "Output too short: {} chars",
+                content_md.body.len()
+            );
+            assert!(
+                content_md.body.contains("Data Availability")
+                    || content_md.body.contains("sampling")
+                    || content_md.body.contains("DA")
+                    || content_md.body.contains("availability"),
                 "Expected DAS paper content:\n{}",
-                &content_md.body[..300.min(content_md.body.len())]);
+                &content_md.body[..300.min(content_md.body.len())]
+            );
         }
         _ => panic!("Expected GenericHtml result"),
     }
@@ -121,16 +152,23 @@ async fn test_fetch_doc_iacr_2023_das() -> Result<()> {
 
 #[tokio::test]
 async fn test_fetch_doc_pubmed_alphafold3() -> Result<()> {
-    let (url, _shutdown) = serve_pdf_fixture(&fixture_path("pubmed-2024-alphafold3.pdf.zst")).await?;
+    let (url, _shutdown) =
+        serve_pdf_fixture(&fixture_path("pubmed-2024-alphafold3.pdf.zst")).await?;
     let crawler = test_crawler();
     let result = fetch_doc(&url, &crawler).await?;
 
     match result {
         delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
-            assert!(content_md.body.len() > 200, "Output too short: {} chars", content_md.body.len());
-            assert!(content_md.body.contains("AlphaFold") || content_md.body.contains("protein"),
+            assert!(
+                content_md.body.len() > 200,
+                "Output too short: {} chars",
+                content_md.body.len()
+            );
+            assert!(
+                content_md.body.contains("AlphaFold") || content_md.body.contains("protein"),
                 "Expected AlphaFold paper content:\n{}",
-                &content_md.body[..300.min(content_md.body.len())]);
+                &content_md.body[..300.min(content_md.body.len())]
+            );
         }
         _ => panic!("Expected GenericHtml result"),
     }

@@ -26,8 +26,7 @@
 //!                        ┌─────────────┘       └──────────┐
 //!                        ▼                                ▼
 //!                  Retry CAS loop               Ok((old_tat, new_tat))
-//!                  (spin-loop after
-//!                  (after 3 failures)
+//!                  (spin-loop after 3 failures)
 //! ```
 //!
 //! # Edge case: token leak on task cancellation
@@ -143,6 +142,7 @@ impl GcraState {
     /// Used to undo a `try_consume` when the caller is cancelled before
     /// sending the request. Only succeeds if no other thread has advanced
     /// the TAT past `expected_current`.
+    #[allow(clippy::result_unit_err)]
     pub fn try_restore(&self, expected_current: u64, target: u64) -> Result<(), ()> {
         self.tat
             .compare_exchange(

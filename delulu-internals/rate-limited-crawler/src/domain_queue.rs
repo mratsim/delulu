@@ -98,10 +98,7 @@ impl DomainQueue {
                     let wait = tat.saturating_sub(now);
                     let capped = wait.min(MAX_SLEEP_NS);
                     if capped != wait {
-                        tracing::warn!(
-                            "rate-limit wait capped at 60s (original: {}ns)",
-                            wait
-                        );
+                        tracing::warn!("rate-limit wait capped at 60s (original: {}ns)", wait);
                     }
                     tokio::time::sleep(Duration::from_nanos(capped)).await;
                 }

@@ -18,15 +18,15 @@ static REDDIT_URL_RE: Lazy<Regex> = Lazy::new(|| {
 /// - https://arxiv.org/abs/1706.03762v1
 /// - https://arxiv.org/pdf/1706.03762v1.pdf
 static ARXIV_URL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^https?://(?:www\.)?arxiv\.org/(?:pdf|abs)/[0-9]{4}\.[0-9]+(?:v[0-9]+)?(?:\.pdf)?$")
-        .unwrap()
+    Regex::new(
+        r"^https?://(?:www\.)?arxiv\.org/(?:pdf|abs)/[0-9]{4}\.[0-9]+(?:v[0-9]+)?(?:\.pdf)?$",
+    )
+    .unwrap()
 });
 
 /// Matches document file extensions at the end of a URL path.
-static DOCUMENT_EXTENSION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)\.(pdf|doc|docx|ppt|pptx|key)(?:[?#].*)?$")
-        .unwrap()
-});
+static DOCUMENT_EXTENSION_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)\.(pdf|doc|docx|ppt|pptx|key)(?:[?#].*)?$").unwrap());
 /// Bot-detection patterns (checked against response body).
 pub(crate) static BOT_DETECTION_PATTERNS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     vec![
@@ -141,8 +141,7 @@ pub(crate) fn detect_from_mime_type(mime_type: &str) -> Option<SourceType> {
         || type_part == "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     let is_ppt = type_part == "application/vnd.ms-powerpoint"
         || type_part == "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-    if is_pdf || is_msword || is_ppt
-    {
+    if is_pdf || is_msword || is_ppt {
         return Some(SourceType::Document);
     }
     None

@@ -24,7 +24,7 @@ pub fn convert_double_br_to_paragraph(node: &mut DomNode) -> WalkerAction {
         let old = std::mem::take(children);
         let mut iter = old.into_iter().peekable();
         while let Some(child) = iter.next() {
-            if is_br(&child) && iter.peek().map_or(false, is_br) {
+            if is_br(&child) && iter.peek().is_some_and(is_br) {
                 iter.next(); // skip the second br
                 if !buf.is_empty() {
                     new_children.push(make_p_element(std::mem::take(&mut buf)));
@@ -615,23 +615,23 @@ pub fn rd_unwrap_structural_wrappers(node: &mut DomNode) {
     let is_layout_table = matches!(node, DomNode::Element { tag, metadata, .. } if tag == "table"
         && metadata.iter().any(|(k, _)| k.eq_ignore_ascii_case("is_data_table"))
         && !metadata.iter().any(|(k, v)| k.eq_ignore_ascii_case("is_data_table") && v.eq_ignore_ascii_case("true")));
-    if is_container || is_layout_table {
-        if let DomNode::Element { children, .. } = node {
-            if children.len() == 1 {
-                // Single child: replace root with that child
-                let child = children.remove(0);
-                *node = child;
-            } else {
-                // Multiple children: wrap in a synthetic div to preserve tree structure
-                let old_children = std::mem::take(children);
-                *node = DomNode::Element {
-                    tag: "div".to_string(),
-                    attrs: Vec::new(),
-                    children: old_children,
-                    scores: HashMap::new(),
-                    metadata: HashMap::new(),
-                };
-            }
+    if (is_container || is_layout_table)
+        && let DomNode::Element { children, .. } = node
+    {
+        if children.len() == 1 {
+            // Single child: replace root with that child
+            let child = children.remove(0);
+            *node = child;
+        } else {
+            // Multiple children: wrap in a synthetic div to preserve tree structure
+            let old_children = std::mem::take(children);
+            *node = DomNode::Element {
+                tag: "div".to_string(),
+                attrs: Vec::new(),
+                children: old_children,
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            };
         }
     }
 }

@@ -15,12 +15,10 @@ mcp = [
 ]
 
 [dependencies]
-wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
 delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
 delulu-webfetch = { path = "../webfetch" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
 anyhow = "1.0"
-chrono = { version = "0.4.20", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 clap = { version = "4", features = ["derive"], optional = true }
@@ -58,3 +56,6 @@ paper-search-test-utils = { path = "../../delulu-internals/paper-search-test-uti
 name = "pubmed_mcp_e2e"
 path = "tests/integration/pubmed_mcp_e2e_test.rs"
 required-features = ["mcp"]
+
+[package.metadata.cargo-machete]
+ignored = ["rmcp"]

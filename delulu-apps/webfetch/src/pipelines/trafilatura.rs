@@ -145,7 +145,7 @@ fn measure_output(node: &DomNode) -> usize {
 fn count_text_chars(node: &DomNode) -> usize {
     match node {
         DomNode::Text(t) => t.len(),
-        DomNode::Element { children, .. } => children.iter().map(|c| count_text_chars(c)).sum(),
+        DomNode::Element { children, .. } => children.iter().map(count_text_chars).sum(),
         _ => 0,
     }
 }

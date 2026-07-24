@@ -97,34 +97,41 @@ fn collect_cells(nodes: &[DomNode]) -> Vec<DomNode> {
 /// Check if a table element has colspan, rowspan, or block content in any cell.
 /// Such tables cannot be represented as GFM pipe tables and must be emitted as raw HTML.
 fn table_is_complex(node: &DomNode) -> bool {
-    match node {
-        DomNode::Element { tag, attrs, children, .. } => {
-            if tag == "td" || tag == "th" {
-                // Check for colspan/rowspan
-                if let Some(v) = get_attr(attrs, "colspan") {
-                    if v != "1" { return true; }
-                }
-                if let Some(v) = get_attr(attrs, "rowspan") {
-                    if v != "1" { return true; }
-                }
-                // Check for block elements inside the cell
-                for child in children {
-                    if let DomNode::Element { tag: t, .. } = child {
-                        match t.as_str() {
-                            "ul" | "ol" | "pre" | "blockquote" | "table" => return true,
-                            _ => {}
-                        }
+    if let DomNode::Element {
+        tag,
+        attrs,
+        children,
+        ..
+    } = node
+    {
+        if tag == "td" || tag == "th" {
+            // Check for colspan/rowspan
+            if let Some(v) = get_attr(attrs, "colspan")
+                && v != "1"
+            {
+                return true;
+            }
+            if let Some(v) = get_attr(attrs, "rowspan")
+                && v != "1"
+            {
+                return true;
+            }
+            // Check for block elements inside the cell
+            for child in children {
+                if let DomNode::Element { tag: t, .. } = child {
+                    match t.as_str() {
+                        "ul" | "ol" | "pre" | "blockquote" | "table" => return true,
+                        _ => {}
                     }
                 }
             }
-            // Recurse into children
-            for child in children {
-                if table_is_complex(child) {
-                    return true;
-                }
+        }
+        // Recurse into children
+        for child in children {
+            if table_is_complex(child) {
+                return true;
             }
         }
-        _ => {}
     }
     false
 }
@@ -146,7 +153,12 @@ fn serialize_node_to_html(node: &DomNode) -> String {
             }
             out
         }
-        DomNode::Element { tag, attrs, children, .. } => {
+        DomNode::Element {
+            tag,
+            attrs,
+            children,
+            ..
+        } => {
             // Special case: convert <math> to inline/display LaTeX
             if tag == "math" {
                 let alttext = get_attr(attrs, "alttext").unwrap_or("");
@@ -159,7 +171,10 @@ fn serialize_node_to_html(node: &DomNode) -> String {
                     }
                 }
                 // No alttext — render children as fallback
-                return children.iter().map(|c| serialize_node_to_html(c)).collect::<String>();
+                return children
+                    .iter()
+                    .map(serialize_node_to_html)
+                    .collect::<String>();
             }
             let mut out = String::new();
             let _ = write!(out, "<{}", tag);
@@ -261,7 +276,7 @@ impl MarkdownLowerer {
     /// in `<a href="…">` and `<img src="…">` elements.
     pub fn lower(node: &DomNode, base_url: Option<&str>) -> String {
         let mut out = String::new();
-        Self::lower_nodes(&[node.clone()], base_url, &mut out, 0);
+        Self::lower_nodes(std::slice::from_ref(node), base_url, &mut out, 0);
         Self::cap_size(out)
     }
 }
@@ -293,13 +308,14 @@ impl MarkdownLowerer {
 
     /// Lower an element node.
     #[allow(clippy::too_many_lines)]
-    fn lower_element(
-        node: &DomNode,
-        base_url: Option<&str>,
-        out: &mut String,
-        indent: usize,
-    ) {
-        let DomNode::Element { tag, attrs, children, .. } = node else {
+    fn lower_element(node: &DomNode, base_url: Option<&str>, out: &mut String, indent: usize) {
+        let DomNode::Element {
+            tag,
+            attrs,
+            children,
+            ..
+        } = node
+        else {
             return;
         };
         match tag.as_str() {

@@ -300,32 +300,52 @@ fn detect_arxiv_pdf_takes_priority_over_document() {
 
 #[test]
 fn detect_mime_pdf_standard() {
-    assert_eq!(detect_from_mime_type("application/pdf"), Some(SourceType::Document));
+    assert_eq!(
+        detect_from_mime_type("application/pdf"),
+        Some(SourceType::Document)
+    );
 }
 
 #[test]
 fn detect_mime_pdf_with_charset() {
-    assert_eq!(detect_from_mime_type("application/pdf; charset=utf-8"), Some(SourceType::Document));
+    assert_eq!(
+        detect_from_mime_type("application/pdf; charset=utf-8"),
+        Some(SourceType::Document)
+    );
 }
 
 #[test]
 fn detect_mime_x_pdf() {
-    assert_eq!(detect_from_mime_type("application/x-pdf"), Some(SourceType::Document));
+    assert_eq!(
+        detect_from_mime_type("application/x-pdf"),
+        Some(SourceType::Document)
+    );
 }
 
 #[test]
 fn detect_mime_msword() {
-    assert_eq!(detect_from_mime_type("application/msword"), Some(SourceType::Document));
+    assert_eq!(
+        detect_from_mime_type("application/msword"),
+        Some(SourceType::Document)
+    );
 }
 
 #[test]
 fn detect_mime_docx() {
-    assert_eq!(detect_from_mime_type("application/vnd.openxmlformats-officedocument.wordprocessingml.document"), Some(SourceType::Document));
+    assert_eq!(
+        detect_from_mime_type(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
+        Some(SourceType::Document)
+    );
 }
 
 #[test]
 fn detect_mime_pptx() {
-    assert_eq!(detect_from_mime_type("application/vnd.ms-powerpoint"), Some(SourceType::Document));
+    assert_eq!(
+        detect_from_mime_type("application/vnd.ms-powerpoint"),
+        Some(SourceType::Document)
+    );
 }
 
 #[test]
@@ -352,7 +372,10 @@ fn detect_mime_epub_plus_zip_is_none() {
 #[test]
 fn detect_mime_pdf_editor_is_none() {
     // application/vnd.example.pdf-editor contains "pdf" but is NOT a PDF MIME type
-    assert_eq!(detect_from_mime_type("application/vnd.example.pdf-editor"), None);
+    assert_eq!(
+        detect_from_mime_type("application/vnd.example.pdf-editor"),
+        None
+    );
 }
 
 // -- arxiv_url_to_html_url ------------------------------------------------
@@ -360,25 +383,37 @@ fn detect_mime_pdf_editor_is_none() {
 #[test]
 fn arxiv_pdf_to_html_url() {
     let url = "https://arxiv.org/pdf/1706.03762v1.pdf";
-    assert_eq!(arxiv_url_to_html_url(url).unwrap(), "https://arxiv.org/html/1706.03762v1");
+    assert_eq!(
+        arxiv_url_to_html_url(url).unwrap(),
+        "https://arxiv.org/html/1706.03762v1"
+    );
 }
 
 #[test]
 fn arxiv_pdf_no_extension_to_html() {
     let url = "https://arxiv.org/pdf/1706.03762v1";
-    assert_eq!(arxiv_url_to_html_url(url).unwrap(), "https://arxiv.org/html/1706.03762v1");
+    assert_eq!(
+        arxiv_url_to_html_url(url).unwrap(),
+        "https://arxiv.org/html/1706.03762v1"
+    );
 }
 
 #[test]
 fn arxiv_abs_to_html_url() {
     let url = "https://arxiv.org/abs/1706.03762v1";
-    assert_eq!(arxiv_url_to_html_url(url).unwrap(), "https://arxiv.org/html/1706.03762v1");
+    assert_eq!(
+        arxiv_url_to_html_url(url).unwrap(),
+        "https://arxiv.org/html/1706.03762v1"
+    );
 }
 
 #[test]
 fn arxiv_http_scheme_to_html() {
     let url = "http://arxiv.org/pdf/1706.03762v1.pdf";
-    assert_eq!(arxiv_url_to_html_url(url).unwrap(), "https://arxiv.org/html/1706.03762v1");
+    assert_eq!(
+        arxiv_url_to_html_url(url).unwrap(),
+        "https://arxiv.org/html/1706.03762v1"
+    );
 }
 
 #[test]
@@ -390,31 +425,46 @@ fn arxiv_non_arxiv_url_returns_original() {
 #[test]
 fn arxiv_url_with_trailing_slash() {
     let url = "https://arxiv.org/pdf/1706.03762v1/";
-    assert_eq!(arxiv_url_to_html_url(url).unwrap(), "https://arxiv.org/html/1706.03762v1");
+    assert_eq!(
+        arxiv_url_to_html_url(url).unwrap(),
+        "https://arxiv.org/html/1706.03762v1"
+    );
 }
 
 #[test]
 fn arxiv_http_www_pdf_to_html() {
     // http://www.arxiv.org/ prefix was missing from strip_prefix chain
     let url = "http://www.arxiv.org/pdf/1706.03762v1.pdf";
-    assert_eq!(arxiv_url_to_html_url(url).unwrap(), "https://arxiv.org/html/1706.03762v1");
+    assert_eq!(
+        arxiv_url_to_html_url(url).unwrap(),
+        "https://arxiv.org/html/1706.03762v1"
+    );
 }
 
 #[test]
 fn arxiv_http_www_abs_to_html() {
     // http://www.arxiv.org/abs/ prefix was missing from strip_prefix chain
     let url = "http://www.arxiv.org/abs/1706.03762v1";
-    assert_eq!(arxiv_url_to_html_url(url).unwrap(), "https://arxiv.org/html/1706.03762v1");
+    assert_eq!(
+        arxiv_url_to_html_url(url).unwrap(),
+        "https://arxiv.org/html/1706.03762v1"
+    );
 }
 
 #[test]
 fn arxiv_https_www_pdf_to_html() {
     let url = "https://www.arxiv.org/pdf/1706.03762v1";
-    assert_eq!(arxiv_url_to_html_url(url).unwrap(), "https://arxiv.org/html/1706.03762v1");
+    assert_eq!(
+        arxiv_url_to_html_url(url).unwrap(),
+        "https://arxiv.org/html/1706.03762v1"
+    );
 }
 
 #[test]
 fn arxiv_https_www_abs_to_html() {
     let url = "https://www.arxiv.org/abs/1706.03762v1";
-    assert_eq!(arxiv_url_to_html_url(url).unwrap(), "https://arxiv.org/html/1706.03762v1");
+    assert_eq!(
+        arxiv_url_to_html_url(url).unwrap(),
+        "https://arxiv.org/html/1706.03762v1"
+    );
 }

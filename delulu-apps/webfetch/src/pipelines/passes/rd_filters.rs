@@ -679,7 +679,7 @@ fn remove_high_link_density(node: &mut DomNode) {
                     return (WalkerAction::Continue, (false,));
                 }
                 // Compute link_density using recursive get_inner_text on children
-                let all_text: String = ch.iter().map(|c| get_inner_text(c)).collect();
+                let all_text: String = ch.iter().map(get_inner_text).collect();
                 let child_text_len = all_text.len();
                 // Count link text from <a> children using recursive get_inner_text
                 let link_text_len: usize = ch
@@ -907,10 +907,8 @@ fn remove_form_heavy(node: &mut DomNode) {
                             .get("_comma_count")
                             .and_then(|s| s.parse::<usize>().ok())
                             .unwrap_or(0);
-                        if comma_count < COMMA_COUNT_GATE {
-                            if check_form_heavy(inputs, paras) {
-                                return (WalkerAction::Remove, (inputs, paras, false));
-                            }
+                        if comma_count < COMMA_COUNT_GATE && check_form_heavy(inputs, paras) {
+                            return (WalkerAction::Remove, (inputs, paras, false));
                         }
                         (WalkerAction::Continue, (inputs, paras, false))
                     }
@@ -972,10 +970,8 @@ fn remove_list_heavy(node: &mut DomNode) {
                             .get("_comma_count")
                             .and_then(|s| s.parse::<usize>().ok())
                             .unwrap_or(0);
-                        if comma_count < COMMA_COUNT_GATE {
-                            if check_list_heavy(lis, paras) {
-                                return (WalkerAction::Remove, (lis, paras, false));
-                            }
+                        if comma_count < COMMA_COUNT_GATE && check_list_heavy(lis, paras) {
+                            return (WalkerAction::Remove, (lis, paras, false));
                         }
                         (WalkerAction::Continue, (lis, paras, false))
                     }
@@ -1034,10 +1030,8 @@ fn remove_embed_heavy(node: &mut DomNode) {
                             .get("_comma_count")
                             .and_then(|s| s.parse::<usize>().ok())
                             .unwrap_or(0);
-                        if comma_count < COMMA_COUNT_GATE {
-                            if check_embed_count(embeds) {
-                                return (WalkerAction::Remove, (embeds, false));
-                            }
+                        if comma_count < COMMA_COUNT_GATE && check_embed_count(embeds) {
+                            return (WalkerAction::Remove, (embeds, false));
                         }
                         (WalkerAction::Continue, (embeds, false))
                     }
@@ -1120,13 +1114,10 @@ fn remove_low_text_density(node: &mut DomNode) {
                             .get("_comma_count")
                             .and_then(|s| s.parse::<usize>().ok())
                             .unwrap_or(0);
-                        if comma_count < COMMA_COUNT_GATE {
-                            if check_text_density(text_chars, serialized_chars) {
-                                return (
-                                    WalkerAction::Remove,
-                                    (text_chars, serialized_chars, false),
-                                );
-                            }
+                        if comma_count < COMMA_COUNT_GATE
+                            && check_text_density(text_chars, serialized_chars)
+                        {
+                            return (WalkerAction::Remove, (text_chars, serialized_chars, false));
                         }
                         (
                             WalkerAction::Continue,
@@ -1209,10 +1200,10 @@ fn remove_short_content(node: &mut DomNode) {
                             .get("_comma_count")
                             .and_then(|s| s.parse::<usize>().ok())
                             .unwrap_or(0);
-                        if comma_count < COMMA_COUNT_GATE {
-                            if check_short_content(imgs, text_chars, metadata) {
-                                return (WalkerAction::Remove, (imgs, text_chars, false));
-                            }
+                        if comma_count < COMMA_COUNT_GATE
+                            && check_short_content(imgs, text_chars, metadata)
+                        {
+                            return (WalkerAction::Remove, (imgs, text_chars, false));
                         }
                         (WalkerAction::Continue, (imgs, text_chars, false))
                     }
@@ -1352,7 +1343,7 @@ pub(crate) fn check_img_para_ratio(imgs: usize, paras: usize, skip: bool) -> boo
     if skip {
         return false;
     }
-    imgs > paras && (imgs + 0) as f64 > IMG_PARA_RATIO_THRESHOLD
+    imgs > paras && imgs as f64 > IMG_PARA_RATIO_THRESHOLD
 }
 
 /// H4: Low-weight link density — reads `link_density` metadata, checks weight < boundary.

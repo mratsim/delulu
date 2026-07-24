@@ -4,7 +4,7 @@
 //! conversion) before markdown lowering. Strips scripts, styles, and empty
 //! elements while preserving void elements like `<img>`, `<br>`, `<hr>`, `<wbr>`.
 
-use crate::pipelines::{WalkerAction, walk_post_mut, DomNode};
+use crate::pipelines::{DomNode, WalkerAction, walk_post_mut};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -45,7 +45,22 @@ pub fn filter_doc(node: &mut DomNode) {
 
 /// Returns `true` for HTML void elements that should be preserved even when empty.
 fn is_void_element(tag: &str) -> bool {
-    matches!(tag, "img" | "br" | "hr" | "wbr" | "input" | "meta" | "link" | "area" | "base" | "col" | "embed" | "source" | "track")
+    matches!(
+        tag,
+        "img"
+            | "br"
+            | "hr"
+            | "wbr"
+            | "input"
+            | "meta"
+            | "link"
+            | "area"
+            | "base"
+            | "col"
+            | "embed"
+            | "source"
+            | "track"
+    )
 }
 
 #[cfg(test)]

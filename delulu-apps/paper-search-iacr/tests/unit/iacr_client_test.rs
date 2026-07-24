@@ -33,15 +33,16 @@ use crate::IacrClient;
 fn test_new_creates_client_with_defaults() {
     let client = IacrClient::new().expect("new() should succeed");
     // Verify the client was constructed by testing a method
-    let url = client.download_paper_pdf(2024, 123);
+    let url = client.paper_pdf_url(2024, 123);
     assert_eq!(url, "https://eprint.iacr.org/2024/123.pdf");
 }
 
 #[test]
 fn test_with_base_url_custom() {
-    let client = IacrClient::new().unwrap()
+    let client = IacrClient::new()
+        .unwrap()
         .with_base_url("http://localhost:9999".to_string());
-    let url = client.download_paper_pdf(2024, 123);
+    let url = client.paper_pdf_url(2024, 123);
     assert_eq!(url, "http://localhost:9999/2024/123.pdf");
 }
 
@@ -50,25 +51,27 @@ fn test_with_base_url_custom() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_download_paper_pdf_uses_base_url() {
-    let client = IacrClient::new().unwrap()
+fn test_paper_pdf_url_uses_base_url() {
+    let client = IacrClient::new()
+        .unwrap()
         .with_base_url("https://eprint.iacr.org".to_string());
 
-    // download_paper_pdf uses a simple format! without zero-padding
-    let url = client.download_paper_pdf(2024, 123);
+    // paper_pdf_url uses a simple format! without zero-padding
+    let url = client.paper_pdf_url(2024, 123);
     assert_eq!(url, "https://eprint.iacr.org/2024/123.pdf");
 
-    // Note: download_paper_pdf does NOT zero-pad (iacr_pdf_url does)
-    let url = client.download_paper_pdf(2004, 5);
+    // Note: paper_pdf_url does NOT zero-pad (iacr_pdf_url does)
+    let url = client.paper_pdf_url(2004, 5);
     assert_eq!(url, "https://eprint.iacr.org/2004/5.pdf");
 }
 
 #[test]
-fn test_download_paper_pdf_with_custom_base() {
-    let client = IacrClient::new().unwrap()
+fn test_paper_pdf_url_with_custom_base() {
+    let client = IacrClient::new()
+        .unwrap()
         .with_base_url("http://localhost:9999".to_string());
 
-    let url = client.download_paper_pdf(2024, 123);
+    let url = client.paper_pdf_url(2024, 123);
     assert_eq!(url, "http://localhost:9999/2024/123.pdf");
 }
 
@@ -79,15 +82,11 @@ fn test_download_paper_pdf_with_custom_base() {
 /// Test that the IACR client can list recent papers using fixture data.
 #[tokio::test]
 async fn test_list_recent_papers_with_fixture() {
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-iacr",
-        "iacr-rss.xml.zst",
-    );
+    let path = paper_search_test_utils::fixture_path("paper-search-iacr", "iacr-rss.xml.zst");
     let (url, _shutdown) = paper_search_test_utils::serve_fixture("/rss/rss.xml", path).await;
     let base_url = url.clone();
 
-    let client = IacrClient::new().unwrap().with_base_url(base_url)
-        ;
+    let client = IacrClient::new().unwrap().with_base_url(base_url);
 
     let papers = client
         .list_recent_papers()
@@ -102,15 +101,11 @@ async fn test_list_recent_papers_with_fixture() {
 /// Test that the IACR client can get paper details using fixture data.
 #[tokio::test]
 async fn test_get_paper_details_with_fixture() {
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-iacr",
-        "iacr-paper.html.zst",
-    );
+    let path = paper_search_test_utils::fixture_path("paper-search-iacr", "iacr-paper.html.zst");
     let (url, _shutdown) = paper_search_test_utils::serve_fixture("/2025/1", path).await;
     let base_url = url.clone();
 
-    let client = IacrClient::new().unwrap().with_base_url(base_url)
-        ;
+    let client = IacrClient::new().unwrap().with_base_url(base_url);
 
     let paper = client
         .get_paper_details(2025, 1)
@@ -127,8 +122,9 @@ async fn test_get_paper_details_with_fixture() {
 /// Test that a request to an unreachable server returns an error.
 #[tokio::test]
 async fn test_list_recent_papers_connection_refused() {
-    let client = IacrClient::new().unwrap().with_base_url("http://127.0.0.1:1".to_string())
-        ;
+    let client = IacrClient::new()
+        .unwrap()
+        .with_base_url("http://127.0.0.1:1".to_string());
 
     let result = client.list_recent_papers().await;
     assert!(result.is_err(), "request to invalid endpoint should fail");
@@ -139,15 +135,11 @@ async fn test_list_recent_papers_connection_refused() {
 async fn test_get_paper_details_http_error() {
     // serve_fixture serves at a specific route; requesting a non-matching
     // path should return 404 from the axum router.
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-iacr",
-        "iacr-paper.html.zst",
-    );
+    let path = paper_search_test_utils::fixture_path("paper-search-iacr", "iacr-paper.html.zst");
     let (url, _shutdown) = paper_search_test_utils::serve_fixture("/nonexistent", path).await;
     let base_url = url.clone();
 
-    let client = IacrClient::new().unwrap().with_base_url(base_url)
-        ;
+    let client = IacrClient::new().unwrap().with_base_url(base_url);
 
     // Request a path that doesn't match the fixture route
     let result = client.get_paper_details(2025, 999).await;
@@ -159,17 +151,16 @@ async fn test_get_paper_details_http_error() {
 async fn test_get_paper_raw_with_fixture() {
     // get_paper_raw doesn't check HTTP status, so we test that it
     // successfully fetches bytes from a matching server route.
-    let path = paper_search_test_utils::fixture_path(
-        "paper-search-iacr",
-        "iacr-paper.html.zst",
-    );
+    let path = paper_search_test_utils::fixture_path("paper-search-iacr", "iacr-paper.html.zst");
     let (url, _shutdown) = paper_search_test_utils::serve_fixture("/2025/999.pdf", path).await;
     let base_url = url.clone();
 
-    let client = IacrClient::new().unwrap().with_base_url(base_url)
-        ;
+    let client = IacrClient::new().unwrap().with_base_url(base_url);
 
     let result = client.get_paper_raw(2025, 999).await;
-    assert!(result.is_ok(), "get_paper_raw should succeed when server responds");
+    assert!(
+        result.is_ok(),
+        "get_paper_raw should succeed when server responds"
+    );
     assert!(!result.unwrap().is_empty(), "should return non-empty bytes");
 }

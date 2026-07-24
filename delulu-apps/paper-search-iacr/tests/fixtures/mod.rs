@@ -32,8 +32,7 @@ fn load_zst(name: &str) -> String {
     let path = fixtures_dir().join(name);
     let compressed = std::fs::read(&path)
         .unwrap_or_else(|e| panic!("Failed to read fixture at {:?}: {}", path, e));
-    let decompressed = zstd::decode_all(compressed.as_slice())
-        .expect("zstd decompression failed");
+    let decompressed = zstd::decode_all(compressed.as_slice()).expect("zstd decompression failed");
     String::from_utf8(decompressed)
         .unwrap_or_else(|e| panic!("Fixture {:?} is not valid UTF-8: {}", path, e))
 }

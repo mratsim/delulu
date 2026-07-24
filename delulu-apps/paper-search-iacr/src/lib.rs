@@ -62,7 +62,11 @@ impl IacrClient {
         let url = format!("{}/rss/rss.xml", self.base_url);
         tracing::debug!("IACR RSS request: {}", url);
 
-        let response = self.crawler.get(&url).await.context("IACR RSS request failed")?;
+        let response = self
+            .crawler
+            .get(&url)
+            .await
+            .context("IACR RSS request failed")?;
 
         let status = response.status();
         if !status.is_success() {
@@ -73,7 +77,10 @@ impl IacrClient {
             anyhow::bail!("IACR RSS returned HTTP {}: {}", status, body_preview);
         }
 
-        let body = response.text().await.context("Failed to read RSS response")?;
+        let body = response
+            .text()
+            .await
+            .context("Failed to read RSS response")?;
         core::parse_rss_response(&body).map_err(|e| anyhow::anyhow!("Failed to parse RSS: {}", e))
     }
 
@@ -81,7 +88,11 @@ impl IacrClient {
         let url = format!("{}/{}/{}", self.base_url, year, number);
         tracing::debug!("IACR paper request: {}", url);
 
-        let response = self.crawler.get(&url).await.context("IACR paper request failed")?;
+        let response = self
+            .crawler
+            .get(&url)
+            .await
+            .context("IACR paper request failed")?;
 
         let status = response.status();
         if !status.is_success() {
@@ -92,12 +103,15 @@ impl IacrClient {
             anyhow::bail!("IACR paper returned HTTP {}: {}", status, body_preview);
         }
 
-        let body = response.text().await.context("Failed to read paper response")?;
+        let body = response
+            .text()
+            .await
+            .context("Failed to read paper response")?;
         core::parse_paper_html(&body)
             .map_err(|e| anyhow::anyhow!("Failed to parse paper HTML: {}", e))
     }
 
-    pub fn download_paper_pdf(&self, year: u32, number: u32) -> String {
+    pub fn paper_pdf_url(&self, year: u32, number: u32) -> String {
         format!("{}/{}/{}.pdf", self.base_url, year, number)
     }
 }
@@ -113,7 +127,11 @@ impl IacrClient {
     /// number is zero-padded to 3 digits.
     pub async fn get_paper(&self, year: u32, number: u32) -> Result<String> {
         let url = iacr_pdf_url(&self.base_url, year, number);
-        let response = self.crawler.get(&url).send().await
+        let response = self
+            .crawler
+            .get(&url)
+            .send()
+            .await
             .context("Failed to fetch IACR paper PDF")?;
 
         let status = response.status();
@@ -125,7 +143,9 @@ impl IacrClient {
             anyhow::bail!("IACR paper PDF returned HTTP {}: {}", status, body_preview);
         }
 
-        let bytes = response.bytes().await
+        let bytes = response
+            .bytes()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to read PDF bytes: {}", e))?;
 
         let result = delulu_webfetch::process_doc_bytes(bytes.to_vec(), &url)
@@ -133,9 +153,7 @@ impl IacrClient {
             .context("Failed to process IACR paper PDF")?;
 
         match result {
-            delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
-                Ok(content_md.body)
-            }
+            delulu_webfetch::ExtractionResult::GenericHtml { content_md } => Ok(content_md.body),
             _ => anyhow::bail!("Unexpected result type from fetch_doc"),
         }
     }
@@ -145,7 +163,11 @@ impl IacrClient {
     /// For pre-2005 papers, the number is zero-padded to 3 digits.
     pub async fn get_paper_raw(&self, year: u32, number: u32) -> Result<Vec<u8>> {
         let url = iacr_pdf_url(&self.base_url, year, number);
-        let response = self.crawler.get(&url).send().await
+        let response = self
+            .crawler
+            .get(&url)
+            .send()
+            .await
             .context("Failed to fetch IACR paper PDF")?;
 
         let status = response.status();
@@ -157,7 +179,9 @@ impl IacrClient {
             anyhow::bail!("IACR paper PDF returned HTTP {}: {}", status, body_preview);
         }
 
-        let bytes = response.bytes().await
+        let bytes = response
+            .bytes()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to read PDF bytes: {}", e))?;
         Ok(bytes.to_vec())
     }

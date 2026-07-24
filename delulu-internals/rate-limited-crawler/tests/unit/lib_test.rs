@@ -1,7 +1,7 @@
 use super::*;
 use std::time::Duration;
-use wiremock::{Mock, MockServer, ResponseTemplate};
 use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // ---------------------------------------------------------------------------
 // Builder unit tests — no HTTP server needed, just field assertions
@@ -51,7 +51,8 @@ fn test_builder_with_client() {
 fn test_builder_mixed_with_client_and_timeout_errs() {
     let raw_client = wreq::Client::builder()
         .timeout(Duration::from_secs(10))
-        .build().unwrap();
+        .build()
+        .unwrap();
     let result = RateLimitedCrawler::builder()
         .with_client(raw_client)
         .with_timeout(Duration::from_secs(5))
@@ -64,7 +65,8 @@ fn test_builder_mixed_with_client_and_timeout_errs() {
 fn test_builder_timeout_then_with_client_errs() {
     let raw_client = wreq::Client::builder()
         .timeout(Duration::from_secs(10))
-        .build().unwrap();
+        .build()
+        .unwrap();
     let result = RateLimitedCrawler::builder()
         .with_timeout(Duration::from_secs(5))
         .with_client(raw_client)
@@ -198,15 +200,19 @@ async fn test_retry_429_then_succeed() {
 
     let url = format!("{}/retry-429-succeed", mock_server.uri());
     // Run in real time — backoffs are ~1s per retry
-    let result = crawler
-        .get(&url)
-        .with_exponential_retry(1)
-        .send()
-        .await;
+    let result = crawler.get(&url).with_exponential_retry(1).send().await;
 
-    assert!(result.is_ok(), "expected Ok after retries, got {:?}", result);
+    assert!(
+        result.is_ok(),
+        "expected Ok after retries, got {:?}",
+        result
+    );
     let resp = result.unwrap();
-    assert_eq!(resp.status().as_u16(), 200, "expected HTTP 200 after retries");
+    assert_eq!(
+        resp.status().as_u16(),
+        200,
+        "expected HTTP 200 after retries"
+    );
     let body = resp.text().await.expect("response body should be readable");
     assert_eq!(body, "ok", "response body should match");
 }
@@ -275,15 +281,19 @@ async fn test_retry_5xx_then_succeed() {
 
     let url = format!("{}/retry-5xx-succeed", mock_server.uri());
     // Run in real time — backoffs are ~1s per retry
-    let result = crawler
-        .get(&url)
-        .with_exponential_retry(1)
-        .send()
-        .await;
+    let result = crawler.get(&url).with_exponential_retry(1).send().await;
 
-    assert!(result.is_ok(), "expected Ok after 5xx retry, got {:?}", result);
+    assert!(
+        result.is_ok(),
+        "expected Ok after 5xx retry, got {:?}",
+        result
+    );
     let resp = result.unwrap();
-    assert_eq!(resp.status().as_u16(), 200, "expected HTTP 200 after 5xx retry");
+    assert_eq!(
+        resp.status().as_u16(),
+        200,
+        "expected HTTP 200 after 5xx retry"
+    );
     let body = resp.text().await.expect("response body should be readable");
     assert_eq!(body, "ok", "response body should match");
 }
@@ -311,11 +321,7 @@ async fn test_retry_connection_error_then_succeed() {
         .expect("CrawlerBuilder::build() should succeed");
 
     // Run in real time — backoffs are ~1s per retry
-    let result = crawler
-        .get(&bad_url)
-        .with_exponential_retry(1)
-        .send()
-        .await;
+    let result = crawler.get(&bad_url).with_exponential_retry(1).send().await;
 
     assert!(
         matches!(result, Err(CrawlerError::RetryExhausted { .. })),
@@ -361,11 +367,7 @@ async fn test_no_retry_on_4xx_non_429() {
     let url = format!("{}/not-found", mock_server.uri());
 
     // Even with retry enabled, 404 should NOT be retried
-    let result = crawler
-        .get(&url)
-        .with_exponential_retry(1)
-        .send()
-        .await;
+    let result = crawler.get(&url).with_exponential_retry(1).send().await;
 
     assert!(result.is_ok(), "expected Ok(404), got {:?}", result);
     let resp = result.unwrap();
@@ -480,7 +482,11 @@ async fn test_fetch_empty_body() {
 
     let url = format!("{}/empty", mock_server.uri());
     let result = crawler.get(&url).send().await;
-    assert!(result.is_ok(), "expected Ok for empty body, got {:?}", result);
+    assert!(
+        result.is_ok(),
+        "expected Ok for empty body, got {:?}",
+        result
+    );
     let resp = result.unwrap();
     assert_eq!(resp.status().as_u16(), 200);
     let body = resp.text().await.expect("response body should be readable");
@@ -578,7 +584,13 @@ async fn test_execute_get_rejects_oversized_content_length() {
     let url = format!("{}/oversized", mock_server.uri());
     let result = crawler.get(&url).send().await;
     assert!(
-        matches!(result, Err(CrawlerError::ResponseTooLarge { size: 200, max: 100 })),
+        matches!(
+            result,
+            Err(CrawlerError::ResponseTooLarge {
+                size: 200,
+                max: 100
+            })
+        ),
         "expected ResponseTooLarge, got {:?}",
         result
     );
@@ -617,10 +629,7 @@ async fn test_execute_get_no_max_resp_size() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("x".repeat(500)),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_string("x".repeat(500)))
         .mount(&mock_server)
         .await;
 
@@ -631,7 +640,11 @@ async fn test_execute_get_no_max_resp_size() {
 
     let url = format!("{}/no-limit", mock_server.uri());
     let result = crawler.get(&url).send().await;
-    assert!(result.is_ok(), "expected Ok with no limit, got {:?}", result);
+    assert!(
+        result.is_ok(),
+        "expected Ok with no limit, got {:?}",
+        result
+    );
     let resp = result.unwrap();
     assert_eq!(resp.status().as_u16(), 200);
     let body = resp.text().await.expect("response body should be readable");
@@ -656,7 +669,8 @@ async fn test_fetch_text_rejects_long_url() {
     let result = crawler.fetch_text(&long_url).await;
     assert!(
         matches!(result, Err(CrawlerError::InvalidUrl(_))),
-        "expected InvalidUrl, got {:?}", result
+        "expected InvalidUrl, got {:?}",
+        result
     );
 }
 
@@ -671,7 +685,8 @@ async fn test_fetch_text_rejects_unsupported_scheme() {
     let result = crawler.fetch_text("ftp://example.com/file").await;
     assert!(
         matches!(result, Err(CrawlerError::InvalidUrl(_))),
-        "expected InvalidUrl, got {:?}", result
+        "expected InvalidUrl, got {:?}",
+        result
     );
 }
 
@@ -699,8 +714,15 @@ async fn test_fetch_text_rejects_oversized_content_length() {
     let url = format!("{}/oversized", mock_server.uri());
     let result = crawler.fetch_text(&url).await;
     assert!(
-        matches!(result, Err(CrawlerError::ResponseTooLarge { size: 200, max: 100 })),
-        "expected ResponseTooLarge, got {:?}", result
+        matches!(
+            result,
+            Err(CrawlerError::ResponseTooLarge {
+                size: 200,
+                max: 100
+            })
+        ),
+        "expected ResponseTooLarge, got {:?}",
+        result
     );
 }
 
@@ -738,10 +760,7 @@ async fn test_fetch_text_no_max_resp_size() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("x".repeat(500)),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_string("x".repeat(500)))
         .mount(&mock_server)
         .await;
 
@@ -764,10 +783,7 @@ async fn test_fetch_text_returns_content_type() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("hello"),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_string("hello"))
         .mount(&mock_server)
         .await;
 
@@ -793,9 +809,7 @@ async fn test_fetch_text_default_content_type() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_string("hello"),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_string("hello"))
         .mount(&mock_server)
         .await;
 

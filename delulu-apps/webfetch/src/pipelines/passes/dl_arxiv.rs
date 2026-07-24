@@ -34,15 +34,15 @@ fn strip_arxiv_chrome(root: &mut DomNode) {
             // arXiv navigation and header chrome
             let is_chrome = match tag.as_str() {
                 "nav" => true,
-                "header" => class.map_or(false, |c| c.contains("modal-header")),
-                "footer" => class.map_or(false, |c| c.contains("modal-footer")),
+                "header" => class.is_some_and(|c| c.contains("modal-header")),
+                "footer" => class.is_some_and(|c| c.contains("modal-footer")),
                 "div" => {
-                    class.map_or(false, |c| {
+                    class.is_some_and(|c| {
                         c.contains("html-header-logo")
                             || c.contains("html-header-nav")
                             || c.contains("ltx_page_header")
                             || c.contains("ltx_page_footer")
-                    }) || id.as_deref() == Some("header")
+                    }) || id == Some("header")
                 }
                 _ => false,
             };
@@ -72,31 +72,33 @@ fn collect_content_div(node: &mut DomNode, result: &mut Option<DomNode>) {
         return;
     }
 
-    match node {
-        DomNode::Element { tag, attrs, children, .. } => {
-            if tag == "div" {
-                if let Some(class) = get_class(attrs) {
-                    if class.split_whitespace().any(|c| c == "ltx_page_content") {
-                        if children.len() == 1 {
-                            *result = Some(children.remove(0));
-                        } else {
-                            *result = Some(DomNode::Element {
-                                tag: "div".to_string(),
-                                attrs: Vec::new(),
-                                children: std::mem::take(children),
-                                scores: std::collections::HashMap::new(),
-                                metadata: std::collections::HashMap::new(),
-                            });
-                        }
-                        return;
-                    }
-                }
+    if let DomNode::Element {
+        tag,
+        attrs,
+        children,
+        ..
+    } = node
+    {
+        if tag == "div"
+            && let Some(class) = get_class(attrs)
+            && class.split_whitespace().any(|c| c == "ltx_page_content")
+        {
+            if children.len() == 1 {
+                *result = Some(children.remove(0));
+            } else {
+                *result = Some(DomNode::Element {
+                    tag: "div".to_string(),
+                    attrs: Vec::new(),
+                    children: std::mem::take(children),
+                    scores: std::collections::HashMap::new(),
+                    metadata: std::collections::HashMap::new(),
+                });
             }
-            for child in children.iter_mut() {
-                collect_content_div(child, result);
-            }
+            return;
         }
-        _ => {}
+        for child in children.iter_mut() {
+            collect_content_div(child, result);
+        }
     }
 }
 
@@ -105,7 +107,7 @@ fn collect_content_div(node: &mut DomNode, result: &mut Option<DomNode>) {
 // ---------------------------------------------------------------------------
 
 /// Get the value of the `class` attribute.
-fn get_class<'a>(attrs: &'a [(String, String)]) -> Option<&'a str> {
+fn get_class(attrs: &[(String, String)]) -> Option<&str> {
     attrs
         .iter()
         .find(|(k, _)| k == "class")
@@ -113,7 +115,7 @@ fn get_class<'a>(attrs: &'a [(String, String)]) -> Option<&'a str> {
 }
 
 /// Get the value of the `id` attribute.
-fn get_id<'a>(attrs: &'a [(String, String)]) -> Option<&'a str> {
+fn get_id(attrs: &[(String, String)]) -> Option<&str> {
     attrs
         .iter()
         .find(|(k, _)| k == "id")

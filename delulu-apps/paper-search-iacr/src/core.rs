@@ -18,7 +18,7 @@
 //! # Core — IACR ePrint RSS & HTML Parser
 //!
 //! Pure data structures and parsing logic for the IACR ePrint Archive.
-//! No I/O — suitable for testing without network access.
+//! Pure data structures and parsing logic for the IACR ePrint Archive.
 //!
 //! Two data sources:
 //! - RSS feed (`/rss/rss.xml`) — lists recent papers
@@ -132,7 +132,9 @@ fn normalize_rss_xml(raw: &str) -> String {
     let mut i = 0;
 
     // Strip XML declaration <?xml ...?>
-    if raw.trim_start().starts_with("<?xml") && let Some(end) = raw.find("?>") {
+    if raw.trim_start().starts_with("<?xml")
+        && let Some(end) = raw.find("?>")
+    {
         i = end + 2;
     }
 
@@ -140,7 +142,9 @@ fn normalize_rss_xml(raw: &str) -> String {
     while i < len {
         if bytes[i] == b'<' && i + 8 < len {
             let rest = &raw[i..];
-            if (rest.starts_with("<!DOCTYPE") || rest.starts_with("<!doctype")) && let Some(end) = rest.find('>') {
+            if (rest.starts_with("<!DOCTYPE") || rest.starts_with("<!doctype"))
+                && let Some(end) = rest.find('>')
+            {
                 i += end + 1;
                 continue;
             }
@@ -334,8 +338,8 @@ pub fn parse_paper_html(html: &str) -> Result<Paper, String> {
     let id = format!("{}/{}", year, number);
 
     // Extract title from <h3 class="mb-3"><a href="...pdf">Title</a></h3>
-    let title_selector =
-        Selector::parse("h3.mb-3 a").map_err(|e| format!("Failed to parse title selector: {}", e))?;
+    let title_selector = Selector::parse("h3.mb-3 a")
+        .map_err(|e| format!("Failed to parse title selector: {}", e))?;
     let title = document
         .select(&title_selector)
         .next()
@@ -389,9 +393,8 @@ fn extract_year_number_from_url(url: &str) -> Result<(u32, u32), String> {
     // Strip trailing slash
     let url = url.strip_suffix('/').unwrap_or(url);
 
-    static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"/(\d{4})/(\d+)$").expect("Invalid year/url regex")
-    });
+    static RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"/(\d{4})/(\d+)$").expect("Invalid year/url regex"));
 
     if let Some(caps) = RE.captures(url) {
         let year: u32 = caps[1]
@@ -402,10 +405,7 @@ fn extract_year_number_from_url(url: &str) -> Result<(u32, u32), String> {
             .map_err(|_| format!("Invalid number in URL: {}", url))?;
         Ok((year, number))
     } else {
-        Err(format!(
-            "Could not extract year/number from URL: {}",
-            url
-        ))
+        Err(format!("Could not extract year/number from URL: {}", url))
     }
 }
 
@@ -413,9 +413,8 @@ fn extract_year_number_from_url(url: &str) -> Result<(u32, u32), String> {
 fn parse_year_number(s: &str) -> Result<(u32, u32), String> {
     let s = s.trim();
 
-    static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^(\d{4})/(\d+)$").expect("Invalid year/number regex")
-    });
+    static RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(\d{4})/(\d+)$").expect("Invalid year/number regex"));
 
     if let Some(caps) = RE.captures(s) {
         let year: u32 = caps[1]

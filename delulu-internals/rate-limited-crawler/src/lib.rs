@@ -53,9 +53,7 @@ impl RateLimitedCrawler {
         Ok(self
             .domains
             .get_or_insert_with(domain, || {
-                Ok::<_, std::convert::Infallible>(Arc::new(DomainQueue::new(
-                    self.qps, self.burst,
-                )))
+                Ok::<_, std::convert::Infallible>(Arc::new(DomainQueue::new(self.qps, self.burst)))
             })
             .expect("domain queue creation should not fail"))
     }
@@ -75,15 +73,14 @@ impl RateLimitedCrawler {
         let resp = req.send().await.map_err(CrawlerError::Http)?;
 
         // Check Content-Length against max_resp_size for early rejection
-        if let Some(max) = self.max_resp_size {
-            if let Some(len) = resp.content_length() {
-                if len as usize > max {
-                    return Err(CrawlerError::ResponseTooLarge {
-                        size: len as usize,
-                        max,
-                    });
-                }
-            }
+        if let Some(max) = self.max_resp_size
+            && let Some(len) = resp.content_length()
+            && len as usize > max
+        {
+            return Err(CrawlerError::ResponseTooLarge {
+                size: len as usize,
+                max,
+            });
         }
 
         Ok(resp)
@@ -114,24 +111,23 @@ impl RateLimitedCrawler {
         }
 
         // 2. Rate-limited fetch with exponential retry
-        let resp = self.get(url)
-            .with_exponential_retry(1)
-            .send()
-            .await?;
+        let resp = self.get(url).with_exponential_retry(1).send().await?;
 
         // 3. Extract content-type (before consuming body)
-        let content_type = resp.headers().get("content-type")
+        let content_type = resp
+            .headers()
+            .get("content-type")
             .and_then(|v| v.to_str().ok().map(String::from));
 
         // 4. Check Content-Length + stream body with size limit
         if let Some(max) = self.max_resp_size {
-            if let Some(len) = resp.content_length() {
-                if len as usize > max {
-                    return Err(CrawlerError::ResponseTooLarge {
-                        size: len as usize,
-                        max,
-                    });
-                }
+            if let Some(len) = resp.content_length()
+                && len as usize > max
+            {
+                return Err(CrawlerError::ResponseTooLarge {
+                    size: len as usize,
+                    max,
+                });
             }
             let mut body = Vec::new();
             let mut stream = resp.bytes_stream();
@@ -256,7 +252,7 @@ impl CrawlerBuilder {
                     field: "client/client_builder",
                     value: "mixed".into(),
                     reason: "use either with_client or builder settings, not both",
-                })
+                });
             }
         };
         Ok(RateLimitedCrawler {
@@ -314,7 +310,9 @@ impl GetBuilder<'_> {
                             if status == 429 || (500..=599).contains(&status) {
                                 tracing::warn!(
                                     "retryable HTTP {status} for {} (attempt {}/{})",
-                                    self.url, attempt + 1, retry_limit + 1
+                                    self.url,
+                                    attempt + 1,
+                                    retry_limit + 1
                                 );
                                 last_status = Some(status);
                                 if attempt < retry_limit {
@@ -329,7 +327,9 @@ impl GetBuilder<'_> {
                         Err(e) if e.is_retryable() => {
                             tracing::warn!(
                                 "retryable error for {} (attempt {}/{}): {e}",
-                                self.url, attempt + 1, retry_limit + 1
+                                self.url,
+                                attempt + 1,
+                                retry_limit + 1
                             );
                             last_error = Some(e);
                             if attempt < retry_limit {
@@ -351,14 +351,11 @@ impl GetBuilder<'_> {
             }
         }
     }
-
 }
 
 fn compute_backoff(base_secs: u64, attempt: u32) -> Duration {
     let exp = 2u64.saturating_pow(attempt);
-    let delay_ns = base_secs
-        .saturating_mul(1_000_000_000)
-        .saturating_mul(exp);
+    let delay_ns = base_secs.saturating_mul(1_000_000_000).saturating_mul(exp);
     let capped = delay_ns.min(60_000_000_000);
     let jitter = rand::thread_rng().gen_range(0..=capped / 2);
     Duration::from_nanos(capped.saturating_add(jitter))
@@ -366,7 +363,8 @@ fn compute_backoff(base_secs: u64, attempt: u32) -> Duration {
 
 impl<'a> std::future::IntoFuture for GetBuilder<'a> {
     type Output = Result<wreq::Response, CrawlerError>;
-    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(async move { self.send().await })

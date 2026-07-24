@@ -415,7 +415,6 @@ fn diag_main() {
                 "Error: unknown mode '{}'. Use 'batch' or 'deep-dive'.",
                 mode_args[0]
             );
-            return;
         }
     }
 }

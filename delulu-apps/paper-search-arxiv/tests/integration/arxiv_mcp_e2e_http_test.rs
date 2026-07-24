@@ -14,7 +14,10 @@ const BINARY_NAME: &str = "delulu-arxiv-mcp";
 
 fn find_binary() -> std::path::PathBuf {
     let workspace = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap().parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf();
     for candidate in [
         workspace.join("target").join("debug").join(BINARY_NAME),
@@ -39,7 +42,8 @@ async fn test_arxiv_mcp_e2e_http() {
     let fixture_url = format!("{}/api/query", fixture_url);
 
     let config = serde_json::json!({ "fixture_url": fixture_url });
-    let config_path = std::env::temp_dir().join(format!("arxiv_e2e_http_{}.json", std::process::id()));
+    let config_path =
+        std::env::temp_dir().join(format!("arxiv_e2e_http_{}.json", std::process::id()));
     std::fs::write(&config_path, config.to_string()).unwrap();
 
     let binary = find_binary();
@@ -66,7 +70,9 @@ async fn test_arxiv_mcp_e2e_http() {
         move || {
             use std::io::Read;
             let mut buf = String::new();
-            std::io::BufReader::new(stderr).read_to_string(&mut buf).ok();
+            std::io::BufReader::new(stderr)
+                .read_to_string(&mut buf)
+                .ok();
             if !buf.is_empty() {
                 eprint!("{}", buf);
             }

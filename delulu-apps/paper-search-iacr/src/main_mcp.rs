@@ -26,7 +26,9 @@ use delulu_mcp_server_helper::rmcp::handler::server::tool::ToolRouter;
 use delulu_mcp_server_helper::rmcp::handler::server::wrapper::Parameters;
 use delulu_mcp_server_helper::rmcp::tool;
 use delulu_mcp_server_helper::rmcp::tool_router;
-use delulu_mcp_server_helper::{McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing};
+use delulu_mcp_server_helper::{
+    McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing,
+};
 use delulu_paper_search_iacr::IacrClient;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -34,11 +36,7 @@ use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-iacr-mcp")]
-#[command(
-    author,
-    version,
-    about = "MCP server for IACR ePrint paper search"
-)]
+#[command(author, version, about = "MCP server for IACR ePrint paper search")]
 struct Args {
     #[arg(long, default_value = "https://eprint.iacr.org")]
     api_base_url: String,
@@ -130,15 +128,15 @@ impl IacrMcpServer {
     }
 
     #[tool(
-        name = "download_paper_pdf",
+        name = "paper_pdf_url",
         description = "Get the PDF download URL for a specific IACR ePrint paper. Parameters: year (e.g. 2024), number (e.g. 123). Returns the PDF URL."
     )]
-    async fn download_paper_pdf(
+    async fn paper_pdf_url(
         &self,
         params: Parameters<DownloadPaperPdfInput>,
     ) -> Result<String, String> {
         let input = params.0;
-        let url = self.client.download_paper_pdf(input.year, input.number);
+        let url = self.client.paper_pdf_url(input.year, input.number);
         Ok(url)
     }
 
@@ -146,10 +144,7 @@ impl IacrMcpServer {
         name = "get_paper",
         description = "Fetch a full paper from IACR ePrint as markdown. Downloads the PDF and converts via xberg. Parameters: year (e.g. 2024), number (e.g. 1279)."
     )]
-    async fn get_paper(
-        &self,
-        params: Parameters<GetPaperInput>,
-    ) -> Result<String, String> {
+    async fn get_paper(&self, params: Parameters<GetPaperInput>) -> Result<String, String> {
         let input = params.0;
         let md = self
             .client

@@ -75,10 +75,7 @@ fn test_retry_exhausted_no_status_no_error() {
 /// after the switch to manual Display impl.
 #[test]
 fn test_other_variants_display() {
-    assert_eq!(
-        CrawlerError::QpsZero.to_string(),
-        "qps must be > 0, got 0"
-    );
+    assert_eq!(CrawlerError::QpsZero.to_string(), "qps must be > 0, got 0");
     assert_eq!(
         CrawlerError::BurstZero.to_string(),
         "burst must be > 0, got 0"
@@ -115,6 +112,9 @@ fn test_retry_exhausted_debug() {
         last_status: Some(429),
     };
     let debug = format!("{err:?}");
-    assert!(debug.contains("RetryExhausted"), "Debug should show variant name");
+    assert!(
+        debug.contains("RetryExhausted"),
+        "Debug should show variant name"
+    );
     assert!(debug.contains("429"), "Debug should show status");
 }

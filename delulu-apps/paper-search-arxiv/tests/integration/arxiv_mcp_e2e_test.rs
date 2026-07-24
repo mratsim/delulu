@@ -14,7 +14,10 @@ const BINARY_NAME: &str = "delulu-arxiv-mcp";
 
 fn find_binary() -> std::path::PathBuf {
     let workspace = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap().parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf();
     for candidate in [
         workspace.join("target").join("debug").join(BINARY_NAME),

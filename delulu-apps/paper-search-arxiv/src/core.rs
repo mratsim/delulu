@@ -1,5 +1,5 @@
 //! Pure data structures and parsing logic for the arXiv API Atom XML responses.
-//! No I/O — suitable for testing without network access.
+//! Pure data structures and parsing logic for the arXiv API Atom XML responses.
 
 use chrono::NaiveDate;
 use serde::Serialize;
@@ -142,19 +142,19 @@ fn normalize_xml(raw: &str) -> String {
                 i + 1
             };
             let mut colon_pos = None;
-            for j in tag_start..len {
-                if bytes[j] == b'>' || bytes[j] == b' ' || bytes[j] == b'/' || bytes[j] == b'?' {
+            for (offset, &b) in bytes[tag_start..].iter().enumerate() {
+                if b == b'>' || b == b' ' || b == b'/' || b == b'?' {
                     break;
                 }
-                if bytes[j] == b':' {
-                    colon_pos = Some(j);
+                if b == b':' {
+                    colon_pos = Some(tag_start + offset);
                     break;
                 }
             }
             if let Some(col) = colon_pos {
                 // Copy everything before the colon, replace colon with underscore, skip colon
-                for k in i..col {
-                    result.push(bytes[k] as char);
+                for &b in bytes[i..col].iter() {
+                    result.push(b as char);
                 }
                 result.push('_');
                 i = col + 1;
@@ -187,20 +187,27 @@ pub fn parse_atom_response(xml: &str) -> Result<Vec<Paper>, String> {
     let chars: Vec<char> = normalized.chars().collect();
     let mut pos = 0;
     while pos < chars.len() {
-        if pos + 6 < chars.len() && &chars[pos..pos+6] == ['<','e','n','t','r','y'] {
+        if pos + 6 < chars.len() && chars[pos..pos + 6] == ['<', 'e', 'n', 't', 'r', 'y'] {
             let after_tag = pos + 6;
-            if after_tag < chars.len() && (chars[after_tag] == '>' || chars[after_tag] == ' ' || chars[after_tag] == '/' || chars[after_tag] == '\n' || chars[after_tag] == '\r' || chars[after_tag] == '\t') {
+            if after_tag < chars.len()
+                && (chars[after_tag] == '>'
+                    || chars[after_tag] == ' '
+                    || chars[after_tag] == '/'
+                    || chars[after_tag] == '\n'
+                    || chars[after_tag] == '\r'
+                    || chars[after_tag] == '\t')
+            {
                 if depth == 0 {
                     entry_start = Some(pos);
                 }
                 depth += 1;
             }
         }
-        if pos + 7 < chars.len() && &chars[pos..pos+7] == ['<','/','e','n','t','r','y'] {
+        if pos + 7 < chars.len() && chars[pos..pos + 7] == ['<', '/', 'e', 'n', 't', 'r', 'y'] {
             depth -= 1;
             if depth == 0 {
                 if let Some(start) = entry_start {
-                    let entry_xml: String = chars[start..=pos+7].iter().collect();
+                    let entry_xml: String = chars[start..=pos + 7].iter().collect();
                     entries.push(entry_xml);
                 }
                 entry_start = None;
@@ -235,11 +242,9 @@ fn parse_single_entry(xml: &str) -> Result<Option<Paper>, String> {
         .map(|s| html_unescape(&s))
         .ok_or_else(|| format!("missing summary for paper {}", id))?;
 
-    let published = extract_tag_content(xml, "published")
-        .unwrap_or_default();
+    let published = extract_tag_content(xml, "published").unwrap_or_default();
 
-    let updated = extract_tag_content(xml, "updated")
-        .unwrap_or_default();
+    let updated = extract_tag_content(xml, "updated").unwrap_or_default();
 
     let comment = extract_tag_content(xml, "arxiv_comment");
     let journal_ref = extract_tag_content(xml, "arxiv_journal_ref");
@@ -283,12 +288,20 @@ fn parse_single_entry(xml: &str) -> Result<Option<Paper>, String> {
     };
 
     Ok(Some(Paper {
-        id, title, authors,
+        id,
+        title,
+        authors,
         abstract_text: summary,
-        comment, journal_ref, doi,
-        primary_category, categories,
-        published, updated,
-        abs_url, html_url, pdf_url,
+        comment,
+        journal_ref,
+        doi,
+        primary_category,
+        categories,
+        published,
+        updated,
+        abs_url,
+        html_url,
+        pdf_url,
     }))
 }
 
@@ -367,12 +380,12 @@ fn extract_link_by_rel(xml: &str, rel: &str) -> Option<String> {
         if let Some(end) = xml[abs_pos..].find('>') {
             let tag = &xml[abs_pos..abs_pos + end];
             let rel_search = format!("rel=\"{}\"", rel);
-            if tag.contains(&rel_search) {
-                if let Some(hp) = tag.find("href=\"") {
-                    let val_start = hp + 6;
-                    if let Some(qe) = tag[val_start..].find('"') {
-                        return Some(tag[val_start..val_start + qe].to_string());
-                    }
+            if tag.contains(&rel_search)
+                && let Some(hp) = tag.find("href=\"")
+            {
+                let val_start = hp + 6;
+                if let Some(qe) = tag[val_start..].find('"') {
+                    return Some(tag[val_start..val_start + qe].to_string());
                 }
             }
             search_start = abs_pos + end + 1;
@@ -391,12 +404,12 @@ fn extract_link_by_type(xml: &str, type_: &str) -> Option<String> {
         if let Some(end) = xml[abs_pos..].find('>') {
             let tag = &xml[abs_pos..abs_pos + end];
             let type_search = format!("type=\"{}\"", type_);
-            if tag.contains(&type_search) {
-                if let Some(hp) = tag.find("href=\"") {
-                    let val_start = hp + 6;
-                    if let Some(qe) = tag[val_start..].find('"') {
-                        return Some(tag[val_start..val_start + qe].to_string());
-                    }
+            if tag.contains(&type_search)
+                && let Some(hp) = tag.find("href=\"")
+            {
+                let val_start = hp + 6;
+                if let Some(qe) = tag[val_start..].find('"') {
+                    return Some(tag[val_start..val_start + qe].to_string());
                 }
             }
             search_start = abs_pos + end + 1;
@@ -409,10 +422,15 @@ fn extract_link_by_type(xml: &str, type_: &str) -> Option<String> {
 
 /// Extract arXiv ID from a URL like `http://arxiv.org/abs/2301.12345v2`.
 fn extract_arxiv_id(url: &str) -> String {
-    let id = url.trim_start_matches("http://arxiv.org/abs/")
+    let id = url
+        .trim_start_matches("http://arxiv.org/abs/")
         .trim_start_matches("https://arxiv.org/abs/")
-        .split('?').next().unwrap_or("")
-        .split('#').next().unwrap_or("");
+        .split('?')
+        .next()
+        .unwrap_or("")
+        .split('#')
+        .next()
+        .unwrap_or("");
     // Strip version suffix (e.g. "2301.12345v2" → "2301.12345")
     // Scan from end: find 'v' followed only by digits to end
     if let Some(v_pos) = id.rfind('v') {
@@ -428,8 +446,7 @@ fn extract_arxiv_id(url: &str) -> String {
 fn parse_arxiv_date(s: &str) -> Result<NaiveDate, String> {
     // Handle ISO 8601 format: "2023-01-20T18:30:00Z" or "2023-01-20"
     let date_part = s.split('T').next().unwrap_or(s);
-    NaiveDate::parse_from_str(date_part, "%Y-%m-%d")
-        .map_err(|e| format!("invalid date '{s}': {e}"))
+    NaiveDate::parse_from_str(date_part, "%Y-%m-%d").map_err(|e| format!("invalid date '{s}': {e}"))
 }
 
 /// Basic HTML entity unescaping for arXiv titles/abstracts.
@@ -443,5 +460,5 @@ fn html_unescape(s: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/core_test.rs"]  // auto-pulled by paper-search-arxiv/src/core.rs
+#[path = "../tests/unit/core_test.rs"] // auto-pulled by paper-search-arxiv/src/core.rs
 mod tests;

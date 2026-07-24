@@ -21,6 +21,10 @@ fn generate_for(name: &str) {
     let out_path = manifest.join(format!("tests/fixtures-arxiv/{name}/expected.md.zst"));
     let compressed_out = zstd::encode_all(md.as_bytes(), 3).unwrap();
     std::fs::write(&out_path, &compressed_out).unwrap();
-    eprintln!("Written {} bytes -> {}", compressed_out.len(), out_path.display());
+    eprintln!(
+        "Written {} bytes -> {}",
+        compressed_out.len(),
+        out_path.display()
+    );
     eprintln!("Markdown: {} chars", md.len());
 }

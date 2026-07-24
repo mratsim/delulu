@@ -96,10 +96,7 @@ fn test_parse_rss_minimal() {
     assert!(papers[0].authors.is_empty());
     assert_eq!(papers[0].abstract_text, "Minimal abstract");
     assert_eq!(papers[0].html_url, "https://eprint.iacr.org/2024/1");
-    assert_eq!(
-        papers[0].pdf_url,
-        "https://eprint.iacr.org/2024/1.pdf"
-    );
+    assert_eq!(papers[0].pdf_url, "https://eprint.iacr.org/2024/1.pdf");
 }
 
 /// Parse an RSS feed with no items.
@@ -144,7 +141,10 @@ fn test_parse_html_realistic_fixture() {
     assert_eq!(paper.id, "2025/1");
     assert_eq!(paper.year, 2025);
     assert_eq!(paper.number, 1);
-    assert_eq!(paper.title, "Attribute Based Encryption for Turing Machines from Lattices");
+    assert_eq!(
+        paper.title,
+        "Attribute Based Encryption for Turing Machines from Lattices"
+    );
     assert_eq!(paper.authors.len(), 3);
     assert_eq!(paper.authors[0], "Shweta Agrawal");
     assert_eq!(paper.authors[1], "Simran Kumari");

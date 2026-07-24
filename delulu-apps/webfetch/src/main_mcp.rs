@@ -26,14 +26,16 @@ use delulu_mcp_server_helper::rmcp::handler::server::tool::ToolRouter;
 use delulu_mcp_server_helper::rmcp::handler::server::wrapper::Parameters;
 use delulu_mcp_server_helper::rmcp::tool;
 use delulu_mcp_server_helper::rmcp::tool_router;
-use delulu_mcp_server_helper::{McpServerConfig, PeerAddr, impl_server_handler, run_http, run_stdio, setup_tracing};
+use delulu_mcp_server_helper::{
+    McpServerConfig, PeerAddr, impl_server_handler, run_http, run_stdio, setup_tracing,
+};
 use delulu_rate_limited_crawler::RateLimitedCrawler;
-use delulu_webfetch::{ExtractionResult, RedditComment, MAX_BODY_SIZE, fetch_and_extract};
+use delulu_webfetch::{ExtractionResult, MAX_BODY_SIZE, RedditComment, fetch_and_extract};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::time::Duration;
 use std::net::IpAddr;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
 use url::Host;
 
 #[derive(Parser, Debug)]
@@ -98,13 +100,23 @@ impl WebfetchServer {
 #[tool_router]
 impl WebfetchServer {
     #[tool(description = "Fetch a URL and return content as Markdown with YAML frontmatter")]
-    async fn webfetch(&self, params: Parameters<FetchInput>, peer: PeerAddr) -> Result<String, String> {
+    async fn webfetch(
+        &self,
+        params: Parameters<FetchInput>,
+        peer: PeerAddr,
+    ) -> Result<String, String> {
         let input = params.0;
         let (remote_addr, local_addr) = match peer.0 {
             Some(info) => (Some(info.remote_addr), Some(info.local_addr)),
             None => (None, None),
         };
-        validate_url(&input.url, self.expose_local_networks, remote_addr, local_addr).await?;
+        validate_url(
+            &input.url,
+            self.expose_local_networks,
+            remote_addr,
+            local_addr,
+        )
+        .await?;
         match fetch_and_extract(
             &input.url,
             &self.crawler,
@@ -121,13 +133,23 @@ impl WebfetchServer {
     }
 
     #[tool(description = "Fetch a URL and return raw structured data as JSON")]
-    async fn webfetch_raw(&self, params: Parameters<FetchInput>, peer: PeerAddr) -> Result<String, String> {
+    async fn webfetch_raw(
+        &self,
+        params: Parameters<FetchInput>,
+        peer: PeerAddr,
+    ) -> Result<String, String> {
         let input = params.0;
         let (remote_addr, local_addr) = match peer.0 {
             Some(info) => (Some(info.remote_addr), Some(info.local_addr)),
             None => (None, None),
         };
-        validate_url(&input.url, self.expose_local_networks, remote_addr, local_addr).await?;
+        validate_url(
+            &input.url,
+            self.expose_local_networks,
+            remote_addr,
+            local_addr,
+        )
+        .await?;
         match fetch_and_extract(
             &input.url,
             &self.crawler,
@@ -141,13 +163,23 @@ impl WebfetchServer {
     }
 
     #[tool(description = "Fetch a document (PDF, DOCX, etc.) and convert to markdown")]
-    async fn fetch_doc(&self, params: Parameters<FetchDocInput>, peer: PeerAddr) -> Result<String, String> {
+    async fn fetch_doc(
+        &self,
+        params: Parameters<FetchDocInput>,
+        peer: PeerAddr,
+    ) -> Result<String, String> {
         let input = params.0;
         let (remote_addr, local_addr) = match peer.0 {
             Some(info) => (Some(info.remote_addr), Some(info.local_addr)),
             None => (None, None),
         };
-        validate_url(&input.url, self.expose_local_networks, remote_addr, local_addr).await?;
+        validate_url(
+            &input.url,
+            self.expose_local_networks,
+            remote_addr,
+            local_addr,
+        )
+        .await?;
         match delulu_webfetch::fetch_doc(&input.url, &self.crawler).await {
             Ok(result) => Ok(md_doc_to_string(result)),
             Err(e) => Ok(format!(
@@ -194,13 +226,16 @@ async fn validate_url(
     }
 
     let parsed = url::Url::parse(url_str).map_err(|_| "DNS resolution failed".to_string())?;
-    let host = parsed.host().ok_or_else(|| "DNS resolution failed".to_string())?;
+    let host = parsed
+        .host()
+        .ok_or_else(|| "DNS resolution failed".to_string())?;
 
     // Determine if the requestor is on the same subnet as the server.
     // stdio (None) is always local — no network attacker can reach it.
     // HTTP sharing the same /16 (/64 for IPv6) → likely same subnet, detailed error is safe.
     // HTTP from a different subnet → could be external, use generic error.
-    let requestor_same_subnet = peer_addr.zip(local_addr)
+    let requestor_same_subnet = peer_addr
+        .zip(local_addr)
         .is_some_and(|(peer, server)| same_subnet_16(peer, server));
     let requestor_is_stdio = peer_addr.is_none();
 
@@ -213,7 +248,7 @@ async fn validate_url(
 
     match host {
         Host::Domain(domain) => {
-            let addrs = tokio::net::lookup_host((domain.as_ref(), 0))
+            let addrs = tokio::net::lookup_host((domain, 0))
                 .await
                 .map_err(|_| "DNS resolution failed".to_string())?;
 
@@ -265,12 +300,8 @@ fn is_ula(v6: &std::net::Ipv6Addr) -> bool {
 /// Uses /16 for IPv4, /64 for IPv6.
 fn same_subnet_16(a: SocketAddr, b: SocketAddr) -> bool {
     match (a.ip(), b.ip()) {
-        (IpAddr::V4(a), IpAddr::V4(b)) => {
-            (u32::from(a) >> 16) == (u32::from(b) >> 16)
-        }
-        (IpAddr::V6(a), IpAddr::V6(b)) => {
-            (u128::from(a) >> 64) == (u128::from(b) >> 64)
-        }
+        (IpAddr::V4(a), IpAddr::V4(b)) => (u32::from(a) >> 16) == (u32::from(b) >> 16),
+        (IpAddr::V6(a), IpAddr::V6(b)) => (u128::from(a) >> 64) == (u128::from(b) >> 64),
         _ => false,
     }
 }

@@ -27,11 +27,7 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-iacr")]
-#[command(
-    author,
-    version,
-    about = "Search papers on the IACR ePrint Archive"
-)]
+#[command(author, version, about = "Search papers on the IACR ePrint Archive")]
 struct Args {
     #[command(subcommand)]
     command: Command,
@@ -106,17 +102,19 @@ async fn main() -> Result<()> {
             println!("PDF:      {}", paper.pdf_url);
         }
         Command::GetPdf { year, number } => {
-            let url = client.download_paper_pdf(year, number);
+            let url = client.paper_pdf_url(year, number);
             println!("{}", url);
         }
         Command::GetPaper { year, number } => {
-            let md = client.get_paper(year, number)
+            let md = client
+                .get_paper(year, number)
                 .await
                 .context("Failed to fetch paper")?;
             println!("{}", md);
         }
         Command::GetPaperRaw { year, number } => {
-            let bytes = client.get_paper_raw(year, number)
+            let bytes = client
+                .get_paper_raw(year, number)
                 .await
                 .context("Failed to fetch paper PDF")?;
             println!("Downloaded {} bytes", bytes.len());

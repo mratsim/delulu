@@ -23,16 +23,12 @@
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use delulu_paper_search_arxiv::{core::SearchQuery, ArxivClient};
+use delulu_paper_search_arxiv::{ArxivClient, core::SearchQuery};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-arxiv")]
-#[command(
-    author,
-    version,
-    about = "Search and fetch papers from arXiv"
-)]
+#[command(author, version, about = "Search and fetch papers from arXiv")]
 struct Args {
     #[command(subcommand)]
     command: Command,
@@ -113,8 +109,8 @@ async fn main() -> Result<()> {
                 .await
                 .context("arXiv search failed")?;
 
-            let output = serde_json::to_string_pretty(&papers)
-                .context("Failed to serialize results")?;
+            let output =
+                serde_json::to_string_pretty(&papers).context("Failed to serialize results")?;
             println!("{}", output);
         }
         Command::GetById { ids } => {
@@ -124,8 +120,8 @@ async fn main() -> Result<()> {
                 .await
                 .context("arXiv fetch failed")?;
 
-            let output = serde_json::to_string_pretty(&papers)
-                .context("Failed to serialize results")?;
+            let output =
+                serde_json::to_string_pretty(&papers).context("Failed to serialize results")?;
             println!("{}", output);
         }
         Command::GetPaper { arxiv_id } => {

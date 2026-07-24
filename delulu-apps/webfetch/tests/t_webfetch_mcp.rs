@@ -350,8 +350,8 @@ async fn test_mcp_fetch_doc_e2e_stdio() -> Result<()> {
     // Start a local HTTP server serving a real PDF fixture
     let pdf_data = std::fs::read("tests/fixtures-webfetch/pdf/iacr-2010-354.pdf.zst")
         .context("Failed to read PDF fixture")?;
-    let decompressed = zstd::decode_all(pdf_data.as_slice())
-        .context("Failed to decompress PDF fixture")?;
+    let decompressed =
+        zstd::decode_all(pdf_data.as_slice()).context("Failed to decompress PDF fixture")?;
     let pdf_bytes = std::sync::Arc::new(decompressed);
 
     let app = axum::Router::new().route(
@@ -400,7 +400,13 @@ async fn test_mcp_fetch_doc_e2e_stdio() -> Result<()> {
         .await
         .context("Python test timed out")?
         .context("Python task panicked")?;
-    let py_output = py_result; if !py_output.status.success() { anyhow::bail!("Python MCP tests failed (exit: {:?})", py_output.status.code()); }
+    let py_output = py_result;
+    if !py_output.status.success() {
+        anyhow::bail!(
+            "Python MCP tests failed (exit: {:?})",
+            py_output.status.code()
+        );
+    }
 
     let stdout = String::from_utf8_lossy(&py_output.stdout);
     let stderr = String::from_utf8_lossy(&py_output.stderr);
@@ -425,8 +431,8 @@ async fn test_mcp_fetch_doc_e2e_http() -> Result<()> {
     // Start a local HTTP server serving a real PDF fixture
     let pdf_data = std::fs::read("tests/fixtures-webfetch/pdf/iacr-2010-354.pdf.zst")
         .context("Failed to read PDF fixture")?;
-    let decompressed = zstd::decode_all(pdf_data.as_slice())
-        .context("Failed to decompress PDF fixture")?;
+    let decompressed =
+        zstd::decode_all(pdf_data.as_slice()).context("Failed to decompress PDF fixture")?;
     let pdf_bytes = std::sync::Arc::new(decompressed);
 
     let app = axum::Router::new().route(

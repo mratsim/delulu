@@ -15,7 +15,6 @@ mcp = [
 ]
 
 [dependencies]
-wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing"] }
 delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
 delulu-webfetch = { path = "../../delulu-apps/webfetch" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util"] }
@@ -65,3 +64,6 @@ required-features = ["mcp"]
 name = "arxiv_mcp_e2e_http"
 path = "tests/integration/arxiv_mcp_e2e_http_test.rs"
 required-features = ["mcp"]
+
+[package.metadata.cargo-machete]
+ignored = ["rmcp"]

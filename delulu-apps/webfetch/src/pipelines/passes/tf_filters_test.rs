@@ -201,23 +201,21 @@ fn find_tag(node: &DomNode, tag: &str) -> bool {
     match node {
         DomNode::Element {
             tag: t, children, ..
-        } if t == tag => return true,
+        } if t == tag => true,
         DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
         _ => false,
     }
 }
 
 fn inject_max_score(node: &mut DomNode, score: f64) {
-    match node {
-        DomNode::Element {
-            metadata, children, ..
-        } => {
-            metadata.insert("md_rd_subtree_max_score".to_string(), score.to_string());
-            for child in children.iter_mut() {
-                inject_max_score(child, score);
-            }
+    if let DomNode::Element {
+        metadata, children, ..
+    } = node
+    {
+        metadata.insert("md_rd_subtree_max_score".to_string(), score.to_string());
+        for child in children.iter_mut() {
+            inject_max_score(child, score);
         }
-        _ => {}
     }
 }
 
@@ -228,24 +226,22 @@ fn inject_score_for_tag(node: &mut DomNode, target_tag: &str, high_score: f64) {
 }
 
 fn set_score_recursive(node: &mut DomNode, low_score: f64, target_tag: &str, high_score: f64) {
-    match node {
-        DomNode::Element {
-            tag,
-            metadata,
-            children,
-            ..
-        } => {
-            let score = if tag == target_tag {
-                high_score
-            } else {
-                low_score
-            };
-            metadata.insert("md_rd_subtree_max_score".to_string(), score.to_string());
-            for child in children.iter_mut() {
-                set_score_recursive(child, low_score, target_tag, high_score);
-            }
+    if let DomNode::Element {
+        tag,
+        metadata,
+        children,
+        ..
+    } = node
+    {
+        let score = if tag == target_tag {
+            high_score
+        } else {
+            low_score
+        };
+        metadata.insert("md_rd_subtree_max_score".to_string(), score.to_string());
+        for child in children.iter_mut() {
+            set_score_recursive(child, low_score, target_tag, high_score);
         }
-        _ => {}
     }
 }
 
@@ -397,7 +393,7 @@ fn test_isolate_container_first_match_wins() {
 
 #[test]
 fn test_isolate_container_no_match_noop() {
-    let mut nodes = parse_html("<div><p>A</p><span>B</span></div>").unwrap();
+    let _nodes = parse_html("<div><p>A</p><span>B</span></div>").unwrap();
     let mut nodes = vec![parse_html("<div><p>A</p><span>B</span></div>").unwrap()];
     let original = nodes.clone();
     tf_isolate_content_container(&mut nodes[0]);
@@ -634,7 +630,7 @@ fn test_isolate_container_fallthrough_to_next_pattern() {
 
 #[test]
 fn test_isolate_container_count_p_text_no_p_elements() {
-    let container = DomNode::Element {
+    let _container = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "post".into())],
         children: vec![DomNode::Text("text without p tags".into())],
@@ -661,7 +657,7 @@ fn test_isolate_container_count_p_text_no_p_elements() {
 #[test]
 fn test_isolate_container_non_p_text_not_counted() {
     let long_text: String = "x".repeat(500);
-    let container = DomNode::Element {
+    let _container = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "post".into())],
         children: vec![DomNode::Element {
@@ -734,7 +730,7 @@ fn test_isolate_container_249_rejected() {
 
 #[test]
 fn test_isolate_container_whitespace_only_p_not_counted() {
-    let container = DomNode::Element {
+    let _container = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "post".into())],
         children: vec![DomNode::Element {
@@ -762,7 +758,7 @@ fn test_isolate_container_whitespace_only_p_not_counted() {
 
 #[test]
 fn test_isolate_container_empty_container_rejected() {
-    let container = DomNode::Element {
+    let _container = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "post".into())],
         children: vec![],
@@ -807,7 +803,7 @@ fn test_isolate_container_sibling_both_match_short_first() {
 fn test_isolate_container_integration_sidebar_vs_article() {
     // Realistic scenario: sidebar nav div with class "content" but no real p text
     // Article body with class "main-content" having enough p text
-    let sidebar = DomNode::Element {
+    let _sidebar = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "content".into())],
         children: vec![DomNode::Element {
@@ -826,7 +822,7 @@ fn test_isolate_container_integration_sidebar_vs_article() {
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
-    let article_body = DomNode::Element {
+    let _article_body = DomNode::Element {
         tag: "div".into(),
         attrs: vec![("class".into(), "main-content".into())],
         children: vec![DomNode::Element {

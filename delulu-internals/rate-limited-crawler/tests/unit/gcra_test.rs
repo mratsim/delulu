@@ -44,7 +44,10 @@ fn test_burst_exceeded_returns_err() {
 
     // Consume all 3 burst tokens.
     for i in 1..=3 {
-        assert!(state.try_consume(now).is_ok(), "burst request {i} should succeed");
+        assert!(
+            state.try_consume(now).is_ok(),
+            "burst request {i} should succeed"
+        );
     }
 
     // 4th request at the same time should be denied.
@@ -63,7 +66,10 @@ fn test_concurrent_access_deterministic() {
 
     // Second thread at the same time should get Err (TAT already advanced).
     let r2 = state.try_consume(now);
-    assert!(r2.is_err(), "second concurrent request should be denied (strict pacing)");
+    assert!(
+        r2.is_err(),
+        "second concurrent request should be denied (strict pacing)"
+    );
 }
 
 #[test]

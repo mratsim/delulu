@@ -21,18 +21,14 @@
 
 use anyhow::{Context, Error, Result};
 use clap::{Parser, Subcommand};
-use delulu_paper_search_pubmed::core::SearchQuery;
 use delulu_paper_search_pubmed::PubmedClient;
+use delulu_paper_search_pubmed::core::SearchQuery;
 use std::sync::Arc;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-pubmed")]
-#[command(
-    author,
-    version,
-    about = "PubMed paper search CLI"
-)]
+#[command(author, version, about = "PubMed paper search CLI")]
 struct Args {
     #[command(subcommand)]
     command: Command,
@@ -88,9 +84,7 @@ async fn main() -> Result<(), Error> {
 
     let args = Args::parse();
 
-    let client = Arc::new(
-        PubmedClient::new().context("Failed to create PubMed client")?,
-    );
+    let client = Arc::new(PubmedClient::new().context("Failed to create PubMed client")?);
 
     match args.command {
         Command::Search {

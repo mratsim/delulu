@@ -25,8 +25,8 @@
 #[path = "../fixtures/mod.rs"]
 mod fixtures;
 
+use crate::core::{SearchQuery, extract_arxiv_id, parse_atom_response};
 use chrono::NaiveDate;
-use crate::core::{extract_arxiv_id, parse_atom_response, SearchQuery};
 
 /// Load the realistic fixture XML and verify parsing produces correct results.
 #[test]
@@ -71,7 +71,10 @@ fn test_parse_realistic_fixture() {
     // Second paper
     let p1 = &papers[1];
     assert_eq!(p1.id, "cond-mat/0211289");
-    assert!(p1.title.contains("Surface effects on the electronic energy loss"));
+    assert!(
+        p1.title
+            .contains("Surface effects on the electronic energy loss")
+    );
     assert_eq!(p1.authors.len(), 2);
     assert_eq!(p1.authors[0], "A. Garcia-Lekue");
     assert_eq!(
@@ -138,7 +141,10 @@ fn test_parse_with_html_entities() {
     let papers = parse_atom_response(xml).expect("should parse");
     assert_eq!(papers.len(), 1);
     assert_eq!(papers[0].title, "A & B: <test>");
-    assert_eq!(papers[0].abstract_text, r#"abstract with "quotes" & <tags>"#);
+    assert_eq!(
+        papers[0].abstract_text,
+        r#"abstract with "quotes" & <tags>"#
+    );
 }
 
 /// Verify that the parser falls back to constructing URLs from the arXiv ID
@@ -183,42 +189,65 @@ fn test_search_query_url_encoding() {
 
 #[test]
 fn test_extract_arxiv_id_standard() {
-    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/2301.12345"), "2301.12345");
+    assert_eq!(
+        extract_arxiv_id("http://arxiv.org/abs/2301.12345"),
+        "2301.12345"
+    );
 }
 
 #[test]
 fn test_extract_arxiv_id_https() {
-    assert_eq!(extract_arxiv_id("https://arxiv.org/abs/2301.12345"), "2301.12345");
+    assert_eq!(
+        extract_arxiv_id("https://arxiv.org/abs/2301.12345"),
+        "2301.12345"
+    );
 }
 
 #[test]
 fn test_extract_arxiv_id_with_version() {
-    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/2301.12345v2"), "2301.12345");
+    assert_eq!(
+        extract_arxiv_id("http://arxiv.org/abs/2301.12345v2"),
+        "2301.12345"
+    );
 }
 
 #[test]
 fn test_extract_arxiv_id_old_format() {
-    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/cond-mat/0011267"), "cond-mat/0011267");
+    assert_eq!(
+        extract_arxiv_id("http://arxiv.org/abs/cond-mat/0011267"),
+        "cond-mat/0011267"
+    );
 }
 
 #[test]
 fn test_extract_arxiv_id_old_format_with_version() {
-    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/cond-mat/0011267v1"), "cond-mat/0011267");
+    assert_eq!(
+        extract_arxiv_id("http://arxiv.org/abs/cond-mat/0011267v1"),
+        "cond-mat/0011267"
+    );
 }
 
 #[test]
 fn test_extract_arxiv_id_v_in_body() {
     // 'v' character in the paper ID itself, not a version suffix
-    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/2301.12345v"), "2301.12345v");
+    assert_eq!(
+        extract_arxiv_id("http://arxiv.org/abs/2301.12345v"),
+        "2301.12345v"
+    );
 }
-
 
 #[test]
 fn test_extract_arxiv_id_strips_query_params() {
-    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/2301.12345?format=pdf"), "2301.12345");
+    assert_eq!(
+        extract_arxiv_id("http://arxiv.org/abs/2301.12345?format=pdf"),
+        "2301.12345"
+    );
 }
 
 #[test]
 fn test_extract_arxiv_id_strips_fragment() {
-    assert_eq!(extract_arxiv_id("http://arxiv.org/abs/2301.12345#section2"), "2301.12345");
+    assert_eq!(
+        extract_arxiv_id("http://arxiv.org/abs/2301.12345#section2"),
+        "2301.12345"
+    );
 }

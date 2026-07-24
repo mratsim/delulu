@@ -1183,7 +1183,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "urlencoding",
- "wreq",
  "zstd",
 ]
 
@@ -1207,8 +1206,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "urlencoding",
- "wreq",
  "zstd",
 ]
 
@@ -1217,7 +1214,6 @@ name = "delulu-paper-search-pubmed"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "delulu-mcp-server-helper",
  "delulu-rate-limited-crawler",
@@ -1231,7 +1227,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "urlencoding",
- "wreq",
  "zstd",
 ]
 
@@ -1306,7 +1301,6 @@ dependencies = [
  "ego-tree",
  "futures-util",
  "once_cell",
- "rand 0.8.7",
  "rayon",
  "regex",
  "rmcp",
@@ -1321,7 +1315,6 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "wreq",
- "wreq-util",
  "xberg",
  "zstd",
 ]
