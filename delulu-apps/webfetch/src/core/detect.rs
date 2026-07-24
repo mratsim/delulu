@@ -137,10 +137,11 @@ pub(crate) fn detect_from_mime_type(mime_type: &str) -> Option<SourceType> {
         || type_part == "application/x-pdf"
         || type_part.ends_with("/pdf")
         || type_part.starts_with("application/") && type_part.contains("+pdf");
-    if is_pdf
-        || mime.contains("msword")
-        || mime.contains("openxmlformats")
-        || mime.contains("ms-powerpoint")
+    let is_msword = type_part == "application/msword"
+        || type_part == "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    let is_ppt = type_part == "application/vnd.ms-powerpoint"
+        || type_part == "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    if is_pdf || is_msword || is_ppt
     {
         return Some(SourceType::Document);
     }
