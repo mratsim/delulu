@@ -30,10 +30,9 @@ fn extract_hotel_names(html: &str) -> Vec<String> {
                         && !name.to_lowercase().contains("popular")
                         && !name.to_lowercase().contains("destination")
                         && !name.to_lowercase().contains("promo")
+                        && !names.contains(&name)
                     {
-                        if !names.contains(&name) {
-                            names.push(name);
-                        }
+                        names.push(name);
                     }
                 }
             }
@@ -147,7 +146,7 @@ async fn test_our_vs_browser_socs() -> Result<()> {
     println!("\n========================================");
     println!("SUMMARY");
     println!("========================================");
-    if b_hotels.len() > 0 && o_hotels.len() > 0 {
+    if !b_hotels.is_empty() && !o_hotels.is_empty() {
         let overlap: usize = b_hotels.iter().filter(|n| o_hotels.contains(n)).count();
         println!(
             "Browser hotels: {}, Our hotels: {}, Overlap: {}",

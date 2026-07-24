@@ -106,11 +106,9 @@ pub struct E2eGuard {
 impl Drop for E2eGuard {
     fn drop(&mut self) {
         // Kill child processes
-        for c in &mut self.children {
-            if let Some(c) = c {
-                let _ = c.kill();
-                let _ = c.wait();
-            }
+        for c in self.children.iter_mut().flatten() {
+            let _ = c.kill();
+            let _ = c.wait();
         }
         // Send shutdown signals to backend services
         for s in self.shutdown_senders.drain(..) {

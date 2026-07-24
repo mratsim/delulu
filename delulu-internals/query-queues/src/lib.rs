@@ -28,8 +28,9 @@ pub enum QueryQueueError {
 }
 
 /// Rate limiting mode
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 enum RateLimit {
+    #[default]
     ConcurrencyOnly,
     Qps {
         limit: u64,
@@ -38,12 +39,6 @@ enum RateLimit {
         refill_interval: Duration,
         notify: Arc<tokio::sync::Notify>,
     },
-}
-
-impl Default for RateLimit {
-    fn default() -> Self {
-        Self::ConcurrencyOnly
-    }
 }
 
 /// An async semaphore for limiting concurrent operations

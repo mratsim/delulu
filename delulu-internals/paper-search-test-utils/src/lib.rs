@@ -17,12 +17,11 @@ pub fn workspace_root() -> PathBuf {
     let mut dir = Some(manifest.as_path());
     while let Some(d) = dir {
         let cargo_toml = d.join("Cargo.toml");
-        if cargo_toml.exists() {
-            if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
-                if content.contains("[workspace]") {
-                    return d.to_path_buf();
-                }
-            }
+        if cargo_toml.exists()
+            && let Ok(content) = std::fs::read_to_string(&cargo_toml)
+            && content.contains("[workspace]")
+        {
+            return d.to_path_buf();
         }
         dir = d.parent();
     }

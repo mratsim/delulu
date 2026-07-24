@@ -39,9 +39,11 @@ use proto::{
 #[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Seat {
     Unknown = SeatProto::UnknownSeat as i32,
     #[serde(alias = "Economy")]
+    #[default]
     Economy = SeatProto::Economy as i32,
     #[serde(alias = "PremiumEconomy")]
     PremiumEconomy = SeatProto::PremiumEconomy as i32,
@@ -49,12 +51,6 @@ pub enum Seat {
     Business = SeatProto::Business as i32,
     #[serde(alias = "First")]
     First = SeatProto::First as i32,
-}
-
-impl Default for Seat {
-    fn default() -> Self {
-        Seat::Economy
-    }
 }
 
 impl From<Seat> for SeatProto {
@@ -116,18 +112,14 @@ impl Seat {
 #[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[repr(i32)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Trip {
     #[serde(alias = "round-trip")]
+    #[default]
     RoundTrip = TripProto::RoundTrip as i32,
     #[serde(alias = "one-way")]
     OneWay = TripProto::OneWay as i32,
     MultiCity = TripProto::MultiCity as i32,
-}
-
-impl Default for Trip {
-    fn default() -> Self {
-        Trip::RoundTrip
-    }
 }
 
 impl From<Trip> for TripProto {
@@ -311,12 +303,9 @@ impl FlightSearchParams {
         let depart_checkin = NaiveDate::parse_from_str(&self.depart_date, "%Y-%m-%d")
             .expect("depart_date already validated");
 
-        let return_checkin = match &self.return_date {
-            Some(rd) => Some(
-                NaiveDate::parse_from_str(rd, "%Y-%m-%d").expect("return_date already validated"),
-            ),
-            None => None,
-        };
+        let return_checkin = self.return_date.as_ref().map(|rd| {
+            NaiveDate::parse_from_str(rd, "%Y-%m-%d").expect("return_date already validated")
+        });
 
         let passenger_pairs: Vec<(i32, u32)> = self
             .passengers
@@ -402,15 +391,15 @@ impl FlightSearchParams {
         let mut preferred_airlines: Option<Vec<String>> = None;
 
         for (idx, flight) in info.data.iter().enumerate() {
-            if let Some(from) = &flight.from_flight {
-                if from_airport.is_empty() {
-                    from_airport = from.airport.clone();
-                }
+            if let Some(from) = &flight.from_flight
+                && from_airport.is_empty()
+            {
+                from_airport = from.airport.clone();
             }
-            if let Some(to) = &flight.to_flight {
-                if to_airport.is_empty() {
-                    to_airport = to.airport.clone();
-                }
+            if let Some(to) = &flight.to_flight
+                && to_airport.is_empty()
+            {
+                to_airport = to.airport.clone();
             }
             if depart_date.is_empty() {
                 depart_date = flight.date.clone();
@@ -443,16 +432,16 @@ impl FlightSearchParams {
             adults = 1;
         }
 
-        if let Some(seat) = info.seat {
-            if let Ok(s) = Seat::try_from(seat) {
-                cabin_class = s;
-            }
+        if let Some(seat) = info.seat
+            && let Ok(s) = Seat::try_from(seat)
+        {
+            cabin_class = s;
         }
 
-        if let Some(trip) = info.trip {
-            if let Ok(t) = Trip::try_from(trip) {
-                trip_type = t;
-            }
+        if let Some(trip) = info.trip
+            && let Ok(t) = Trip::try_from(trip)
+        {
+            trip_type = t;
         }
 
         ensure!(!from_airport.is_empty(), "from_airport is required");

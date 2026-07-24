@@ -87,7 +87,7 @@ async fn test_arxiv_mcp_e2e_http() {
         }
     });
 
-    let mcp_child = ChildGuard(mcp_child);
+    let _mcp_child = ChildGuard(mcp_child);
 
     // Wait for MCP server to be ready
     let start = std::time::Instant::now();

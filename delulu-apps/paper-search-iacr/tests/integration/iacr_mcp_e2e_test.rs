@@ -97,7 +97,7 @@ async fn test_iacr_mcp_e2e_http() {
 
     let binary = find_binary();
     let port = get_free_port();
-    let mut child = Command::new(&binary)
+    let child = Command::new(&binary)
         .args([
             "--api-base-url",
             &url,
@@ -124,7 +124,7 @@ async fn test_iacr_mcp_e2e_http() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
-    let child = ChildGuard(child);
+    let _child = ChildGuard(child);
 
     let output = run_python(
         "test_iacr_mcp_e2e_http.py",

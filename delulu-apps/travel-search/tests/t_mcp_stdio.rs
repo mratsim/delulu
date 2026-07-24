@@ -31,8 +31,6 @@ use std::sync::Once;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::time::Duration;
-use tracing;
-use tracing_subscriber;
 use tracing_subscriber::EnvFilter;
 
 mod mcp_helpers;
@@ -187,16 +185,16 @@ async fn read_json_response_with_timeout(stdout: &mut ChildStdout, dur: Duration
                     output.len()
                 );
 
-                if let Ok(response) = serde_json::from_str::<Value>(&output) {
-                    if response.is_object() {
-                        let obj = response.as_object().unwrap();
-                        if obj.contains_key("id") && obj.contains_key("result") {
-                            tracing::debug!(
-                                "Iteration {}: complete JSON-RPC response received",
-                                iterations
-                            );
-                            return Ok(response);
-                        }
+                if let Ok(response) = serde_json::from_str::<Value>(&output)
+                    && response.is_object()
+                {
+                    let obj = response.as_object().unwrap();
+                    if obj.contains_key("id") && obj.contains_key("result") {
+                        tracing::debug!(
+                            "Iteration {}: complete JSON-RPC response received",
+                            iterations
+                        );
+                        return Ok(response);
                     }
                 }
             }

@@ -48,11 +48,10 @@ async fn test_google_hotels_full_flow() -> Result<()> {
             .query(By::Css("button[aria-label*='Accept']"))
             .first()
             .await
+            && let Ok(true) = el.is_displayed().await
         {
-            if let Ok(true) = el.is_displayed().await {
-                el.click().await?;
-                println!("Clicked accept button");
-            }
+            el.click().await?;
+            println!("Clicked accept button");
         }
     }
 

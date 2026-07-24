@@ -192,19 +192,16 @@ async fn test_get_paper_uses_html_base_url() {
 
     // Spawn a simple server that returns the HTML
     tokio::spawn(async move {
-        loop {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            tokio::spawn(async move {
-                use tokio::io::AsyncWriteExt;
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
-                    html_content.len(),
-                    html_content
-                );
-                let _ = stream.write_all(response.as_bytes()).await;
-            });
-            break; // Only handle one request for this test
-        }
+        let (mut stream, _) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                html_content.len(),
+                html_content
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
     });
     let client = ArxivClient::new()
         .expect("failed to create client")

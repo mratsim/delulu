@@ -162,10 +162,10 @@ fn test_roundtrip_internal_codec() {
                         if let Some(min) = case.input.price_min {
                             expected_filters.push(format!("min_price: {}", min as i32));
                         }
-                        if let Some(sort_val) = sort_order {
-                            if let Some(sort_type) = SortType::try_from(sort_val).ok() {
-                                expected_filters.push(format!("sort: {}", sort_type.as_str_name()));
-                            }
+                        if let Some(sort_val) = sort_order
+                            && let Ok(sort_type) = SortType::try_from(sort_val)
+                        {
+                            expected_filters.push(format!("sort: {}", sort_type.as_str_name()));
                         }
 
                         let mut actual_filters: Vec<String> = Vec::new();
@@ -184,10 +184,10 @@ fn test_roundtrip_internal_codec() {
                         if let Some(p) = params.min_price {
                             actual_filters.push(format!("min_price: {}", p));
                         }
-                        if let Some(sort_val) = params.sort_order {
-                            if let Some(sort_type) = SortType::try_from(sort_val).ok() {
-                                actual_filters.push(format!("sort: {}", sort_type.as_str_name()));
-                            }
+                        if let Some(sort_val) = params.sort_order
+                            && let Ok(sort_type) = SortType::try_from(sort_val)
+                        {
+                            actual_filters.push(format!("sort: {}", sort_type.as_str_name()));
                         }
                         actual_filters.sort();
                         let mut expected_sorted = expected_filters.clone();

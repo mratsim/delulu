@@ -24,7 +24,6 @@ use delulu_travel_search::{
     FlightSearchParams, FlightSearchResult, GoogleFlightsClient, Passenger, Seat, Trip,
 };
 use std::cmp::max;
-use term_size;
 
 /// CLI arguments
 #[derive(Parser, Debug)]
@@ -169,9 +168,7 @@ fn fmt_stops_and_layovers(layovers: &[delulu_travel_search::Layover]) -> String 
         0 => "direct".to_string(),
         1 => {
             if let Some(l) = layovers.first() {
-                let dur = l
-                    .duration_minutes
-                    .map_or("??".to_string(), |m| fmt_duration(m));
+                let dur = l.duration_minutes.map_or("??".to_string(), fmt_duration);
                 let name = l.airport_city.as_deref().unwrap_or("Unknown");
                 format!("1 stop: {}@{}", dur, name)
             } else {
@@ -182,9 +179,7 @@ fn fmt_stops_and_layovers(layovers: &[delulu_travel_search::Layover]) -> String 
             let parts: Vec<String> = layovers
                 .iter()
                 .map(|l| {
-                    let dur = l
-                        .duration_minutes
-                        .map_or("??".to_string(), |m| fmt_duration(m));
+                    let dur = l.duration_minutes.map_or("??".to_string(), fmt_duration);
                     let name = l.airport_city.as_deref().unwrap_or("Unknown");
                     format!("{}@{}", dur, name)
                 })

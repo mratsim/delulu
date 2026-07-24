@@ -95,13 +95,9 @@ impl ProxyClient {
             .get("content-length")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse::<usize>().ok())
+            && cl > 524_288
         {
-            if cl > 524_288 {
-                return ProxyResponse::error(format!(
-                    "Response too large: {} bytes (max 512KB)",
-                    cl
-                ));
-            }
+            return ProxyResponse::error(format!("Response too large: {} bytes (max 512KB)", cl));
         }
 
         // Read body incrementally with size cap
@@ -113,9 +109,9 @@ impl ProxyClient {
                 Ok(data) => {
                     body_bytes.extend_from_slice(&data);
                     if body_bytes.len() > 524_288 {
-                        return ProxyResponse::error(format!(
-                            "Response body too large: exceeded 512KB limit"
-                        ));
+                        return ProxyResponse::error(
+                            "Response body too large: exceeded 512KB limit".to_string(),
+                        );
                     }
                 }
                 Err(e) => return ProxyResponse::error(format!("Body read failed: {}", e)),

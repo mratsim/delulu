@@ -406,38 +406,36 @@ impl HotelSearchParams {
         let mut loc_ts_coords = String::new();
         let mut loc_ts_name = String::new();
 
-        if let Some(sp) = search_params {
-            if let Some(loc) = &sp.location {
-                if let Some(details) = &loc.details {
-                    loc_ts_id = details.location_id.clone();
-                    loc_ts_coords = details.coordinates.clone();
-                    loc_ts_name = details.display_name.clone();
-                }
-            }
+        if let Some(sp) = search_params
+            && let Some(loc) = &sp.location
+            && let Some(details) = &loc.details
+        {
+            loc_ts_id = details.location_id.clone();
+            loc_ts_coords = details.coordinates.clone();
+            loc_ts_name = details.display_name.clone();
         }
 
         let mut checkin_date = String::new();
         let mut checkout_date = String::new();
         let mut nights = 0;
 
-        if let Some(sp) = search_params {
-            if let Some(dates) = &sp.dates {
-                if let Some(range) = &dates.date_range {
-                    if let Some(checkin) = &range.checkin {
-                        checkin_date = format!(
-                            "{:04}-{:02}-{:02}",
-                            checkin.year, checkin.month, checkin.day
-                        );
-                    }
-                    if let Some(checkout) = &range.checkout {
-                        checkout_date = format!(
-                            "{:04}-{:02}-{:02}",
-                            checkout.year, checkout.month, checkout.day
-                        );
-                    }
-                    nights = range.nights;
-                }
+        if let Some(sp) = search_params
+            && let Some(dates) = &sp.dates
+            && let Some(range) = &dates.date_range
+        {
+            if let Some(checkin) = &range.checkin {
+                checkin_date = format!(
+                    "{:04}-{:02}-{:02}",
+                    checkin.year, checkin.month, checkin.day
+                );
             }
+            if let Some(checkout) = &range.checkout {
+                checkout_date = format!(
+                    "{:04}-{:02}-{:02}",
+                    checkout.year, checkout.month, checkout.day
+                );
+            }
+            nights = range.nights;
         }
 
         let mut currency = String::new();
@@ -452,31 +450,31 @@ impl HotelSearchParams {
             if let Some(f) = &fc.filters {
                 currency = f.currency.clone();
                 for &amenity in &f.amenity {
-                    if amenity != 0 {
-                        if let Ok(a) = Amenity::try_from(amenity) {
-                            amenities.push(a);
-                        }
+                    if amenity != 0
+                        && let Ok(a) = Amenity::try_from(amenity)
+                    {
+                        amenities.push(a);
                     }
                 }
                 for &star in &f.stars {
                     hotel_stars.push(star);
                 }
-                if f.sort_type != 0 {
-                    if let Ok(s) = SortType::try_from(f.sort_type) {
-                        sort_order = Some(s);
-                    }
+                if f.sort_type != 0
+                    && let Ok(s) = SortType::try_from(f.sort_type)
+                {
+                    sort_order = Some(s);
                 }
             }
             if let Some(pd) = &fc.price_data {
-                if let Some(v) = &pd.min_price {
-                    if v.value != 0 {
-                        min_price = Some(v.value);
-                    }
+                if let Some(v) = &pd.min_price
+                    && v.value != 0
+                {
+                    min_price = Some(v.value);
                 }
-                if let Some(v) = &pd.max_price {
-                    if v.value != 0 {
-                        max_price = Some(v.value);
-                    }
+                if let Some(v) = &pd.max_price
+                    && v.value != 0
+                {
+                    max_price = Some(v.value);
                 }
             }
             if fc.guest_rating != 0 {
