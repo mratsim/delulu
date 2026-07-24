@@ -19,7 +19,7 @@ wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", 
 wreq-util = "3.0.0-rc.9"
 scraper = "0.17"
 regex = { version = "1.10", default-features = false, features = ["unicode-perl", "unicode-case"] }
-delulu-query-queues = { path = "../../delulu-internals/query-queues" }
+delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "fs"] }
 anyhow = "1.0"
 chrono = { version = "0.4.20", features = ["serde"] }

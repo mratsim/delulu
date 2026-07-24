@@ -23,67 +23,44 @@ use crate::consent_cookie::generate_cookie_header;
 use crate::hotels_query_builder::HotelSearchParams;
 use crate::hotels_results_parser::HotelSearchResult;
 use anyhow::{Context, Result, anyhow, bail};
-use delulu_query_queues::QueryQueue;
+use delulu_rate_limited_crawler::RateLimitedCrawler;
 use std::sync::Arc;
 use std::time::Duration;
 use wreq::redirect::Policy;
-use wreq_util::Emulation;
+use wreq_util::Profile;
 
 #[derive(Clone)]
 pub struct GoogleHotelsClient {
-    client: Arc<wreq::Client>,
-    query_queue: QueryQueue,
+    crawler: Arc<RateLimitedCrawler>,
 }
 
 impl GoogleHotelsClient {
     pub fn new(timeout_secs: u64, queries_per_second: u32) -> Result<Self> {
-        let client = wreq::Client::builder()
-            .emulation(Emulation::Safari18_5)
-            .redirect(Policy::default())
-            .timeout(Duration::from_secs(timeout_secs))
-            .connect_timeout(Duration::from_secs(timeout_secs))
-            .build()
-            .context("Failed to build HTTP client")?;
-        let query_queue = QueryQueue::with_qps_limit(queries_per_second as u64);
-        Ok(Self {
-            client: Arc::new(client),
-            query_queue,
-        })
+        let crawler = Arc::new(
+            RateLimitedCrawler::builder()
+                .with_qps(queries_per_second as u64)
+                .with_emulation(Profile::Safari18_5)
+                .with_redirect(Policy::default())
+                .with_timeout(Duration::from_secs(timeout_secs))
+                .with_connect_timeout(Duration::from_secs(timeout_secs))
+                .build()
+                .context("Failed to build rate-limited crawler")?,
+        );
+        Ok(Self { crawler })
     }
 }
 
 impl GoogleHotelsClient {
     async fn fetch_raw(&self, url: &str) -> Result<String> {
         let cookie_header = generate_cookie_header();
-        let client_inner = Arc::clone(&self.client);
 
-        let queue_start = std::time::Instant::now();
         let response = self
-            .query_queue
-            .with_retry(move || {
-                let url = url.to_string();
-                let cookie = cookie_header.clone();
-                let http_client = client_inner.clone();
-                async move {
-                    let http_start = std::time::Instant::now();
-                    tracing::info!("[fetch_raw] Starting HTTP request to: {}", url);
-                    let resp = http_client
-                        .get(url)
-                        .header("Cookie", &cookie)
-                        .send()
-                        .await?;
-                    let http_elapsed = http_start.elapsed();
-                    tracing::info!("[fetch_raw] HTTP request completed in {:?}", http_elapsed);
-                    Ok(resp)
-                }
-            })
+            .crawler
+            .get(url)
+            .with_headers(vec![("Cookie".to_string(), cookie_header)])
+            .with_exponential_retry(1)
+            .send()
             .await;
-        let queue_elapsed = queue_start.elapsed();
-        tracing::debug!(
-            "[fetch_raw] Query queue + HTTP execution time: {:?}",
-            queue_elapsed
-        );
-
         let response = response.map_err(|e| anyhow!("Request failed: {:?}", e))?;
 
         let status = response.status();

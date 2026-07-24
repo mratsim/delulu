@@ -188,9 +188,9 @@ impl CrawlerBuilder {
         self
     }
 
-    pub fn with_emulation(mut self, emulation: wreq_util::Emulation) -> Self {
+    pub fn with_emulation(mut self, profile: wreq_util::Profile) -> Self {
         let builder = self.client_builder.unwrap_or_else(wreq::Client::builder);
-        self.client_builder = Some(builder.emulation(emulation));
+        self.client_builder = Some(builder.emulation(profile));
         self
     }
 

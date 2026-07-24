@@ -2,6 +2,7 @@ use super::*;
 use std::time::Duration;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+use wreq_util::Profile;
 
 // ---------------------------------------------------------------------------
 // Builder unit tests — no HTTP server needed, just field assertions
@@ -12,11 +13,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 #[test]
 fn test_builder_chained_settings_preserved() {
     let crawler = RateLimitedCrawler::builder()
-        .with_emulation(
-            wreq_util::Emulation::builder()
-                .profile(wreq_util::Profile::Safari18_5)
-                .build(),
-        )
+        .with_emulation(Profile::Safari18_5)
         .with_redirect(wreq::redirect::Policy::limited(5))
         .with_timeout(Duration::from_secs(30))
         .with_connect_timeout(Duration::from_secs(15))
@@ -98,11 +95,7 @@ fn test_builder_override_settings() {
     let crawler = RateLimitedCrawler::builder()
         .with_timeout(Duration::from_secs(1))
         .with_timeout(Duration::from_secs(30))
-        .with_emulation(
-            wreq_util::Emulation::builder()
-                .profile(wreq_util::Profile::Safari18_5)
-                .build(),
-        )
+        .with_emulation(Profile::Safari18_5)
         .with_redirect(wreq::redirect::Policy::limited(5))
         .with_connect_timeout(Duration::from_secs(30))
         .build()
@@ -842,11 +835,7 @@ async fn test_fetch_text_default_content_type() {
 #[test]
 fn test_builder_user_settings_survive_build() {
     let crawler = RateLimitedCrawler::builder()
-        .with_emulation(
-            wreq_util::Emulation::builder()
-                .profile(wreq_util::Profile::Safari18_5)
-                .build(),
-        )
+        .with_emulation(Profile::Safari18_5)
         .with_redirect(wreq::redirect::Policy::limited(10))
         .with_timeout(Duration::from_secs(15))
         .with_connect_timeout(Duration::from_secs(5))
