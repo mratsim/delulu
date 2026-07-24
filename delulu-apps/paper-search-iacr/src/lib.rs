@@ -26,7 +26,11 @@ pub mod core;
 use anyhow::{Context, Result};
 use core::Paper;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
+use futures_util::StreamExt;
 use std::sync::Arc;
+
+/// Maximum document size to download (50 MiB).
+const MAX_DOC_SIZE: usize = 50 * 1024 * 1024;
 
 /// HTTP client for the IACR ePrint Archive.
 #[derive(Clone)]
@@ -176,13 +180,17 @@ impl IacrClient {
             };
             anyhow::bail!("IACR paper PDF returned HTTP {}: {}", status, body_preview);
         }
-
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to read PDF bytes: {}", e))?;
-        Ok(bytes.to_vec())
-    }
+        let mut stream = response.bytes_stream();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.context("Failed to read PDF chunk")?;
+            bytes.extend_from_slice(&chunk);
+            if bytes.len() > MAX_DOC_SIZE {
+                anyhow::bail!("IACR paper PDF exceeds maximum size of {} bytes", MAX_DOC_SIZE);
+            }
+        }
+        Ok(bytes)
+}
 }
 // Return the IACR ePrint PDF URL for a given year and number.
 // Zero-pads the number to 3 digits for pre-2005 papers.

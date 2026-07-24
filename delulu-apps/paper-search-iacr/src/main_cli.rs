@@ -22,6 +22,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use delulu_paper_search_iacr::IacrClient;
+use std::io::Write;
 use std::sync::Arc;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -117,7 +118,9 @@ async fn main() -> Result<()> {
                 .get_paper_raw(year, number)
                 .await
                 .context("Failed to fetch paper PDF")?;
-            println!("Downloaded {} bytes", bytes.len());
+            std::io::stdout()
+                .write_all(&bytes)
+                .context("Failed to write PDF bytes to stdout")?;
         }
     }
 

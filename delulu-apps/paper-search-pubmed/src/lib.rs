@@ -26,11 +26,14 @@ pub mod core;
 use anyhow::{Context, Result};
 use core::{Paper, SearchQuery, SearchResult};
 use delulu_rate_limited_crawler::RateLimitedCrawler;
+use futures_util::StreamExt;
 use std::sync::Arc;
 
 const API_URL: &str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const BASE_URL: &str = "https://www.ncbi.nlm.nih.gov/pmc";
 
+/// Maximum document size to download (50 MiB).
+const MAX_DOC_SIZE: usize = 50 * 1024 * 1024;
 /// HTTP client for the NCBI PubMed E-utilities API and PubMed Central PDF downloads.
 #[derive(Clone)]
 pub struct PubmedClient {
@@ -164,11 +167,7 @@ impl PubmedClient {
     /// PubMed Central via the rate-limited crawler, and converts to Markdown
     /// via xberg + webfetch.
     pub async fn get_paper(&self, pmc_id: &str) -> Result<String> {
-        let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
-        let url = format!(
-            "{}/articles/PMC{id}/pdf/",
-            self.base_url.trim_end_matches('/')
-        );
+        let url = build_pdf_url(&self.base_url, pmc_id);
         let response = self
             .crawler
             .get(&url)
@@ -206,23 +205,39 @@ impl PubmedClient {
     ///
     /// Strips the leading "PMC" prefix if present and downloads the raw PDF.
     pub async fn get_paper_raw(&self, pmc_id: &str) -> Result<Vec<u8>> {
-        let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
-        let url = format!(
-            "{}/articles/PMC{id}/pdf/",
-            self.base_url.trim_end_matches('/')
-        );
+        let url = build_pdf_url(&self.base_url, pmc_id);
         let response = self
             .crawler
             .get(&url)
             .send()
             .await
             .context("Failed to fetch PubMed paper PDF")?;
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to read PDF bytes: {}", e))?;
-        Ok(bytes.to_vec())
+        let status = response.status();
+        if !status.is_success() {
+            let body_preview = match response.text().await {
+                Ok(body) => body,
+                Err(e) => format!("(failed to read error body: {e})"),
+            };
+            anyhow::bail!("PubMed PDF returned HTTP {}: {}", status, body_preview);
+        }
+        let mut stream = response.bytes_stream();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.context("Failed to read PDF chunk")?;
+            bytes.extend_from_slice(&chunk);
+            if bytes.len() > MAX_DOC_SIZE {
+                anyhow::bail!("PubMed PDF exceeds maximum size of {} bytes", MAX_DOC_SIZE);
+            }
+        }
+        Ok(bytes)
     }
+}
+
+/// Build a PubMed Central PDF URL from a base URL and PMC ID.
+/// Strips the leading "PMC" prefix if present.
+fn build_pdf_url(base_url: &str, pmc_id: &str) -> String {
+    let id = pmc_id.strip_prefix("PMC").unwrap_or(pmc_id);
+    format!("{}/articles/PMC{id}/pdf/", base_url.trim_end_matches('/'))
 }
 // ---------------------------------------------------------------------------
 // Tests

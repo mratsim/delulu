@@ -21,7 +21,8 @@ async def run_tests(binary, config_path):
             r = await session.call_tool("get_database_info", {})
             assert len(r.content) > 0
             text = r.content[0].text
-            print(f"  Response text: {text[:200]}"); data = json.loads(text)
+            print(f"  Response text: {text[:200]}")
+            data = json.loads(text)
             assert "db_name" in data
             print("  get_database_info OK")
     return 0

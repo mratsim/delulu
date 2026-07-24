@@ -28,6 +28,8 @@ urlencoding = "2"
 delulu-mcp-server-helper = { path = "../../delulu-internals/mcp-server-helper", optional = true }
 schemars = { version = "1.0", features = ["derive"], optional = true }
 rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
+futures-util = "0.3"
+
 [package.metadata.mcp]
 name = "delulu-paper-search-pubmed"
 version = "0.1.0"
