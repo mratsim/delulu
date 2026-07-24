@@ -1311,6 +1311,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "delulu-websearch"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "clap",
+ "delulu-mcp-server-helper",
+ "delulu-rate-limited-crawler",
+ "futures-util",
+ "rmcp",
+ "schemars",
+ "scraper",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "wreq-util",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

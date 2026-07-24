@@ -212,6 +212,14 @@ impl CrawlerBuilder {
         self
     }
 
+    /// Enable HTTP/2 for the underlying wreq client.
+    /// Enable HTTP/2 for the underlying wreq client.
+    pub fn with_http2(mut self) -> Self {
+        let builder = self.client_builder.unwrap_or_else(wreq::Client::builder);
+        let opts = wreq::http2::Http2Options::builder().build();
+        self.client_builder = Some(builder.http2_options(opts));
+        self
+    }
     pub fn with_qps(mut self, qps: u64) -> Self {
         self.qps = qps;
         self
