@@ -57,12 +57,15 @@ fn test_builder_mixed_with_client_and_timeout_errs() {
         .with_client(raw_client)
         .with_timeout(Duration::from_secs(5))
         .build();
-    assert!(result.is_err(), "expected Err, got Ok");
+    assert!(
+        result.is_err(),
+        "with_client then with_timeout should error (mixed)"
+    );
 }
 
-/// Verifies that builder settings then with_client also returns an error.
+/// Verifies that with_timeout then with_client succeeds (with_client clears builder).
 #[test]
-fn test_builder_timeout_then_with_client_errs() {
+fn test_builder_timeout_then_with_client_ok() {
     let raw_client = wreq::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
@@ -71,7 +74,10 @@ fn test_builder_timeout_then_with_client_errs() {
         .with_timeout(Duration::from_secs(5))
         .with_client(raw_client)
         .build();
-    assert!(result.is_err(), "expected Err, got Ok");
+    assert!(
+        result.is_ok(),
+        "with_client should clear builder settings and succeed"
+    );
 }
 
 /// Verifies that chaining only a subset of `with_*` methods works.
@@ -825,4 +831,65 @@ async fn test_fetch_text_default_content_type() {
     assert_eq!(body, "hello");
     // wiremock defaults to text/plain
     assert_eq!(content_type, Some("text/plain".to_string()));
+}
+
+/// Anti-regression: user with_timeout/with_redirect/with_emulation/with_connect_timeout
+/// must survive build(). The bug was that build() re-applied hardcoded defaults
+/// after user values, silently discarding them (last-write-wins in wreq).
+///
+/// We can't introspect the built wreq::Client's timeout, so we verify structurally:
+/// the builder accepts chained settings without panic/error.
+#[test]
+fn test_builder_user_settings_survive_build() {
+    let crawler = RateLimitedCrawler::builder()
+        .with_emulation(
+            wreq_util::Emulation::builder()
+                .profile(wreq_util::Profile::Safari18_5)
+                .build(),
+        )
+        .with_redirect(wreq::redirect::Policy::limited(10))
+        .with_timeout(Duration::from_secs(15))
+        .with_connect_timeout(Duration::from_secs(5))
+        .with_qps(1)
+        .with_burst(1)
+        .with_max_domains(10)
+        .build()
+        .expect("CrawlerBuilder::build() with user settings should succeed");
+    assert_eq!(crawler.qps, 1);
+    assert_eq!(crawler.burst, 1);
+}
+
+/// Anti-regression: with_timeout with a very short timeout should actually
+/// cause a timeout on a slow server (behavioral test).
+#[tokio::test]
+async fn test_builder_short_timeout_actually_applied() {
+    // Start a server that waits 3 seconds before responding
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    tokio::spawn(async move {
+        if let Ok((mut stream, _)) = listener.accept().await {
+            // Wait 3s before responding — longer than our 1s timeout
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+                .await;
+        }
+    });
+
+    let crawler = RateLimitedCrawler::builder()
+        .with_timeout(Duration::from_secs(1))
+        .with_connect_timeout(Duration::from_secs(1))
+        .with_qps(10)
+        .with_burst(1)
+        .with_max_domains(10)
+        .build()
+        .expect("build should succeed");
+
+    let result = crawler.get(&format!("http://{}", addr)).send().await;
+
+    assert!(result.is_err(), "1s timeout should fire on a 3s server");
 }

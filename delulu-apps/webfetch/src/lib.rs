@@ -132,11 +132,21 @@ pub async fn fetch_and_extract(
                 MAX_BODY_SIZE / (1024 * 1024),
             )));
         }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| WebfetchError::Fetch(format!("Failed to read response: {e}")))?;
-        let html = doc_to_html(bytes.to_vec(), url).await?;
+        // Stream chunks with size limit enforcement
+        let mut body = Vec::new();
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk
+                .map_err(|e| WebfetchError::Fetch(format!("Failed to read response chunk: {e}")))?;
+            if body.len() + chunk.len() > MAX_BODY_SIZE {
+                return Err(WebfetchError::IoError(format!(
+                    "Document exceeded size limit while streaming (max {} MB)",
+                    MAX_BODY_SIZE / (1024 * 1024),
+                )));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        let html = doc_to_html(body, url).await?;
         let markdown = doc_html_to_markdown(&html, None)?;
         return Ok(ExtractionResult::GenericHtml {
             content_md: MarkdownDocument {
@@ -354,7 +364,8 @@ pub async fn doc_to_html(bytes: Vec<u8>, url: &str) -> Result<String, WebfetchEr
     })
     .await
     .map_err(|e| WebfetchError::IoError(format!("Temp file task panicked: {e}")))?;
-    let temp_path = temp_file?.path().to_path_buf();
+    let temp_file = temp_file?;
+    let temp_path = temp_file.path().to_path_buf();
 
     // 4. Run xberg with 10s timeout
     let config = ExtractionConfig {
@@ -431,6 +442,8 @@ pub async fn fetch_doc(
 //
 // NOTE: Only use this for endpoints known to return text (arXiv HTML,
 // Discourse JSON). For arbitrary URLs, use fetch_and_extract which checks
+
+use std::net::{IpAddr, SocketAddr};
 // Content-Type before consuming the body.
 async fn fetch_url_text(
     url: &str,
@@ -468,11 +481,32 @@ pub async fn fetch_raw_html(
     if !(200..300).contains(&status) {
         return Err(WebfetchError::Fetch(format!("HTTP error {status}")));
     }
-    let body = response
-        .text()
-        .await
-        .map_err(|e| WebfetchError::Fetch(format!("Failed to read response: {e}")))?;
-    Ok(body)
+    // Reject oversized responses before streaming
+    if let Some(len) = response.content_length()
+        && len as usize > MAX_BODY_SIZE
+    {
+        return Err(WebfetchError::IoError(format!(
+            "Response too large: Content-Length {len} bytes (max {} MB)",
+            MAX_BODY_SIZE / (1024 * 1024),
+        )));
+    }
+    // Stream chunks with size limit enforcement
+    let mut body = Vec::new();
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk
+            .map_err(|e| WebfetchError::Fetch(format!("Failed to read response chunk: {e}")))?;
+        if body.len() + chunk.len() > MAX_BODY_SIZE {
+            return Err(WebfetchError::IoError(format!(
+                "Response exceeded size limit while streaming (max {} MB)",
+                MAX_BODY_SIZE / (1024 * 1024),
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let body_str = String::from_utf8(body)
+        .map_err(|e| WebfetchError::Fetch(format!("Response is not valid UTF-8: {e}")))?;
+    Ok(body_str)
 }
 
 // ---------------------------------------------------------------------------
@@ -563,6 +597,68 @@ fn collect_text_from_nodes(nodes: &[DomNode]) -> String {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+/// Check if an IP address is in a private/internal range.
+/// Used for SSRF protection in the MCP server.
+pub fn is_private_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()         // 127.0.0.0/8
+                || v4.is_private()    // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+                || v4.is_link_local() // 169.254.0.0/16 (includes cloud metadata 169.254.169.254)
+        }
+        IpAddr::V6(v6) => {
+            if is_ipv4_mapped(v6) {
+                // Extract embedded IPv4 and check if IT is private
+                let ipv4 = std::net::Ipv4Addr::from(
+                    (u128::from(*v6) & 0x0000_0000_0000_0000_0000_0000_FFFF_FFFF) as u32,
+                );
+                return ipv4.is_loopback() || ipv4.is_private() || ipv4.is_link_local();
+            }
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || is_ula(v6)
+                || is_link_local(v6)
+                || is_ipv4_compatible(v6)
+                || is_documentation(v6)
+        }
+    }
+}
+
+/// Check if an IPv6 address is a Unique Local Address (fc00::/7).
+pub fn is_ula(v6: &std::net::Ipv6Addr) -> bool {
+    v6.octets()[0] & 0xfe == 0xfc
+}
+
+/// Check if an IPv6 address is a link-local address (fe80::/10).
+pub fn is_link_local(v6: &std::net::Ipv6Addr) -> bool {
+    v6.octets()[0] == 0xfe && v6.octets()[1] & 0xc0 == 0x80
+}
+
+/// Check if an IPv6 address is an IPv4-mapped address (::ffff:0:0/96).
+pub fn is_ipv4_mapped(v6: &std::net::Ipv6Addr) -> bool {
+    (u128::from(*v6) >> 32) == 0xFFFF
+}
+
+/// Check if an IPv6 address is an IPv4-compatible address (::ffff:0:0:0/96).
+pub fn is_ipv4_compatible(v6: &std::net::Ipv6Addr) -> bool {
+    (u128::from(*v6) >> 32) == 0
+}
+
+/// Check if an IPv6 address is a documentation address (2001:db8::/32).
+pub fn is_documentation(v6: &std::net::Ipv6Addr) -> bool {
+    (u128::from(*v6) >> 96) == 0x2001_0DB8
+}
+
+/// Check if two socket addresses share the same subnet.
+/// Uses /16 for IPv4, /64 for IPv6.
+pub fn same_subnet_16(a: SocketAddr, b: SocketAddr) -> bool {
+    match (a.ip(), b.ip()) {
+        (IpAddr::V4(a), IpAddr::V4(b)) => (u32::from(a) >> 16) == (u32::from(b) >> 16),
+        (IpAddr::V6(a), IpAddr::V6(b)) => (u128::from(a) >> 64) == (u128::from(b) >> 64),
+        _ => false,
+    }
+}
 
 #[cfg(test)]
 #[path = "lib_test.rs"]

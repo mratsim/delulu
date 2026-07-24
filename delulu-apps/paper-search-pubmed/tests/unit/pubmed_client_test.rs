@@ -239,8 +239,8 @@ async fn test_get_paper_with_fixture() {
 /// Test that get_paper_raw fetches raw bytes from the server.
 #[tokio::test]
 async fn test_get_paper_raw_with_fixture() {
-    // get_paper_raw doesn't check HTTP status, so we test that it
-    // successfully fetches bytes from a matching server route.
+    // get_paper_raw now checks HTTP status (anti-regression).
+    // This test verifies it succeeds on a 200 response.
     let path =
         paper_search_test_utils::fixture_path("paper-search-pubmed", "pubmed-search.json.zst");
     let (url, _shutdown) =
@@ -255,4 +255,25 @@ async fn test_get_paper_raw_with_fixture() {
         "get_paper_raw should succeed when server responds"
     );
     assert!(!result.unwrap().is_empty(), "should return non-empty bytes");
+}
+
+// ── Anti-regression: build_pdf_url helper ───────────────────────────
+// URL construction must be deduplicated via build_pdf_url helper.
+
+#[test]
+fn test_build_pdf_url_constructs_correct_url() {
+    let url = super::build_pdf_url("https://www.ncbi.nlm.nih.gov", "PMC12345");
+    assert_eq!(url, "https://www.ncbi.nlm.nih.gov/articles/PMC12345/pdf/");
+}
+
+#[test]
+fn test_build_pdf_url_strips_pmc_prefix() {
+    let url = super::build_pdf_url("https://www.ncbi.nlm.nih.gov", "12345");
+    assert_eq!(url, "https://www.ncbi.nlm.nih.gov/articles/PMC12345/pdf/");
+}
+
+#[test]
+fn test_build_pdf_url_trailing_slash() {
+    let url = super::build_pdf_url("https://www.ncbi.nlm.nih.gov/", "PMC12345");
+    assert_eq!(url, "https://www.ncbi.nlm.nih.gov/articles/PMC12345/pdf/");
 }

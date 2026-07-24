@@ -162,7 +162,7 @@ impl Default for CrawlerBuilder {
     fn default() -> Self {
         Self {
             client: None,
-            client_builder: None,
+            client_builder: Some(Self::init_builder()),
             qps: 10,
             burst: 1,
             max_domains: 128,
@@ -172,9 +172,19 @@ impl Default for CrawlerBuilder {
 }
 
 impl CrawlerBuilder {
+    /// Create a wreq ClientBuilder with defaults (used when no user settings provided).
+    fn init_builder() -> wreq::ClientBuilder {
+        wreq::Client::builder()
+            .emulation(wreq_util::Emulation::Safari18_5)
+            .redirect(wreq::redirect::Policy::limited(5))
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(30))
+    }
+
     /// Use a pre-built `wreq::Client`. Cannot be mixed with builder settings.
     pub fn with_client(mut self, client: wreq::Client) -> Self {
         self.client = Some(client);
+        self.client_builder = None;
         self
     }
 
@@ -233,20 +243,8 @@ impl CrawlerBuilder {
         }
         let client = match (self.client, self.client_builder) {
             (Some(c), None) => c,
-            (None, Some(builder)) => builder
-                .emulation(wreq_util::Emulation::Safari18_5)
-                .redirect(wreq::redirect::Policy::limited(5))
-                .timeout(Duration::from_secs(30))
-                .connect_timeout(Duration::from_secs(30))
-                .build()
-                .map_err(CrawlerError::Http)?,
-            (None, None) => wreq::Client::builder()
-                .emulation(wreq_util::Emulation::Safari18_5)
-                .redirect(wreq::redirect::Policy::limited(5))
-                .timeout(Duration::from_secs(30))
-                .connect_timeout(Duration::from_secs(30))
-                .build()
-                .map_err(CrawlerError::Http)?,
+            (None, Some(builder)) => builder.build().map_err(CrawlerError::Http)?,
+            (None, None) => unreachable!("Default initializes client_builder"),
             (Some(_), Some(_)) => {
                 return Err(CrawlerError::InvalidConfig {
                     field: "client/client_builder",
@@ -374,3 +372,7 @@ impl<'a> std::future::IntoFuture for GetBuilder<'a> {
 #[cfg(test)]
 #[path = "../tests/unit/lib_test.rs"]
 mod tests;
+
+// ---------------------------------------------------------------------------
+// Anti-regression tests
+// ---------------------------------------------------------------------------

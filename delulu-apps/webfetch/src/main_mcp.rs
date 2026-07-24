@@ -31,6 +31,7 @@ use delulu_mcp_server_helper::{
 };
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use delulu_webfetch::{ExtractionResult, MAX_BODY_SIZE, RedditComment, fetch_and_extract};
+use delulu_webfetch::{is_private_ip, same_subnet_16};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::net::SocketAddr;
@@ -277,59 +278,6 @@ async fn validate_url(
 }
 
 /// Check if an IP address is in a private/internal range.
-fn is_private_ip(ip: &IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            v4.is_loopback()         // 127.0.0.0/8
-                || v4.is_private()    // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
-                || v4.is_link_local() // 169.254.0.0/16 (includes cloud metadata 169.254.169.254)
-        }
-        IpAddr::V6(v6) => {
-            v6.is_loopback()
-                || v6.is_unspecified()
-                || is_ula(v6)
-                || is_link_local(v6)
-                || is_ipv4_mapped(v6)
-                || is_ipv4_compatible(v6)
-                || is_documentation(v6)
-        }
-    }
-}
-
-/// Check if an IPv6 address is a Unique Local Address (fc00::/7).
-fn is_ula(v6: &std::net::Ipv6Addr) -> bool {
-    v6.octets()[0] & 0xfe == 0xfc
-}
-
-/// Check if an IPv6 address is a link-local address (fe80::/10).
-fn is_link_local(v6: &std::net::Ipv6Addr) -> bool {
-    (u128::from(*v6) >> 118) == 0x3FE
-}
-
-/// Check if an IPv6 address is an IPv4-mapped address (::ffff:0:0/96).
-fn is_ipv4_mapped(v6: &std::net::Ipv6Addr) -> bool {
-    (u128::from(*v6) >> 32) == 0xFFFF
-}
-
-/// Check if an IPv6 address is an IPv4-compatible address (::ffff:0:0:0/96).
-fn is_ipv4_compatible(v6: &std::net::Ipv6Addr) -> bool {
-    (u128::from(*v6) >> 32) == 0
-}
-
-/// Check if an IPv6 address is a documentation address (2001:db8::/32).
-fn is_documentation(v6: &std::net::Ipv6Addr) -> bool {
-    (u128::from(*v6) >> 96) == 0x2001_0DB8
-}
-
-/// Check if two socket addresses share the same subnet.
-/// Uses /16 for IPv4, /64 for IPv6.
-fn same_subnet_16(a: SocketAddr, b: SocketAddr) -> bool {
-    match (a.ip(), b.ip()) {
-        (IpAddr::V4(a), IpAddr::V4(b)) => (u32::from(a) >> 16) == (u32::from(b) >> 16),
-        (IpAddr::V6(a), IpAddr::V6(b)) => (u128::from(a) >> 64) == (u128::from(b) >> 64),
-        _ => false,
-    }
-}
 // ---------------------------------------------------------------------------
 // md_doc_to_string: Convert ExtractionResult to a Markdown string
 // ---------------------------------------------------------------------------
@@ -443,3 +391,7 @@ async fn main() -> Result<(), Error> {
 
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Anti-regression tests
+// ---------------------------------------------------------------------------
