@@ -8,7 +8,6 @@
 use std::io::Read;
 use std::path::PathBuf;
 
-use delulu_webfetch::generators::gen_html::dom_nodes_to_html;
 use delulu_webfetch::pipelines::{DomNode, parse_html};
 use regex::Regex;
 
@@ -107,7 +106,7 @@ mod tests {
 
     #[test]
     fn load_001() {
-        let (node, expected) = load_test_case("001");
+        let (_node, expected) = load_test_case("001");
         // DomNode is always non-empty (it's the root element)
         assert!(!expected.is_empty(), "001 should have expected.html");
     }

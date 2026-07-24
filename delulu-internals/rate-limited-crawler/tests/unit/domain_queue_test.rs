@@ -54,7 +54,7 @@ async fn test_no_busy_spin() {
     // Second acquire at the same time should be denied and sleep.
     // With tokio::time::pause(), we can verify a sleep was issued.
     tokio::time::pause();
-    let start = tokio::time::Instant::now();
+    let _start = tokio::time::Instant::now();
 
     tokio::spawn(async move {
         // This will be denied and need to sleep ~100ms.

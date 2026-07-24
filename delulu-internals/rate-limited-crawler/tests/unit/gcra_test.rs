@@ -1,7 +1,6 @@
 use crate::gcra::GcraState;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 
 /// Helper: create a GcraState and compute `now` from the start instant.
 fn setup(qps: u64, burst: u64) -> GcraState {

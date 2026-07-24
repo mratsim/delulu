@@ -39,7 +39,6 @@ fn test_new_creates_client_with_defaults() {
 #[test]
 fn test_with_api_url_custom() {
     let client = PubmedClient::new().unwrap().with_api_url("http://localhost:9999".to_string());
-        ;
     let _ = client;
 }
 

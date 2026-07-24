@@ -61,7 +61,7 @@ async fn test_arxiv_mcp_e2e_http() {
         .spawn()
         .expect("Failed to spawn MCP server");
 
-    let stderr_handle = std::thread::spawn({
+    let _stderr_handle = std::thread::spawn({
         let stderr = mcp_child.stderr.take().unwrap();
         move || {
             use std::io::Read;

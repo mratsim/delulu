@@ -226,24 +226,3 @@ fn test_error_xberg() {
     assert_eq!(e.to_string(), "xberg error: xberg service unavailable");
 }
 
-// -- Response content_type ----------------------------------------------------
-
-#[test]
-fn test_response_content_type_some() {
-    let r = Response {
-        status: 200,
-        body: "hello".into(),
-        content_type: Some("text/html".into()),
-    };
-    assert_eq!(r.content_type.as_deref(), Some("text/html"));
-}
-
-#[test]
-fn test_response_content_type_none() {
-    let r = Response {
-        status: 200,
-        body: "hello".into(),
-        content_type: None,
-    };
-    assert_eq!(r.content_type, None);
-}

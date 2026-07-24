@@ -187,7 +187,6 @@ impl PubmedClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_get_paper_url_with_pmc_prefix() {

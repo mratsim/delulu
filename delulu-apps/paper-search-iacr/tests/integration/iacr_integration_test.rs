@@ -6,8 +6,9 @@ async fn test_iacr_list_recent_with_fixture() {
     let path = fixture_path("paper-search-iacr", "iacr-rss.xml.zst");
     let (url, _shutdown) = serve_fixture("/rss/rss.xml", path).await;
 
-    let client = delulu_paper_search_iacr::IacrClient::with_base_url(5, url)
-        .expect("failed to create client");
+    let client = delulu_paper_search_iacr::IacrClient::new()
+        .expect("failed to create client")
+        .with_base_url(url);
 
     let papers = client
         .list_recent_papers()
@@ -23,8 +24,9 @@ async fn test_iacr_get_details_with_fixture() {
     let path = fixture_path("paper-search-iacr", "iacr-paper.html.zst");
     let (url, _shutdown) = serve_fixture("/2025/1", path).await;
 
-    let client = delulu_paper_search_iacr::IacrClient::with_base_url(5, url)
-        .expect("failed to create client");
+    let client = delulu_paper_search_iacr::IacrClient::new()
+        .expect("failed to create client")
+        .with_base_url(url);
 
     let paper = client
         .get_paper_details(2025, 1)
