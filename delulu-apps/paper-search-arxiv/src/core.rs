@@ -70,69 +70,18 @@ impl SearchQuery {
     }
 }
 
-/// Normalize arXiv Atom XML by removing namespace declarations and renaming
-/// prefixed elements (e.g. `arxiv:comment` → `arxiv_comment`).
+/// Normalize arXiv Atom XML by renaming prefixed elements
+/// (e.g. `arxiv:comment` → `arxiv_comment`).
 ///
-/// Strips xmlns attributes from both root elements (`<feed xmlns=...>`),
-/// where the preceding character is `<`, and nested elements
-/// (`<entry xmlns=...>`) where the preceding character is whitespace.
-/// Only matches inside XML tags to avoid false positives in text content.
+/// xmlns attributes are already ignored by the XML parser (serde-xml-rs)
+/// and do not need to be stripped.
 fn normalize_xml(raw: &str) -> String {
     let mut result = String::with_capacity(raw.len());
     let bytes = raw.as_bytes();
     let len = bytes.len();
     let mut i = 0;
-    let mut in_tag = false;
 
     while i < len {
-        // Track whether we're inside an XML tag
-        if bytes[i] == b'<' {
-            in_tag = true;
-        } else if bytes[i] == b'>' {
-            in_tag = false;
-        }
-
-        // Check for xmlns declarations (only inside tags)
-        // Preceded by whitespace (<elem xmlns=...>) or by < (<feed xmlns=...>)
-        if in_tag
-            && i + 5 < len
-            && (bytes[i].is_ascii_whitespace() || bytes[i] == b'<')
-            && bytes[i + 1] == b'x'
-            && bytes[i + 2] == b'm'
-            && bytes[i + 3] == b'l'
-            && bytes[i + 4] == b'n'
-            && bytes[i + 5] == b's'
-        {
-            // Skip past the entire xmlns="..." or xmlns:prefix="..."
-            // Find the end of the attribute value
-            let mut attr_end = i + 6;
-            let mut in_value = false;
-            let mut quote_char = '"';
-            let mut seen_opening_quote = false;
-            while attr_end < len {
-                if !in_value {
-                    if bytes[attr_end] == b'=' {
-                        in_value = true;
-                    }
-                } else if bytes[attr_end] == b'"' || bytes[attr_end] == b'\'' {
-                    if !seen_opening_quote {
-                        seen_opening_quote = true;
-                        quote_char = bytes[attr_end] as char;
-                    } else if bytes[attr_end] as char == quote_char {
-                        // End of attribute value
-                        i = attr_end + 1;
-                        break;
-                    }
-                }
-                attr_end += 1;
-            }
-            if attr_end >= len {
-                result.push(bytes[i] as char);
-                i += 1;
-            }
-            continue;
-        }
-
         // Rename prefixed elements: <arxiv:comment> → <arxiv_comment>
         if bytes[i] == b'<' {
             // Look ahead for a colon in the tag name

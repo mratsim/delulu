@@ -136,6 +136,18 @@ fn table_is_complex(node: &DomNode) -> bool {
     false
 }
 
+/// Convert math alttext to LaTeX. Returns None if alttext is empty
+/// (caller should render children as fallback).
+fn math_to_latex(alttext: &str, display: &str) -> Option<String> {
+    if alttext.is_empty() {
+        return None;
+    }
+    if display == "block" || display == "display" {
+        Some(format!("$$\\displaystyle {alttext}$$\n"))
+    } else {
+        Some(format!("${alttext}$"))
+    }
+}
 /// Serialize a DomNode tree to an HTML string.
 fn serialize_node_to_html(node: &DomNode) -> String {
     match node {
@@ -163,12 +175,8 @@ fn serialize_node_to_html(node: &DomNode) -> String {
             if tag == "math" {
                 let alttext = get_attr(attrs, "alttext").unwrap_or("");
                 let display = get_attr(attrs, "display").unwrap_or("inline");
-                if !alttext.is_empty() {
-                    if display == "block" || display == "display" {
-                        return format!("$$\\displaystyle {}$$\n", alttext);
-                    } else {
-                        return format!("${}$", alttext);
-                    }
+                if let Some(latex) = math_to_latex(alttext, display) {
+                    return latex;
                 }
                 // No alttext — render children as fallback
                 return children
@@ -440,18 +448,12 @@ impl MarkdownLowerer {
             "math" => {
                 let alttext = get_attr(attrs, "alttext").unwrap_or("");
                 let display = get_attr(attrs, "display").unwrap_or("inline");
-                if alttext.is_empty() {
+                if let Some(latex) = math_to_latex(alttext, display) {
+                    out.push_str(&latex);
+                } else {
                     // Fallback: render text content
                     let text = collect_text(children);
                     out.push_str(&text);
-                } else if display == "block" || display == "display" {
-                    out.push_str("$$\\displaystyle ");
-                    out.push_str(alttext);
-                    out.push_str("$$\n\n");
-                } else {
-                    out.push('$');
-                    out.push_str(alttext);
-                    out.push('$');
                 }
             }
 

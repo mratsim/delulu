@@ -172,15 +172,9 @@ async fn test_find_related_with_fixture() {
     let client = PubmedClient::new().unwrap().with_api_url(server_url);
 
     let result = client.find_related("37994677").await;
-    // Verify the HTTP roundtrip worked — if parsing fails, the error should be a parse error
-    // (not a connection error), proving the request reached the fixture server.
-    match &result {
-        Ok(_) => {} // parsing succeeded
-        Err(e) => assert!(
-            e.to_string().contains("parse") || e.to_string().contains("expected"),
-            "expected parse error (HTTP worked), got: {e}"
-        ),
-    }
+    let related = result.expect("find_related should succeed with fixture data");
+    assert!(!related.input_pmids.is_empty(), "should have input PMIDs");
+    assert!(!related.related.is_empty(), "should have related PMIDs");
 }
 
 /// Test that the PubMed client can get database info using fixture data.
