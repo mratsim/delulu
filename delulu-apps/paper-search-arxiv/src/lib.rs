@@ -69,19 +69,15 @@ impl ArxivClient {
         self.api_url = url;
         self
     }
-    /// Search papers on arXiv by query.
-    pub async fn search_papers(&self, query: &SearchQuery) -> Result<Vec<Paper>> {
-        let query_string = query.to_query_string();
-        let url = format!("{}?{}", self.api_url, query_string);
 
+    /// Fetch an arXiv API URL and parse the Atom response.
+    async fn fetch_atom(&self, url: &str) -> Result<Vec<Paper>> {
         tracing::debug!("arXiv API request: {}", url);
-
         let response = self
             .crawler
-            .get(&url)
+            .get(url)
             .await
             .context("arXiv API request failed")?;
-
         let status = response.status();
         if !status.is_success() {
             anyhow::bail!(
@@ -90,46 +86,25 @@ impl ArxivClient {
                 response.text().await.unwrap_or_default()
             );
         }
-
         let body = response
             .text()
             .await
             .context("Failed to read response body")?;
-        let papers = core::parse_atom_response(&body)
-            .map_err(|e| anyhow::anyhow!("Failed to parse arXiv response: {}", e))?;
+        core::parse_atom_response(&body)
+            .map_err(|e| anyhow::anyhow!("Failed to parse arXiv response: {}", e))
+    }
 
-        Ok(papers)
+    /// Search papers on arXiv by query.
+    pub async fn search_papers(&self, query: &SearchQuery) -> Result<Vec<Paper>> {
+        let query_string = query.to_query_string();
+        let url = format!("{}?{}", self.api_url, query_string);
+        self.fetch_atom(&url).await
     }
 
     /// Fetch specific papers by their arXiv IDs.
     pub async fn get_papers_by_id(&self, ids: &str) -> Result<Vec<Paper>> {
         let url = format!("{}?id_list={}", self.api_url, ids);
-
-        tracing::debug!("arXiv API request: {}", url);
-
-        let response = self
-            .crawler
-            .get(&url)
-            .await
-            .context("arXiv API request failed")?;
-
-        let status = response.status();
-        if !status.is_success() {
-            anyhow::bail!(
-                "arXiv API returned HTTP {}: {}",
-                status,
-                response.text().await.unwrap_or_default()
-            );
-        }
-
-        let body = response
-            .text()
-            .await
-            .context("Failed to read response body")?;
-        let papers = core::parse_atom_response(&body)
-            .map_err(|e| anyhow::anyhow!("Failed to parse arXiv response: {}", e))?;
-
-        Ok(papers)
+        self.fetch_atom(&url).await
     }
 
     /// Fetch the full paper as markdown from arXiv HTML5.
