@@ -507,14 +507,12 @@ async fn test_fetch_doc_as_html_returns_raw_html() {
         .expect("build");
 
     let result = crate::fetch_doc_as_html(&url, &crawler).await;
-    // May fail due to xberg not finding valid PDF content, but should NOT
-    // return Markdown (would indicate doc_to_html is doing md conversion)
-    if let Ok(html) = result {
-        assert!(
-            !html.contains("# "),
-            "fetch_doc_as_html should not return Markdown"
-        );
-    }
+    let html =
+        result.expect("fetch_doc_as_html should succeed — if xberg is unavailable, skip this test");
+    assert!(
+        !html.contains("# "),
+        "fetch_doc_as_html should not return Markdown"
+    );
 }
 
 // ── Anti-regression: fetch_doc still returns ExtractionResult ───────
@@ -546,10 +544,11 @@ async fn test_fetch_doc_returns_extraction_result() {
 
     let result = crate::fetch_doc(&url, &crawler).await;
     // fetch_doc should return ExtractionResult, not String
+    let result =
+        result.expect("fetch_doc should succeed — if xberg is unavailable, skip this test");
     match result {
-        Ok(crate::ExtractionResult::GenericHtml { .. }) => {} // expected
-        Ok(_) => panic!("fetch_doc should return GenericHtml variant"),
-        Err(_) => {} // may fail on real xberg, but type is correct
+        crate::ExtractionResult::GenericHtml { .. } => {} // expected
+        _ => panic!("fetch_doc should return GenericHtml variant"),
     }
 }
 

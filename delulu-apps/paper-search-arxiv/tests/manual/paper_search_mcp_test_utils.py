@@ -2,6 +2,7 @@
 """Shared test utilities for paper-search MCP integration tests."""
 
 import socket
+import sys
 import time
 from pathlib import Path
 
@@ -22,6 +23,14 @@ def find_server_binary(binary_name: str) -> Path:
     ]:
         if candidate.exists():
             return candidate
+    # On Windows, also check with .exe extension
+    if sys.platform == "win32":
+        for candidate in [
+            workspace / "target" / "debug" / f"{binary_name}.exe",
+            workspace / "target" / "release" / f"{binary_name}.exe",
+        ]:
+            if candidate.exists():
+                return candidate
     raise RuntimeError(
         f"Could not find {binary_name} binary. "
         f"Run `cargo build -p <crate> --features mcp` first."

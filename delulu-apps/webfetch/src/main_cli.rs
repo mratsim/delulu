@@ -13,7 +13,7 @@
 //! ```
 
 use anyhow::{Context, Error, Result};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use delulu_webfetch::{
     ExtractionResult, MAX_BODY_SIZE, MarkdownDocument, RedditComment, fetch_and_extract,
@@ -24,9 +24,25 @@ use std::time::Duration;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 // ---------------------------------------------------------------------------
-// Args (flat, backward-compatible with prior versions)
+// Subcommand enum
 // ---------------------------------------------------------------------------
 
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Fetch a document (PDF, Word, etc.) and convert to markdown/html.
+    Doc(DocArgs),
+}
+
+#[derive(Parser, Debug)]
+#[command(name = "delulu-fetch")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+// ---------------------------------------------------------------------------
+// Args (flat, backward-compatible with prior versions)
+// ---------------------------------------------------------------------------
 #[derive(Parser, Debug)]
 #[command(name = "delulu-fetch")]
 struct Args {
@@ -179,22 +195,16 @@ async fn main() -> Result<(), Error> {
         )
         .init();
 
-    // Check if the first argument is "doc" to dispatch to doc subcommand
-    let args: Vec<String> = std::env::args().collect();
-    let is_doc = args.get(1).map(|s| s == "doc").unwrap_or(false);
-
-    if is_doc {
-        // Strip the "doc" subcommand name — clap's parse_from expects
-        // [program_name, url, ...], not [program_name, subcommand, url, ...]
-        let mut doc_argv = vec![args[0].clone()]; // program name
-        doc_argv.extend(args.iter().skip(2).cloned()); // skip "doc"
-        let doc_args = DocArgs::parse_from(&doc_argv);
-        return run_doc(doc_args).await;
-    } else {
-        // Use original flat-args parsing (backward-compatible with prior versions)
-        let args = Args::parse();
-        run_fetch(args).await
+    // Try clap subcommand parsing first (for "doc" subcommand)
+    if let Ok(cli) = Cli::try_parse() {
+        if let Some(Command::Doc(doc_args)) = cli.command {
+            return run_doc(doc_args).await;
+        }
     }
+
+    // Fallback to flat args (backward-compatible with prior versions)
+    let args = Args::parse();
+    run_fetch(args).await
 }
 
 async fn run_fetch(args: Args) -> Result<(), Error> {

@@ -50,9 +50,12 @@ async def test_list_tools(session) -> bool:
 
 
 def find_free_port():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
+    """Find a free port by binding to port 0 and keeping it reserved until caller closes the socket."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("", 0))
+    sock.listen(1)  # Keep reserved until subprocess takes over
+    port = sock.getsockname()[1]
+    return port, sock
 
 
 
@@ -60,7 +63,7 @@ async def run_all_tests():
     server_binary = find_server_binary("delulu-arxiv-mcp")
     print(f"Using server binary: {server_binary}")
 
-    port = find_free_port()
+    port, reserve_sock = find_free_port()
     server_url = f"http://127.0.0.1:{port}/mcp"
 
     child = subprocess.Popen(
@@ -69,7 +72,7 @@ async def run_all_tests():
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
-
+    reserve_sock.close()  # Release reservation; subprocess will bind
     try:
         wait_for_server(port)
         print(f"Server ready on port {port}")
