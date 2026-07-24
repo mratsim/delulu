@@ -129,7 +129,14 @@ pub async fn fetch_and_extract(
             .bytes()
             .await
             .map_err(|e| WebfetchError::Fetch(format!("Failed to read response: {e}")))?;
-        return process_doc_bytes(bytes.to_vec(), url).await;
+        let html = doc_to_html(bytes.to_vec(), url).await?;
+        let markdown = doc_html_to_markdown(&html, None)?;
+        return Ok(ExtractionResult::GenericHtml {
+            content_md: MarkdownDocument {
+                frontmatter: format!("title: {}\nsource_type: document\nsource_url: {}", "", url),
+                body: markdown,
+            },
+        });
     }
 
     // Step 4: Consume body as text (safe now — confirmed not a document MIME)
@@ -205,7 +212,7 @@ pub async fn extract(
 }
 
 // ---------------------------------------------------------------------------
-// xberg_html_to_markdown
+// doc_html_to_markdown
 // ---------------------------------------------------------------------------
 
 /// Convert HTML (from xberg PDF/text conversion) into Markdown.
@@ -222,7 +229,7 @@ pub async fn extract(
 /// # Returns
 /// - `Ok(markdown_string)` on success
 /// - `Err(WebfetchError::Parse(msg))` if HTML parsing fails
-pub fn xberg_html_to_markdown(
+pub fn doc_html_to_markdown(
     xberg_html: &str,
     base_url: Option<&str>,
 ) -> Result<String, WebfetchError> {
@@ -233,32 +240,30 @@ pub fn xberg_html_to_markdown(
 }
 
 // ---------------------------------------------------------------------------
-// fetch_doc
+// fetch_doc_as_html
 // ---------------------------------------------------------------------------
-
 /// Maximum document size in bytes (50 MB).
 /// PDF/document downloads exceeding this size are rejected.
 const MAX_DOC_SIZE: usize = 50 * 1024 * 1024;
-
-/// Fetch a document (PDF, DOCX, etc.) via xberg and convert to markdown.
+/// Fetch a document (PDF, DOCX, etc.) and return raw HTML from xberg.
 ///
 /// Downloads raw bytes via `crawler`, writes to a temporary file,
-/// runs xberg extraction with a 10-second timeout, then parses, filters, and
-/// lowers the resulting HTML to Markdown.
+/// runs xberg extraction with a 10-second timeout, and returns the
+/// raw HTML output from xberg without converting to Markdown.
 ///
 /// # Arguments
 /// - `url`: The document URL to fetch.
 /// - `crawler`: A `RateLimitedCrawler` instance for HTTP fetching.
 ///
 /// # Returns
-/// - `Ok(ExtractionResult::GenericHtml { content_md })` with `source_type: "document"` in frontmatter.
+/// - `Ok(html_string)` — raw HTML from xberg.
 /// - `Err(WebfetchError::IoError(msg))` if the document exceeds 50 MB or temp I/O fails.
 /// - `Err(WebfetchError::XbergError(msg))` if xberg extraction fails or times out.
 /// - `Err(WebfetchError::Fetch(msg))` if the HTTP fetch fails.
-pub async fn fetch_doc(
+pub async fn fetch_doc_as_html(
     url: &str,
     crawler: &RateLimitedCrawler,
-) -> Result<ExtractionResult, WebfetchError> {
+) -> Result<String, WebfetchError> {
     // 1. Stream response body with size limit check
     let response = crawler
         .get(url)
@@ -296,25 +301,16 @@ pub async fn fetch_doc(
         body.extend_from_slice(&chunk);
     }
 
-    process_doc_bytes(body, url).await
+    // 2. Convert bytes to HTML via xberg
+    doc_to_html(body, url).await
 }
 
-/// Process raw document bytes through xberg extraction and return markdown.
+/// Convert raw document bytes to HTML via xberg extraction.
 ///
-/// Writes bytes to a temporary file, runs xberg extraction with a 10-second timeout,
-/// then parses, filters, and lowers the resulting HTML to Markdown.
-///
-/// # Arguments
-/// - `bytes`: Raw document bytes (PDF, DOCX, etc.).
-/// - `url`: The original source URL (used for frontmatter `source_url`).
-///
-/// # Returns
-/// - `Ok(ExtractionResult::GenericHtml { content_md })` with `source_type: "document"` in frontmatter.
-pub async fn process_doc_bytes(
-    bytes: Vec<u8>,
-    url: &str,
-) -> Result<ExtractionResult, WebfetchError> {
-    // 1. Check size ≤ 50 MB
+/// Writes bytes to a temporary file with an extension hint from the URL,
+/// runs xberg extraction with a 10-second timeout, and returns the raw HTML.
+pub async fn doc_to_html(bytes: Vec<u8>, url: &str) -> Result<String, WebfetchError> {
+    // 1. Check size <= 50 MB
     if bytes.len() > MAX_DOC_SIZE {
         return Err(WebfetchError::IoError(format!(
             "Document too large: {} bytes (max {} MB)",
@@ -323,7 +319,7 @@ pub async fn process_doc_bytes(
         )));
     }
 
-    // 2. Write to a NamedTempFile with extension hint from URL
+    // 2. Extension hint from URL
     let extension = url::Url::parse(url)
         .ok()
         .and_then(|parsed| {
@@ -333,29 +329,26 @@ pub async fn process_doc_bytes(
         })
         .unwrap_or_default();
 
+    // 3. Write to temp file
     let mut temp_file = Builder::new()
         .suffix(&extension)
         .tempfile()
         .map_err(|e| WebfetchError::IoError(format!("Failed to create temp file: {e}")))?;
-
     temp_file
         .write_all(&bytes)
         .map_err(|e| WebfetchError::IoError(format!("Failed to write temp file: {e}")))?;
-
     let temp_path = temp_file.path().to_path_buf();
 
-    // 3. Run xberg with 10s timeout
+    // 4. Run xberg with 10s timeout
     let config = ExtractionConfig {
         output_format: OutputFormat::Html,
         use_cache: false,
         ..Default::default()
     };
-
     let input = ExtractInput {
         uri: Some(temp_path.to_string_lossy().to_string()),
         ..Default::default()
     };
-
     let result = tokio::time::timeout(Duration::from_secs(10), xberg_extract(input, &config))
         .await
         .map_err(|_| {
@@ -370,10 +363,32 @@ pub async fn process_doc_bytes(
         .and_then(|doc| doc.formatted_content.or(Some(doc.content)))
         .ok_or_else(|| WebfetchError::XbergError("no content produced".into()))?;
 
-    // 4. Parse, filter, and lower to markdown
-    let markdown = xberg_html_to_markdown(&html, None)?;
+    Ok(html)
+}
 
-    // 5. Return GenericHtml with source_type: "document"
+// ---------------------------------------------------------------------------
+// fetch_doc
+// ---------------------------------------------------------------------------
+/// Fetch a document (PDF, DOCX, etc.) via xberg and convert to markdown.
+///
+/// Downloads raw bytes via `crawler`, runs xberg extraction, then converts
+/// the resulting HTML to Markdown.
+///
+/// # Arguments
+/// - `url`: The document URL to fetch.
+/// - `crawler`: A `RateLimitedCrawler` instance for HTTP fetching.
+///
+/// # Returns
+/// - `Ok(ExtractionResult::GenericHtml { content_md })` with `source_type: "document"` in frontmatter.
+/// - `Err(WebfetchError::IoError(msg))` if the document exceeds 50 MB or temp I/O fails.
+/// - `Err(WebfetchError::XbergError(msg))` if xberg extraction fails or times out.
+/// - `Err(WebfetchError::Fetch(msg))` if the HTTP fetch fails.
+pub async fn fetch_doc(
+    url: &str,
+    crawler: &RateLimitedCrawler,
+) -> Result<ExtractionResult, WebfetchError> {
+    let html = fetch_doc_as_html(url, crawler).await?;
+    let markdown = doc_html_to_markdown(&html, None)?;
     Ok(ExtractionResult::GenericHtml {
         content_md: MarkdownDocument {
             frontmatter: format!("title: {}\nsource_type: document\nsource_url: {}", "", url),
@@ -381,6 +396,7 @@ pub async fn process_doc_bytes(
         },
     })
 }
+
 
 // ---------------------------------------------------------------------------
 // Helper: fetch_url_text

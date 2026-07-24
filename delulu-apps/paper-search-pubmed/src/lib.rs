@@ -194,14 +194,12 @@ impl PubmedClient {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to read PDF bytes: {}", e))?;
 
-        let result = delulu_webfetch::process_doc_bytes(bytes.to_vec(), &url)
+        let html = delulu_webfetch::doc_to_html(bytes.to_vec(), &url)
             .await
             .context("Failed to process PubMed paper PDF")?;
-
-        match result {
-            delulu_webfetch::ExtractionResult::GenericHtml { content_md } => Ok(content_md.body),
-            _ => anyhow::bail!("Unexpected result type from fetch_doc"),
-        }
+        let md = delulu_webfetch::doc_html_to_markdown(&html, None)
+            .context("Failed to convert HTML to markdown")?;
+        Ok(md)
     }
 
     /// Download a PubMed Central paper by PMC ID and return raw PDF bytes.

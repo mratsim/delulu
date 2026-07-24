@@ -249,12 +249,12 @@ async fn test_fetch_url_too_long() {
     );
 }
 
-// ── xberg_html_to_markdown tests ─────────────────────────────────────────
+// ── doc_html_to_markdown tests ─────────────────────────────────────────
 
 #[test]
-fn test_xberg_html_to_markdown_plain_html() {
+fn test_doc_html_to_markdown_plain_html() {
     let html = "<html><body><h1>Title</h1><p>Paragraph</p></body></html>";
-    let result = xberg_html_to_markdown(html, None).unwrap();
+    let result = doc_html_to_markdown(html, None).unwrap();
     assert!(result.contains("Title"), "should contain title text");
     assert!(
         result.contains("Paragraph"),
@@ -263,26 +263,26 @@ fn test_xberg_html_to_markdown_plain_html() {
 }
 
 #[test]
-fn test_xberg_html_to_markdown_removes_scripts() {
+fn test_doc_html_to_markdown_removes_scripts() {
     let html = r#"<html><body><script>alert(1)</script><p>Content</p></body></html>"#;
-    let result = xberg_html_to_markdown(html, None).unwrap();
+    let result = doc_html_to_markdown(html, None).unwrap();
     assert!(!result.contains("alert"), "scripts should be removed");
     assert!(result.contains("Content"), "content should remain");
 }
 
 #[test]
-fn test_xberg_html_to_markdown_removes_styles() {
+fn test_doc_html_to_markdown_removes_styles() {
     let html =
         r#"<html><head><style>body{color:red}</style></head><body><p>Text</p></body></html>"#;
-    let result = xberg_html_to_markdown(html, None).unwrap();
+    let result = doc_html_to_markdown(html, None).unwrap();
     assert!(!result.contains("color:red"), "styles should be removed");
     assert!(result.contains("Text"), "content should remain");
 }
 
 #[test]
-fn test_xberg_html_to_markdown_with_base_url() {
+fn test_doc_html_to_markdown_with_base_url() {
     let html = r#"<html><body><a href="/relative">Link</a></body></html>"#;
-    let result = xberg_html_to_markdown(html, Some("https://example.com")).unwrap();
+    let result = doc_html_to_markdown(html, Some("https://example.com")).unwrap();
     assert!(
         result.contains("https://example.com/relative") || result.contains("/relative"),
         "expected resolved URL in markdown output, got: {result}"
@@ -291,9 +291,9 @@ fn test_xberg_html_to_markdown_with_base_url() {
 }
 
 #[test]
-fn test_xberg_html_to_markdown_empty_html() {
+fn test_doc_html_to_markdown_empty_html() {
     let html = "";
-    let result = xberg_html_to_markdown(html, None).unwrap();
+    let result = doc_html_to_markdown(html, None).unwrap();
     assert!(
         result.trim().is_empty() || result.is_empty(),
         "empty HTML should produce empty output"
@@ -301,9 +301,9 @@ fn test_xberg_html_to_markdown_empty_html() {
 }
 
 #[test]
-fn test_xberg_html_to_markdown_preserves_img() {
+fn test_doc_html_to_markdown_preserves_img() {
     let html = r#"<html><body><img src="pic.png" alt="Pic"/><p>Text</p></body></html>"#;
-    let result = xberg_html_to_markdown(html, None).unwrap();
+    let result = doc_html_to_markdown(html, None).unwrap();
     assert!(
         result.contains("pic.png") || result.contains("Pic"),
         "image should be preserved"
@@ -312,17 +312,17 @@ fn test_xberg_html_to_markdown_preserves_img() {
 }
 
 #[test]
-fn test_xberg_html_to_markdown_public_api() {
+fn test_doc_html_to_markdown_public_api() {
     let html = "<html><body><p>API test</p></body></html>";
-    let result = xberg_html_to_markdown(html, None).unwrap();
+    let result = doc_html_to_markdown(html, None).unwrap();
     assert!(result.contains("API test"), "public API should work");
 }
 
 #[test]
 #[ignore = "parse_html is currently infallible (scraper parses everything). Enable when MAX_NODES guard enforced."]
-fn test_xberg_html_to_markdown_parse_error() {
+fn test_doc_html_to_markdown_parse_error() {
     let bad_html = "<html><body><p>unclosed";
-    let result = xberg_html_to_markdown(bad_html, None);
+    let result = doc_html_to_markdown(bad_html, None);
     assert!(result.is_err(), "malformed HTML should produce an error");
     match result {
         Err(WebfetchError::Parse(_)) => {} // expected

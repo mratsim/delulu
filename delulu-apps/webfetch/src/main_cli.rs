@@ -331,17 +331,17 @@ async fn run_doc(args: DocArgs) -> Result<(), Error> {
         .build()
         .context("Failed to create rate-limited crawler")?;
 
-    let result = delulu_webfetch::fetch_doc(&args.url, &crawler)
-        .await
-        .context("Document fetch failed")?;
-
     match args.output_format.as_deref() {
         Some("html") => {
-            if let ExtractionResult::GenericHtml { content_md } = &result {
-                println!("{}", content_md.body);
-            }
+            let html = delulu_webfetch::fetch_doc_as_html(&args.url, &crawler)
+                .await
+                .context("Document fetch failed")?;
+            println!("{}", html);
         }
         _ => {
+            let result = delulu_webfetch::fetch_doc(&args.url, &crawler)
+                .await
+                .context("Document fetch failed")?;
             let md = md_doc_to_string(result);
             println!("{md}");
         }
