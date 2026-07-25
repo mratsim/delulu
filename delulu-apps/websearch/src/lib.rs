@@ -23,18 +23,21 @@ pub mod engine;
 pub mod error;
 pub mod engines;
 pub mod parsers;
+pub mod session_key;
 
-pub use engine::{Engine, SearchParams, SearchResult};
+pub use engine::{Continuation, Engine, EngineId, SearchParams, SearchResult, SearchResponse};
 pub use error::WebsearchError;
 pub use engines::EngineRegistry;
 pub use parsers::{
     parse_country, parse_max_results, parse_page, parse_safesearch, validate_query,
 };
+pub use session_key::SessionKey;
+
 /// Sanitize a string for logging: strip control characters, truncate at 2048 bytes.
 ///
 /// This is shared across all engine backends to ensure consistent log output.
 /// Truncation is at the UTF-8 character boundary (not byte-slicing) to avoid panics.
-pub(crate) fn sanitize_for_log(s: &str) -> String {
+pub fn sanitize_for_log(s: &str) -> String {
     // First filter out control characters, then truncate to 2048 bytes at char boundary
     let cleaned: String = s
         .chars()
@@ -48,58 +51,4 @@ pub(crate) fn sanitize_for_log(s: &str) -> String {
     }
     let end = cleaned.floor_char_boundary(byte_limit);
     cleaned[..end].to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sanitize_for_log_strips_control_chars() {
-        let input = "hello\x00world\x1btest\nnewline";
-        let result = sanitize_for_log(input);
-        assert!(!result.contains('\x00'));
-        assert!(!result.contains('\x1b'));
-        assert!(result.contains("hello"));
-        assert!(result.contains("world"));
-        assert!(result.contains("test"));
-        assert!(result.contains("newline"));
-    }
-
-    #[test]
-    fn sanitize_for_log_truncates_at_2048_bytes() {
-        // Create a string of ~3000 ASCII bytes (1 char = 1 byte)
-        let long = "a".repeat(3000);
-        let result = sanitize_for_log(&long);
-        assert_eq!(result.len(), 2048);
-        assert!(result.chars().all(|c| c == 'a'));
-    }
-
-    #[test]
-    fn sanitize_for_log_short_string_unchanged() {
-        let input = "hello world";
-        let result = sanitize_for_log(input);
-        assert_eq!(result, "hello world");
-    }
-
-    #[test]
-    fn sanitize_for_log_cjk_at_boundary() {
-        // CJK chars are 3 bytes each. 2048 / 3 = 682.66, so at most 682 chars
-        let long: String = "中".repeat(1000); // 3000 bytes
-        let result = sanitize_for_log(&long);
-        // Should be at most 2048 bytes, at a char boundary (so 682 * 3 = 2046)
-        assert!(result.len() <= 2048);
-        assert_eq!(result.len() % 3, 0); // must be at char boundary
-        assert!(result.chars().all(|c| c == '中'));
-    }
-
-    #[test]
-    fn sanitize_for_log_emoji_at_boundary() {
-        // Emoji are 4 bytes each. 2048 / 4 = 512
-        let long: String = "😀".repeat(600); // 2400 bytes
-        let result = sanitize_for_log(&long);
-        assert!(result.len() <= 2048);
-        assert_eq!(result.len() % 4, 0); // must be at char boundary
-        assert!(result.chars().all(|c| c == '😀'));
-    }
 }

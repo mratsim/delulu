@@ -27,10 +27,12 @@
 use async_trait::async_trait;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use scraper::{Html, Selector};
+use std::any::Any;
 use std::time::Instant;
 use tracing::{debug, warn};
+use serde::{Deserialize, Serialize};
 
-use crate::engine::{Engine, SearchParams, SearchResult};
+use crate::engine::{Continuation, Engine, SearchParams, SearchResponse, SearchResult};
 use crate::error::WebsearchError;
 use crate::sanitize_for_log;
 
@@ -41,7 +43,7 @@ use crate::sanitize_for_log;
 ///   10s timeout, and 5MB max response size.
 ///
 /// # Postcondition
-/// - Returns `Ok(Vec<SearchResult>)` with up to `max_results` results.
+/// - Returns `Ok(SearchResponse)` with up to `max_results` results.
 /// - Returns `Err(WebsearchError::AccessDenied)` if a JSA challenge or
 ///   captcha is detected.
 /// - Returns `Err(WebsearchError::ParseFailed)` if the response cannot
@@ -56,6 +58,23 @@ pub struct DuckDuckGoEngine {
 /// DuckDuckGo User-Agent
 const DDG_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0";
 
+/// Continuation token for DuckDuckGo pagination.
+///
+/// DuckDuckGo uses an opaque "n" token extracted from the d.js response
+/// items for pagination. The token is used as a direct URL path to
+/// `https://links.duckduckgo.com/{n_token}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuckDuckGoContinuation {
+    /// The next-page token extracted from the d.js response "n" field.
+    pub n_token: String,
+}
+
+impl Continuation for DuckDuckGoContinuation {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 impl DuckDuckGoEngine {
     /// Create a new DuckDuckGo engine with the given crawler.
     pub fn new(crawler: RateLimitedCrawler) -> Self {
@@ -63,7 +82,7 @@ impl DuckDuckGoEngine {
     }
 
     /// Build the initial search URL with query parameters.
-    fn build_search_url(query: &str, params: &SearchParams) -> String {
+    pub fn build_search_url(query: &str, params: &SearchParams) -> String {
         let mut url = format!(
             "https://duckduckgo.com/?q={}",
             urlencoding::encode(query)
@@ -103,7 +122,7 @@ impl DuckDuckGoEngine {
     /// Use the d.js URL from the preload link AS-IS.
     /// The preload link is a fully signed URL with a `dp` token.
     /// Modifying it (adding params, changing query) breaks the signature.
-    fn build_djs_url(djs_path: &str) -> String {
+    pub fn build_djs_url(djs_path: &str) -> String {
         if djs_path.starts_with("https://") {
             djs_path.to_string()
         } else {
@@ -112,7 +131,7 @@ impl DuckDuckGoEngine {
     }
 
     /// Extract the deep_preload_link (d.js URL) from the initial HTML page.
-    fn extract_djs_url(html: &str) -> Result<String, WebsearchError> {
+    pub fn extract_djs_url(html: &str) -> Result<String, WebsearchError> {
         let document = Html::parse_document(html);
 
         // Check for captcha first
@@ -148,11 +167,80 @@ impl DuckDuckGoEngine {
         Ok(href.to_string())
     }
 
+    /// Fetch and parse a d.js response, returning results and an optional n_token.
+    async fn fetch_and_parse_djs(
+        &self,
+        url: &str,
+        max_results: usize,
+    ) -> Result<(Vec<SearchResult>, Option<String>), WebsearchError> {
+        let djs_response = self.crawler.get(url)
+            .with_default_masquerade_headers()
+            .with_headers(vec![
+                ("User-Agent".into(), DDG_USER_AGENT.into()),
+                ("Accept".into(), "*/*".into()),
+                ("Accept-Encoding".into(), "gzip, deflate, br, zstd".into()),
+                ("Accept-Language".into(), "en-US,en;q=0.9".into()),
+                ("Referer".into(), "https://duckduckgo.com/".into()),
+                ("Sec-GPC".into(), "1".into()),
+                ("Sec-Fetch-Dest".into(), "script".into()),
+                ("Sec-Fetch-Mode".into(), "no-cors".into()),
+                ("Sec-Fetch-Site".into(), "same-site".into()),
+                ("Priority".into(), "u=1".into()),
+            ])
+            .with_exponential_retry(1)
+            .send()
+            .await?;
+
+        let djs_status = djs_response.status().as_u16();
+
+        if !(200..300).contains(&djs_status) {
+            if djs_status == 429 {
+                warn!(
+                    "DuckDuckGo: rate limited on d.js (429) - retry after {:?}",
+                    djs_response.headers().get("retry-after")
+                );
+                return Err(WebsearchError::HttpStatus {
+                    code: djs_status,
+                    engine: "duckduckgo",
+                });
+            }
+            return Err(WebsearchError::HttpStatus {
+                code: djs_status,
+                engine: "duckduckgo",
+            });
+        }
+
+        let djs_body = djs_response.text().await.map_err(|e| {
+            WebsearchError::ParseFailed {
+                parser: "duckduckgo_djs_body",
+                source: Box::new(e),
+            }
+        })?;
+
+        // Parse the d.js response
+        match Self::parse_djs_response(&djs_body, max_results) {
+            Ok((results, n_token)) => Ok((results, n_token)),
+            Err(e) => {
+                // Log first 2KB on parse failure
+                let end = djs_body.floor_char_boundary(djs_body.len().min(2048));
+                debug!(
+                    "DuckDuckGo: d.js parse failure, first 2KB of response: {}",
+                    sanitize_for_log(&djs_body[..end])
+                );
+                Err(e)
+            }
+        }
+    }
+
     /// Parse the d.js response to extract search results and next page token.
+    ///
+    /// Returns a tuple of (results, optional n_token).
+    /// The n_token is extracted from the "n" field of items in the response array.
+    /// If no "n" field is found, returns None (last page).
     pub fn parse_djs_response(
         body: &str,
         max_results: usize,
-    ) -> Result<Vec<SearchResult>, WebsearchError> {
+    ) -> Result<(Vec<SearchResult>, Option<String>), WebsearchError> {
         // Check for JSA challenge (javascript challenge)
         if body.contains("DDG.deep.initialize(") {
             return Err(WebsearchError::AccessDenied);
@@ -185,10 +273,16 @@ impl DuckDuckGoEngine {
         })?;
 
         let mut results = Vec::new();
+        let mut n_token: Option<String> = None;
 
         for item in &items {
             if results.len() >= max_results {
                 break;
+            }
+
+            // Track the "n" (next page token) field from items
+            if let Some(n_val) = item.get("n").and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+                n_token = Some(n_val.to_string());
             }
 
             // Skip items without URL field
@@ -197,8 +291,13 @@ impl DuckDuckGoEngine {
                 _ => continue,
             };
 
+            // Extract title — skip items without a valid (non-empty) title
+            let title_val = match item.get("t").and_then(|v| v.as_str()) {
+                Some(t) if !t.is_empty() => t,
+                _ => continue,
+            };
+
             // Skip if title is "EOF" and URL contains "google"
-            let title_val = item.get("t").and_then(|v| v.as_str()).unwrap_or("");
             if title_val == "EOF" && url_val.contains("google") {
                 continue;
             }
@@ -207,11 +306,6 @@ impl DuckDuckGoEngine {
             if item.get("s").is_none()
                 && (title_val == "DEEP_ERROR_NO_RESULTS" || title_val == "DEEP_SIMPLE_NO_RESULTS")
             {
-                continue;
-            }
-
-            // Extract title
-            if title_val.is_empty() {
                 continue;
             }
 
@@ -242,7 +336,7 @@ impl DuckDuckGoEngine {
             });
         }
 
-        Ok(results)
+        Ok((results, n_token))
     }
 }
 
@@ -252,166 +346,136 @@ impl Engine for DuckDuckGoEngine {
         &self,
         query: &str,
         params: SearchParams,
-    ) -> Result<Vec<SearchResult>, WebsearchError> {
+        continuation: Option<&dyn Continuation>,
+    ) -> Result<SearchResponse, WebsearchError> {
         crate::parsers::validate_query(query)?;
         let start = Instant::now();
         let max_results = crate::parsers::parse_max_results(params.max_results)?;
 
-        // Step 1: Fetch the initial HTML page to get the d.js URL
-        let search_url = Self::build_search_url(query, &params);
-        debug!(
-            "DuckDuckGo: fetching initial page (query hidden, status=?, duration=?)"
-        );
-        let headers = vec![
-            ("User-Agent".into(), DDG_USER_AGENT.into()),
-            ("Accept".into(), "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8".into()),
-            ("Accept-Encoding".into(), "gzip".into()),
-            ("Accept-Language".into(), "en-US,en;q=0.5".into()),
-            ("DNT".into(), "1".into()),
-            ("Sec-GPC".into(), "1".into()),
-            ("Connection".into(), "keep-alive".into()),
-            ("Upgrade-Insecure-Requests".into(), "1".into()),
-            ("Sec-Fetch-Dest".into(), "document".into()),
-            ("Sec-Fetch-Mode".into(), "navigate".into()),
-            ("Sec-Fetch-Site".into(), "same-origin".into()),
-            ("Sec-Fetch-User".into(), "?1".into()),
-            ("Priority".into(), "u=0, i".into()),
-            ("TE".into(), "trailers".into()),
-        ];
-        let response = self.crawler.get(&search_url)
-            .with_headers(headers)
-            .with_exponential_retry(1)
-            .send()
-            .await?;
+        // Determine the d.js URL based on continuation
+        let djs_url: String;
+        let djs_start: Instant;
 
-        let status = response.status().as_u16();
-        let duration = start.elapsed();
-        debug!(
-            "DuckDuckGo: initial page status={}, duration={:?}",
-            status, duration
-        );
+        match continuation {
+            None => {
+                // Step 1: Fetch the initial HTML page to get the d.js URL
+                let search_url = Self::build_search_url(query, &params);
+                debug!(
+                    "DuckDuckGo: fetching initial page (query hidden, status=?, duration=?)"
+                );
+                let response = self.crawler.get(&search_url)
+                    .with_default_masquerade_headers()
+                    .with_headers(vec![
+                        ("User-Agent".into(), DDG_USER_AGENT.into()),
+                        ("Accept-Encoding".into(), "gzip".into()),
+                        ("Sec-GPC".into(), "1".into()),
+                        ("Sec-Fetch-Site".into(), "same-origin".into()),
+                        ("Priority".into(), "u=0, i".into()),
+                        ("TE".into(), "trailers".into()),
+                    ])
+                    .with_exponential_retry(1)
+                    .send()
+                    .await?;
 
-        if !(200..300).contains(&status) {
-            if status == 429 {
-                warn!("DuckDuckGo: rate limited (429) - retry after {:?}", response.headers().get("retry-after"));
-                return Err(WebsearchError::HttpStatus {
-                    code: status,
-                    engine: "duckduckgo",
-                });
+                let status = response.status().as_u16();
+                let duration = start.elapsed();
+                debug!(
+                    "DuckDuckGo: initial page status={}, duration={:?}",
+                    status, duration
+                );
+
+                if !(200..300).contains(&status) {
+                    if status == 429 {
+                        warn!("DuckDuckGo: rate limited (429) - retry after {:?}", response.headers().get("retry-after"));
+                        return Err(WebsearchError::HttpStatus {
+                            code: status,
+                            engine: "duckduckgo",
+                        });
+                    }
+                    return Err(WebsearchError::HttpStatus {
+                        code: status,
+                        engine: "duckduckgo",
+                    });
+                }
+
+                let body = response.text().await.map_err(|e| {
+                    WebsearchError::ParseFailed {
+                        parser: "duckduckgo_response_body",
+                        source: Box::new(e),
+                    }
+                })?;
+
+                let djs_path = match Self::extract_djs_url(&body) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        // Log first 2KB on parse failure
+                        let end = body.floor_char_boundary(body.len().min(2048));
+                        debug!(
+                            "DuckDuckGo: parse failure, first 2KB of response: {}",
+                            sanitize_for_log(&body[..end])
+                        );
+                        return Err(e);
+                    }
+                };
+
+                // Step 2: Fetch the d.js URL (use the signed URL as-is, don't modify)
+                djs_url = Self::build_djs_url(&djs_path);
+                djs_start = Instant::now();
+
+                debug!(
+                    "DuckDuckGo: fetching d.js (query hidden, status=?, duration=?)"
+                );
             }
-            return Err(WebsearchError::HttpStatus {
-                code: status,
-                engine: "duckduckgo",
-            });
+            Some(c) => {
+                let ddg_cont = c.as_any().downcast_ref::<DuckDuckGoContinuation>().ok_or_else(|| {
+                    WebsearchError::ContinuationTypeMismatch {
+                        expected: "DuckDuckGoContinuation",
+                        received: std::any::type_name_of_val(c),
+                    }
+                })?;
+                // Use the n_token as a direct URL path
+                djs_url = Self::build_djs_url(&ddg_cont.n_token);
+                djs_start = Instant::now();
+
+                debug!(
+                    "DuckDuckGo: fetching continuation d.js (query hidden, status=?, duration=?)"
+                );
+            }
         }
 
-        let body = response.text().await.map_err(|e| {
-            WebsearchError::ParseFailed {
-                parser: "duckduckgo_response_body",
-                source: Box::new(e),
-            }
-        })?;
+        let (results, n_token) = self.fetch_and_parse_djs(&djs_url, max_results).await?;
 
-        let djs_path = match Self::extract_djs_url(&body) {
-            Ok(path) => path,
-            Err(e) => {
-                // Log first 2KB on parse failure
-                let end = body.floor_char_boundary(body.len().min(2048));
-                debug!(
-                    "DuckDuckGo: parse failure, first 2KB of response: {}",
-                    sanitize_for_log(&body[..end])
-                );
-                return Err(e);
-            }
-        };
-
-        // Step 2: Fetch the d.js URL (use the signed URL as-is, don't modify)
-        let djs_url = Self::build_djs_url(&djs_path);
-        let djs_start = Instant::now();
-
-        debug!(
-            "DuckDuckGo: fetching d.js (query hidden, status=?, duration=?)"
-        );
-        let djs_headers = vec![
-            ("User-Agent".into(), DDG_USER_AGENT.into()),
-            ("Accept".into(), "*/*".into()),
-            ("Accept-Encoding".into(), "gzip, deflate, br, zstd".into()),
-            ("Accept-Language".into(), "en-US,en;q=0.9".into()),
-            ("Referer".into(), "https://duckduckgo.com/".into()),
-            ("DNT".into(), "1".into()),
-            ("Sec-GPC".into(), "1".into()),
-            ("Connection".into(), "keep-alive".into()),
-            ("Sec-Fetch-Dest".into(), "script".into()),
-            ("Sec-Fetch-Mode".into(), "no-cors".into()),
-            ("Sec-Fetch-Site".into(), "same-site".into()),
-            ("Priority".into(), "u=1".into()),
-        ];
-        let djs_response = self.crawler.get(&djs_url)
-            .with_headers(djs_headers)
-            .with_exponential_retry(1)
-            .send()
-            .await?;
-
-        let djs_status = djs_response.status().as_u16();
         let djs_duration = djs_start.elapsed();
         debug!(
-            "DuckDuckGo: d.js status={}, duration={:?}",
-            djs_status, djs_duration
+            "DuckDuckGo: d.js status=200, duration={:?}",
+            djs_duration
         );
 
-        if !(200..300).contains(&djs_status) {
-            if djs_status == 429 {
-                warn!(
-                    "DuckDuckGo: rate limited on d.js (429) - retry after {:?}",
-                    djs_response.headers().get("retry-after")
-                );
-                return Err(WebsearchError::HttpStatus {
-                    code: djs_status,
-                    engine: "duckduckgo",
-                });
-            }
-            return Err(WebsearchError::HttpStatus {
-                code: djs_status,
-                engine: "duckduckgo",
-            });
-        }
+        // Build continuation from n_token
+        let continuation: Option<Box<dyn Continuation>> = n_token.map(|token| {
+            Box::new(DuckDuckGoContinuation { n_token: token }) as Box<dyn Continuation>
+        });
 
-        let djs_body = djs_response.text().await.map_err(|e| {
-            WebsearchError::ParseFailed {
-                parser: "duckduckgo_djs_body",
-                source: Box::new(e),
-            }
-        })?;
+        let total_duration = start.elapsed();
+        debug!(
+            "DuckDuckGo: search complete, {} results, duration={:?}",
+            results.len(),
+            total_duration
+        );
 
-        // Parse the d.js response
-        match Self::parse_djs_response(&djs_body, max_results) {
-            Ok(results) => {
-                let total_duration = start.elapsed();
-                debug!(
-                    "DuckDuckGo: search complete, {} results, duration={:?}",
-                    results.len(),
-                    total_duration
-                );
-                Ok(results)
-            }
-            Err(e) => {
-                // Log first 2KB on parse failure
-                let end = djs_body.floor_char_boundary(djs_body.len().min(2048));
-                debug!(
-                    "DuckDuckGo: d.js parse failure, first 2KB of response: {}",
-                    sanitize_for_log(&djs_body[..end])
-                );
-                Err(e)
-            }
-        }
+        Ok(SearchResponse {
+            results,
+            continuation,
+        })
     }
 }
+
 
 /// Extract JSON from a JavaScript string starting after `DDG.pageLayout.load('d',`.
 ///
 /// The format is: `DDG.pageLayout.load('d', [...]);` — we need to extract
 /// the JSON array `[...]` by finding matching brackets.
-fn extract_json_from_js(s: &str) -> Result<String, WebsearchError> {
+pub fn extract_json_from_js(s: &str) -> Result<String, WebsearchError> {
     let s = s.trim();
 
     // Find the first opening bracket
@@ -464,7 +528,7 @@ fn extract_json_from_js(s: &str) -> Result<String, WebsearchError> {
 ///
 /// Uses a single-pass approach to prevent double-decoding (e.g., `&amp;lt;`
 /// should decode to `&lt;`, not `<`).
-fn html_entity_decode(s: &str) -> String {
+pub fn html_entity_decode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
@@ -490,7 +554,7 @@ fn html_entity_decode(s: &str) -> String {
 }
 
 /// Parse a DuckDuckGo date string (ISO format) into a Unix timestamp.
-fn parse_ddg_date(s: &str) -> Option<i64> {
+pub fn parse_ddg_date(s: &str) -> Option<i64> {
     let s = s.trim();
 
     // Try ISO 8601 with timezone: "2024-01-15T12:00:00+00:00" or "2024-01-15T12:00:00Z"
@@ -507,7 +571,7 @@ fn parse_ddg_date(s: &str) -> Option<i64> {
 }
 
 /// Parse ISO 8601 date-time with timezone.
-fn parse_iso_with_tz(s: &str) -> Option<i64> {
+pub fn parse_iso_with_tz(s: &str) -> Option<i64> {
     if s.len() < 20 {
         return None;
     }
@@ -540,7 +604,7 @@ fn parse_iso_with_tz(s: &str) -> Option<i64> {
 }
 
 /// Parse naive ISO date-time (no timezone).
-fn parse_naive_iso(s: &str) -> Option<i64> {
+pub fn parse_naive_iso(s: &str) -> Option<i64> {
     if s.len() < 19 {
         return None;
     }
@@ -555,7 +619,7 @@ fn parse_naive_iso(s: &str) -> Option<i64> {
 }
 
 /// Compute Unix timestamp from date components.
-fn unix_timestamp(
+pub fn unix_timestamp(
     year: i64,
     month: u32,
     day: u32,
@@ -603,232 +667,6 @@ fn days_since_epoch(year: i64, month: u32, day: u32) -> Option<u64> {
 }
 
 /// Check if a year is a leap year.
-fn is_leap_year(year: i64) -> bool {
+pub fn is_leap_year(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn engine_is_send_sync() {
-        fn assert_send<T: Send>() {}
-        fn assert_sync<T: Sync>() {}
-        assert_send::<DuckDuckGoEngine>();
-        assert_sync::<DuckDuckGoEngine>();
-    }
-
-    #[test]
-    fn extract_json_from_js_works() {
-        let after_marker = " [{\"c\":\"https://example.com\",\"t\":\"Test\"}]);";
-        let json = extract_json_from_js(after_marker).unwrap();
-        assert_eq!(json, "[{\"c\":\"https://example.com\",\"t\":\"Test\"}]");
-    }
-
-    #[test]
-    fn extract_json_from_js_nested() {
-        let after_marker = " [[{\"a\":[1,2,3]}]]);";
-        let json = extract_json_from_js(after_marker).unwrap();
-        assert_eq!(json, "[[{\"a\":[1,2,3]}]]");
-    }
-
-    #[test]
-    fn extract_json_from_js_no_bracket() {
-        let result = extract_json_from_js("no brackets here");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn extract_json_from_js_unmatched() {
-        let result = extract_json_from_js(" [[");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn build_search_url_basic() {
-        let params = SearchParams::default();
-        let url = DuckDuckGoEngine::build_search_url("rust", &params);
-        assert!(url.contains("q=rust"));
-        assert!(url.contains("kl=wt-wt"));
-    }
-
-    #[test]
-    fn build_search_url_with_safesearch() {
-        let params = SearchParams {
-            safesearch: Some("strict".into()),
-            ..Default::default()
-        };
-        let url = DuckDuckGoEngine::build_search_url("rust", &params);
-        assert!(url.contains("kp=1"));
-    }
-
-    #[test]
-    fn build_search_url_with_safesearch_off() {
-        let params = SearchParams {
-            safesearch: Some("off".into()),
-            ..Default::default()
-        };
-        let url = DuckDuckGoEngine::build_search_url("rust", &params);
-        assert!(url.contains("kp=-2"));
-    }
-
-    #[test]
-    fn build_search_url_with_country() {
-        let params = SearchParams {
-            country: Some("de-de".into()),
-            ..Default::default()
-        };
-        let url = DuckDuckGoEngine::build_search_url("rust", &params);
-        assert!(url.contains("kl=de-de"));
-    }
-
-    #[test]
-    fn build_search_url_with_time_range() {
-        let params = SearchParams {
-            time_range: Some("2024-01-01..2024-12-31".into()),
-            ..Default::default()
-        };
-        let url = DuckDuckGoEngine::build_search_url("rust", &params);
-        assert!(url.contains("df=2024-01-01..2024-12-31"));
-    }
-
-    #[test]
-    fn parse_djs_response_basic() {
-        let body = r#"DDG.pageLayout.load('d', [{"c":"https://example.com","t":"Example","a":"An example site"},{"c":"https://test.org","t":"Test","a":"A test site","e":"2024-01-15T12:00:00"}]);"#;
-        let results = DuckDuckGoEngine::parse_djs_response(body, 10).unwrap();
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].title, "Example");
-        assert_eq!(results[0].url, "https://example.com");
-        assert_eq!(results[0].snippet.as_deref(), Some("An example site"));
-        assert_eq!(results[1].title, "Test");
-        assert_eq!(results[1].url, "https://test.org");
-        assert!(results[1].date.is_some());
-    }
-
-    #[test]
-    fn parse_djs_response_jsa_challenge() {
-        let body = "DDG.deep.initialize('some_token' + jsa";
-        let result = DuckDuckGoEngine::parse_djs_response(body, 10);
-        assert!(matches!(result, Err(WebsearchError::AccessDenied)));
-    }
-
-    #[test]
-    fn parse_djs_response_anomaly() {
-        let body = "DDG.deep.anomalyDetectionBlock({";
-        let result = DuckDuckGoEngine::parse_djs_response(body, 10);
-        assert!(matches!(result, Err(WebsearchError::AccessDenied)));
-    }
-
-    #[test]
-    fn parse_djs_response_no_results() {
-        let body = r#"DDG.pageLayout.load('d', [{"c":"","t":"DEEP_ERROR_NO_RESULTS"}]);"#;
-        let results = DuckDuckGoEngine::parse_djs_response(body, 10).unwrap();
-        assert!(results.is_empty());
-    }
-
-    #[test]
-    fn parse_djs_response_filters_malformed_urls() {
-        let body = r#"DDG.pageLayout.load('d', [{"c":"not-a-valid-url","t":"Bad URL","a":"test"}]);"#;
-        let results = DuckDuckGoEngine::parse_djs_response(body, 10).unwrap();
-        assert!(results.is_empty());
-    }
-
-    #[test]
-    fn html_entity_decode_works() {
-        assert_eq!(html_entity_decode("Tom &amp; Jerry"), "Tom & Jerry");
-        assert_eq!(html_entity_decode("&lt;script&gt;"), "<script>");
-    }
-
-    #[test]
-    fn html_entity_decode_no_double_decode() {
-        // &amp;lt; should decode to &lt;, not <
-        assert_eq!(html_entity_decode("&amp;lt;"), "&lt;");
-    }
-
-    #[test]
-    fn parse_ddg_date_rfc3339() {
-        let ts = parse_ddg_date("2024-01-15T12:00:00+00:00");
-        assert!(ts.is_some(), "RFC 3339 should parse");
-        assert_eq!(ts.unwrap(), 1705320000);
-    }
-
-    #[test]
-    fn parse_ddg_date_utc_z() {
-        let ts = parse_ddg_date("2024-01-15T12:00:00Z");
-        assert!(ts.is_some(), "UTC Z should parse");
-        assert_eq!(ts.unwrap(), 1705320000);
-    }
-
-    #[test]
-    fn parse_ddg_date_naive() {
-        let ts = parse_ddg_date("2024-01-15T12:00:00");
-        assert!(ts.is_some(), "naive should parse");
-        assert_eq!(ts.unwrap(), 1705320000);
-    }
-
-    #[test]
-    fn parse_ddg_date_invalid() {
-        let ts = parse_ddg_date("not a date");
-        assert!(ts.is_none());
-    }
-
-    #[test]
-    fn is_leap_year_divisible_by_4() {
-        assert!(is_leap_year(2024));
-    }
-
-    #[test]
-    fn is_leap_year_century() {
-        assert!(!is_leap_year(1900));
-    }
-
-    #[test]
-    fn is_leap_year_400() {
-        assert!(is_leap_year(2000));
-    }
-
-    // ---- build_djs_url tests ----
-
-    #[test]
-    fn build_djs_url_path_only() {
-        let url = DuckDuckGoEngine::build_djs_url("/d.js?q=test&vqd=abc");
-        assert_eq!(url, "https://links.duckduckgo.com/d.js?q=test&vqd=abc");
-    }
-
-    #[test]
-    fn build_djs_url_full_url() {
-        let url = DuckDuckGoEngine::build_djs_url("https://links.duckduckgo.com/d.js?q=test&vqd=abc");
-        assert_eq!(url, "https://links.duckduckgo.com/d.js?q=test&vqd=abc");
-    }
-
-    // ---- NEW TESTS for extract_djs_url ----
-
-    #[test]
-    fn extract_djs_url_success() {
-        let html = r#"<html><head><link id="deep_preload_link" href="/d.js?t=test"/></head></html>"#;
-        let result = DuckDuckGoEngine::extract_djs_url(html).unwrap();
-        assert_eq!(result, "/d.js?t=test");
-    }
-
-    #[test]
-    fn extract_djs_url_captcha_detected() {
-        let html = r#"<html><body><form id="challenge-form"><input type="text"/></form></body></html>"#;
-        let result = DuckDuckGoEngine::extract_djs_url(html);
-        assert!(matches!(result, Err(WebsearchError::AccessDenied)));
-    }
-
-    #[test]
-    fn extract_djs_url_missing_link() {
-        let html = r#"<html><head></head><body>no link here</body></html>"#;
-        let result = DuckDuckGoEngine::extract_djs_url(html);
-        assert!(matches!(result, Err(WebsearchError::ParseFailed { .. })));
-    }
-
-    #[test]
-    fn extract_djs_url_missing_href() {
-        let html = r#"<html><head><link id="deep_preload_link" rel="preload"/></head></html>"#;
-        let result = DuckDuckGoEngine::extract_djs_url(html);
-        assert!(matches!(result, Err(WebsearchError::MissingField { .. })));
-    }
 }

@@ -19,9 +19,38 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 use std::sync::Arc;
 
 use crate::error::WebsearchError;
+
+/// Known search engine identifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum EngineId {
+    /// Brave search engine.
+    Brave,
+    /// DuckDuckGo search engine.
+    DuckDuckGo,
+}
+
+impl EngineId {
+    /// Return the 3-letter abbreviation for this engine.
+    pub fn abbreviation(&self) -> &'static str {
+        match self {
+            EngineId::Brave => "brv",
+            EngineId::DuckDuckGo => "ddg",
+        }
+    }
+}
+
+impl std::fmt::Display for EngineId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EngineId::Brave => write!(f, "brave"),
+            EngineId::DuckDuckGo => write!(f, "duckduckgo"),
+        }
+    }
+}
 
 /// A single search result from any engine.
 ///
@@ -60,6 +89,36 @@ pub struct SearchParams {
     pub max_results: Option<u32>,
 }
 
+/// Typed continuation token for pagination.
+///
+/// Each engine defines its own concrete type implementing this trait.
+/// Adding a new engine requires implementing Continuation for the new type
+/// — NO existing code is modified (solves the expression problem).
+///
+/// # Downcasting
+/// Engines use `as_any().downcast_ref::<ConcreteType>()` to recover
+/// their concrete continuation type from `&dyn Continuation`.
+///
+/// # Object Safety
+/// This trait is object-safe: `as_any()` can be called on `&dyn Continuation`.
+pub trait Continuation: Send + Sync {
+    /// Downcast to `&dyn Any` for type-safe downcasting.
+    fn as_any(&self) -> &dyn Any;
+}
+
+/// The response from a search engine, containing results and an optional
+/// continuation token for pagination.
+///
+/// This struct does NOT derive `Serialize` because `Box<dyn Continuation>`
+/// is not serializable.
+pub struct SearchResponse {
+    /// The search results for this page.
+    pub results: Vec<SearchResult>,
+    /// An optional continuation token for fetching the next page.
+    /// `None` indicates no more pages are available.
+    pub continuation: Option<Box<dyn Continuation>>,
+}
+
 /// Unified search engine trait.
 ///
 /// Each backend (DuckDuckGo, Brave, Baidu, Yahoo Japan, Startpage) implements
@@ -69,9 +128,13 @@ pub struct SearchParams {
 /// # Precondition
 /// - `query` MUST be non-empty after trimming whitespace.
 /// - `params` MAY have all fields as None (defaults used).
+/// - `continuation` MAY be None (first page) or Some with the engine's
+///   continuation type for pagination.
 ///
 /// # Postcondition
-/// - Returns `Ok(Vec<SearchResult>)` with 0..=max_results results on success.
+/// - Returns `Ok(SearchResponse)` with 0..=max_results results on success.
+/// - The `SearchResponse.continuation` field contains the next-page token
+///   if more pages are available, or `None` if this was the last page.
 /// - Returns `Err(WebsearchError)` on any failure.
 ///
 /// # Panic-if
@@ -82,7 +145,8 @@ pub trait Engine: Send + Sync {
         &self,
         query: &str,
         params: SearchParams,
-    ) -> Result<Vec<SearchResult>, WebsearchError>;
+        continuation: Option<&dyn Continuation>,
+    ) -> Result<SearchResponse, WebsearchError>;
 }
 
 /// Type alias for an engine stored in the registry.
@@ -93,43 +157,3 @@ pub type EngineRef = Arc<dyn Engine + Send + Sync>;
 /// Matches the Chrome-on-Linux pattern used by the scrapers.
 pub const DEFAULT_USER_AGENT: &str =
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn search_result_serialize_roundtrip() {
-        let result = SearchResult {
-            title: "Test".into(),
-            url: "https://example.com".into(),
-            snippet: Some("A test result".into()),
-            date: Some(1234567890),
-        };
-        let json = serde_json::to_string(&result).unwrap();
-        let back: SearchResult = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.title, "Test");
-        assert_eq!(back.url, "https://example.com");
-        assert_eq!(back.snippet, Some("A test result".into()));
-        assert_eq!(back.date, Some(1234567890));
-    }
-
-    #[test]
-    fn search_params_default() {
-        let params = SearchParams::default();
-        assert!(params.page.is_none());
-        assert!(params.country.is_none());
-        assert!(params.safesearch.is_none());
-        assert!(params.time_range.is_none());
-        assert!(params.max_results.is_none());
-    }
-
-    #[test]
-    fn search_result_no_panic_fields() {
-        // Verify no `position` or `engine` fields exist by round-tripping
-        let json = r#"{"title":"X","url":"https://x.com","snippet":null,"date":null}"#;
-        let result: SearchResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.title, "X");
-        assert_eq!(result.url, "https://x.com");
-    }
-}

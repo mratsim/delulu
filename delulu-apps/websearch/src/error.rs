@@ -26,9 +26,6 @@ use thiserror::Error;
 /// Variants NOT included:
 /// - `RateLimited` — the `RateLimitedCrawler` delays rather than rejects requests;
 ///   429 responses from engines are mapped to `HttpStatus { code: 429 }`.
-/// - `Timeout` — timeouts are configured on `RateLimitedCrawler` and returned as
-///   `Http(CrawlerError)`. Per-engine timeouts in "all" mode are handled at the
-///   MCP server level.
 /// - `Captcha` — merged into `AccessDenied`.
 /// - `Parse(String)` — split into `ParseFailed` + `MissingField`.
 #[derive(Debug, Error)]
@@ -102,92 +99,38 @@ pub enum WebsearchError {
         /// The engine name that was not found.
         name: String,
     },
+
+    /// The provided continuation type does not match the engine's expected type.
+    /// Recovery: Use the correct continuation type for the engine.
+    #[error("Continuation type mismatch: expected {expected}, received {received}")]
+    ContinuationTypeMismatch {
+        /// Expected continuation type name.
+        expected: &'static str,
+        /// Received continuation type name.
+        received: &'static str,
+    },
+
+    /// The continuation contains an invalid value.
+    /// Recovery: Re-run the search without a continuation.
+    #[error("Invalid continuation value: {reason}")]
+    ContinuationInvalidValue {
+        /// Reason the value is invalid.
+        reason: &'static str,
+    },
+
+    /// Failed to deserialize a continuation from JSON.
+    /// Recovery: Check the serialization format and retry.
+    #[error("Failed to deserialize continuation for '{engine}': {detail}")]
+    ContinuationDeserializationFailed {
+        /// The engine name.
+        engine: String,
+        /// Details of the deserialization failure.
+        detail: String,
+    },
 }
 
 impl From<CrawlerError> for WebsearchError {
     fn from(e: CrawlerError) -> Self {
         WebsearchError::Http(e)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn error_display_http() {
-        let err = WebsearchError::Http(CrawlerError::QpsZero);
-        let msg = err.to_string();
-        assert!(msg.contains("HTTP transport error"));
-    }
-
-    #[test]
-    fn error_display_http_status() {
-        let err = WebsearchError::HttpStatus {
-            code: 429,
-            engine: "duckduckgo",
-        };
-        let msg = err.to_string();
-        assert!(msg.contains("HTTP status 429 from duckduckgo"));
-    }
-
-    #[test]
-    fn error_display_parse_failed() {
-        let err = WebsearchError::ParseFailed {
-            parser: "test_parser",
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "bad data")),
-        };
-        let msg = err.to_string();
-        assert!(msg.contains("Parse failed in test_parser"));
-    }
-
-    #[test]
-    fn error_display_missing_field() {
-        let err = WebsearchError::MissingField {
-            field: "title",
-            engine: "duckduckgo",
-        };
-        let msg = err.to_string();
-        assert!(msg.contains("Missing field 'title' in duckduckgo response"));
-    }
-
-    #[test]
-    fn error_display_access_denied() {
-        let err = WebsearchError::AccessDenied;
-        let msg = err.to_string();
-        assert!(msg.contains("Access denied"));
-    }
-
-    #[test]
-    fn error_display_invalid_query() {
-        let err = WebsearchError::InvalidQuery {
-            reason: "query too long",
-        };
-        let msg = err.to_string();
-        assert!(msg.contains("Invalid query: query too long"));
-    }
-
-    #[test]
-    fn error_display_engine_not_found() {
-        let err = WebsearchError::EngineNotFound {
-            name: "nonexistent".into(),
-        };
-        let msg = err.to_string();
-        assert!(msg.contains("Engine 'nonexistent' not found"));
-    }
-
-    #[test]
-    fn error_from_crawler() {
-        let crawler_err = CrawlerError::QpsZero;
-        let web_err: WebsearchError = crawler_err.into();
-        assert!(matches!(web_err, WebsearchError::Http(_)));
-    }
-
-    #[test]
-    fn error_send_sync() {
-        fn assert_send<T: Send>() {}
-        fn assert_sync<T: Sync>() {}
-        assert_send::<WebsearchError>();
-        assert_sync::<WebsearchError>();
     }
 }

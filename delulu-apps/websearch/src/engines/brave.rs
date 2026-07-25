@@ -25,10 +25,12 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
+use std::any::Any;
 use std::time::Instant;
 use tracing::{debug, warn};
+use serde::{Deserialize, Serialize};
 
-use crate::engine::{DEFAULT_USER_AGENT, Engine, SearchParams, SearchResult};
+use crate::engine::{Continuation, DEFAULT_USER_AGENT, Engine, SearchParams, SearchResponse, SearchResult};
 use crate::error::WebsearchError;
 
 /// Brave search engine implementation.
@@ -38,7 +40,7 @@ use crate::error::WebsearchError;
 ///   10s timeout, and 5MB max response size.
 ///
 /// # Postcondition
-/// - Returns `Ok(Vec<SearchResult>)` with up to `max_results` results.
+/// - Returns `Ok(SearchResponse)` with up to `max_results` results.
 /// - Returns `Err(WebsearchError::AccessDenied)` if a PoW captcha is detected.
 /// - Returns `Err(WebsearchError::ParseFailed)` if the response cannot
 ///   be parsed.
@@ -52,6 +54,22 @@ pub struct BraveEngine {
 /// Brave User-Agent constant.
 const BRAVE_USER_AGENT: &str = DEFAULT_USER_AGENT;
 
+/// Continuation token for Brave pagination.
+///
+/// Brave uses a simple page-number-based pagination scheme.
+/// The page number is 1-indexed and capped at 999.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BraveContinuation {
+    /// The next page number to fetch (1-indexed).
+    pub page: u32,
+}
+
+impl Continuation for BraveContinuation {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 impl BraveEngine {
     /// Create a new Brave engine with the given crawler.
     pub fn new(crawler: RateLimitedCrawler) -> Self {
@@ -59,7 +77,7 @@ impl BraveEngine {
     }
 
     /// Build the search URL with query parameters.
-    fn build_search_url(query: &str, params: &SearchParams, page: u32) -> String {
+    pub fn build_search_url(query: &str, params: &SearchParams, page: u32) -> String {
         let offset = page.saturating_sub(1);
         let mut url = format!(
             "https://search.brave.com/search?q={}&source=web",
@@ -84,7 +102,7 @@ impl BraveEngine {
 
     /// Build the cookie header for Brave requests.
     /// Validates safesearch and country via parsers to prevent cookie injection.
-    fn build_cookie_header(params: &SearchParams) -> Result<String, WebsearchError> {
+    pub fn build_cookie_header(params: &SearchParams) -> Result<String, WebsearchError> {
         let safesearch = crate::parsers::parse_safesearch(params.safesearch.as_deref())?;
         let country = crate::parsers::parse_country(params.country.as_deref())?;
         Ok(format!(
@@ -101,11 +119,39 @@ impl Engine for BraveEngine {
         &self,
         query: &str,
         params: SearchParams,
-    ) -> Result<Vec<SearchResult>, WebsearchError> {
+        continuation: Option<&dyn Continuation>,
+    ) -> Result<SearchResponse, WebsearchError> {
         crate::parsers::validate_query(query)?;
         let start = Instant::now();
         let max_results = crate::parsers::parse_max_results(params.max_results)?;
-        let page = crate::parsers::parse_page(params.page)?;
+
+        // Determine the page number from continuation or params
+        let page = match continuation {
+            None => crate::parsers::parse_page(params.page)?,
+            Some(c) => {
+                let brave_cont = c.as_any().downcast_ref::<BraveContinuation>().ok_or_else(|| {
+                    WebsearchError::ContinuationTypeMismatch {
+                        expected: "BraveContinuation",
+                        received: std::any::type_name_of_val(c),
+                    }
+                })?;
+                if brave_cont.page == 0 {
+                    return Err(WebsearchError::ContinuationInvalidValue {
+                        reason: "Brave page cannot be 0",
+                    });
+                }
+                brave_cont.page
+            }
+        };
+
+        // Check if we've reached the page limit
+        if page >= 1000 {
+            return Ok(SearchResponse {
+                results: Vec::new(),
+                continuation: None,
+            });
+        }
+
         // Build URL and cookie header
         let search_url = Self::build_search_url(query, &params, page);
         let cookie = Self::build_cookie_header(&params)?;
@@ -115,6 +161,7 @@ impl Engine for BraveEngine {
         let response = self
             .crawler
             .get(&search_url)
+            .with_default_masquerade_headers()
             .with_headers(vec![
                 ("User-Agent".into(), BRAVE_USER_AGENT.into()),
                 ("Cookie".into(), cookie),
@@ -156,7 +203,18 @@ impl Engine for BraveEngine {
         // Parse HTML for search results
         let results = parse_search_results(&body, max_results)?;
 
-        Ok(results)
+        // Determine next continuation
+        let next_page = page + 1;
+        let continuation = if next_page >= 1000 {
+            None
+        } else {
+            Some(Box::new(BraveContinuation { page: next_page }) as Box<dyn Continuation>)
+        };
+
+        Ok(SearchResponse {
+            results,
+            continuation,
+        })
     }
 }
 
@@ -239,7 +297,7 @@ pub fn parse_search_results(
 ///
 /// Brave renders dates inside `<span class="t-secondary">` inside the content div.
 /// The span text includes a trailing " -" separator (e.g. "January 7, 2025 -").
-fn strip_date_prefix(raw_text: String, date_str: Option<String>) -> (String, Option<i64>) {
+pub fn strip_date_prefix(raw_text: String, date_str: Option<String>) -> (String, Option<i64>) {
     let raw = match date_str {
         Some(ref d) if !d.is_empty() => d.trim().to_string(),
         _ => return (raw_text, None),
@@ -266,108 +324,4 @@ fn strip_date_prefix(raw_text: String, date_str: Option<String>) -> (String, Opt
     };
 
     (cleaned, parsed)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn engine_is_send_sync() {
-        fn assert_send<T: Send>() {}
-        fn assert_sync<T: Sync>() {}
-        assert_send::<BraveEngine>();
-        assert_sync::<BraveEngine>();
-    }
-
-    #[test]
-    fn build_search_url_basic() {
-        let params = SearchParams::default();
-        let url = BraveEngine::build_search_url("rust", &params, 1);
-        assert!(url.contains("q=rust"));
-        assert!(url.contains("source=web"));
-        assert!(!url.contains("offset"));
-    }
-
-    #[test]
-    fn build_search_url_page_2() {
-        let params = SearchParams::default();
-        let url = BraveEngine::build_search_url("rust", &params, 2);
-        assert!(url.contains("offset=1"));
-    }
-
-    #[test]
-    fn build_search_url_page_3() {
-        let params = SearchParams::default();
-        let url = BraveEngine::build_search_url("rust", &params, 3);
-        assert!(url.contains("offset=2"));
-    }
-
-    #[test]
-    fn build_cookie_header_default() {
-        let params = SearchParams::default();
-        let cookie = BraveEngine::build_cookie_header(&params).unwrap();
-        assert!(cookie.contains("safesearch=moderate"));
-        assert!(cookie.contains("country=all"));
-        assert!(cookie.contains("useLocation=0"));
-        assert!(cookie.contains("summarizer=0"));
-    }
-
-    #[test]
-    fn build_cookie_header_with_params() {
-        let params = SearchParams {
-            safesearch: Some("strict".into()),
-            country: Some("us".into()),
-            ..Default::default()
-        };
-        let cookie = BraveEngine::build_cookie_header(&params).unwrap();
-        assert!(cookie.contains("safesearch=strict"));
-        assert!(cookie.contains("country=us"));
-    }
-
-    #[test]
-    fn strip_date_prefix_with_date() {
-        let raw = "January 7, 2025 - The elliptic curve only hash algorithm.".to_string();
-        let date_str = Some("January 7, 2025 -".to_string());
-        let (cleaned, date) = strip_date_prefix(raw, date_str);
-        assert_eq!(date, Some(1736208000));
-        assert!(!cleaned.contains("January 7, 2025"));
-        assert!(cleaned.starts_with("The elliptic"));
-    }
-
-    #[test]
-    fn strip_date_prefix_no_date() {
-        let raw = "We describe a new explicit function.".to_string();
-        let (cleaned, date) = strip_date_prefix(raw.clone(), None);
-        assert!(date.is_none());
-        assert_eq!(cleaned, raw);
-    }
-
-    #[test]
-    fn strip_date_prefix_empty_date_str() {
-        let raw = "Some content here.".to_string();
-        let date_str = Some("".to_string());
-        let (cleaned, date) = strip_date_prefix(raw.clone(), date_str);
-        assert!(date.is_none());
-        assert_eq!(cleaned, raw);
-    }
-
-    #[test]
-    fn strip_date_prefix_august_date() {
-        let raw = "August 7, 2025 - ResearchGate publication.".to_string();
-        let date_str = Some("August 7, 2025 -".to_string());
-        let (cleaned, date) = strip_date_prefix(raw, date_str);
-        assert_eq!(date, Some(1754524800));
-        assert!(!cleaned.contains("August 7, 2025"));
-    }
-
-    #[test]
-    fn strip_date_prefix_no_dash_in_date() {
-        let raw = "September 4, 2020 - Ethereum research post.".to_string();
-        let date_str = Some("September 4, 2020".to_string());
-        let (cleaned, date) = strip_date_prefix(raw, date_str);
-        assert_eq!(date, Some(1599177600));
-        assert!(!cleaned.contains("September 4, 2020"));
-    }
-
 }

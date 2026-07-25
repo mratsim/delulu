@@ -87,10 +87,10 @@ async fn duckduckgo_live_basic() -> Result<()> {
     let crawler = build_ddg_crawler();
     let engine = delulu_websearch::engines::duckduckgo::DuckDuckGoEngine::new(crawler);
 
-    match engine.search("hashing to elliptic curves", SearchParams::default()).await {
-        Ok(results) => {
-            assert!(!results.is_empty());
-            print_results("DuckDuckGo", "hashing to elliptic curves", &results);
+    match engine.search("hashing to elliptic curves", SearchParams::default(), None).await {
+        Ok(response) => {
+            assert!(!response.results.is_empty());
+            print_results("DuckDuckGo", "hashing to elliptic curves", &response.results);
         }
         Err(e) => println!("DuckDuckGo: blocked as expected: {e}"),
     }
@@ -103,15 +103,15 @@ async fn duckduckgo_live_pagination() -> Result<()> {
     let crawler = build_ddg_crawler();
     let engine = delulu_websearch::engines::duckduckgo::DuckDuckGoEngine::new(crawler);
 
-    match engine.search("rust programming", SearchParams::default()).await {
-        Ok(r) => println!("DDG page 1: {} results", r.len()),
+    match engine.search("rust programming", SearchParams::default(), None).await {
+        Ok(r) => println!("DDG page 1: {} results", r.results.len()),
         Err(e) => println!("DDG page 1 blocked: {e}"),
     }
 
     sleep(Duration::from_secs(3)).await;
 
-    match engine.search("rust programming", SearchParams { page: Some(2), ..Default::default() }).await {
-        Ok(r) => println!("DDG page 2: {} results", r.len()),
+    match engine.search("rust programming", SearchParams { page: Some(2), ..Default::default() }, None).await {
+        Ok(r) => println!("DDG page 2: {} results", r.results.len()),
         Err(e) => println!("DDG page 2 blocked: {e}"),
     }
 
@@ -124,7 +124,7 @@ async fn duckduckgo_live_empty_query() -> Result<()> {
     let crawler = build_ddg_crawler();
     let engine = delulu_websearch::engines::duckduckgo::DuckDuckGoEngine::new(crawler);
 
-    let result = engine.search("", SearchParams::default()).await;
+    let result = engine.search("", SearchParams::default(), None).await;
     assert!(result.is_err(), "Empty query should return an error");
     Ok(())
 }
@@ -135,8 +135,8 @@ async fn duckduckgo_detects_jsa_challenge() -> Result<()> {
     let crawler = build_ddg_crawler();
     let engine = delulu_websearch::engines::duckduckgo::DuckDuckGoEngine::new(crawler);
 
-    match engine.search("test", SearchParams::default()).await {
-        Ok(r) => println!("DDG: NOT blocked ({} results)", r.len()),
+    match engine.search("test", SearchParams::default(), None).await {
+        Ok(r) => println!("DDG: NOT blocked ({} results)", r.results.len()),
         Err(delulu_websearch::WebsearchError::AccessDenied) => {
             println!("DDG: correctly detected AccessDenied (JSA challenge)");
         }
@@ -156,11 +156,11 @@ async fn brave_live_basic() -> Result<()> {
     let crawler = build_brave_crawler();
     let engine = delulu_websearch::engines::brave::BraveEngine::new(crawler);
 
-    let results = engine.search("hashing to elliptic curves", SearchParams::default()).await?;
+    let response = engine.search("hashing to elliptic curves", SearchParams::default(), None).await?;
 
-    assert!(!results.is_empty(), "Expected at least 1 result from Brave");
+    assert!(!response.results.is_empty(), "Expected at least 1 result from Brave");
     assert!(
-        results.iter().any(|r| {
+        response.results.iter().any(|r| {
             r.title.contains("hashing")
                 || r.title.contains("Hashing")
                 || r.title.contains("elliptic")
@@ -168,10 +168,10 @@ async fn brave_live_basic() -> Result<()> {
                 || r.url.contains("iacr")
         }),
         "Expected results related to 'hashing to elliptic curves', got: {:?}",
-        results.iter().map(|r| &r.title).collect::<Vec<_>>()
+        response.results.iter().map(|r| &r.title).collect::<Vec<_>>()
     );
 
-    print_results("Brave", "hashing to elliptic curves", &results);
+    print_results("Brave", "hashing to elliptic curves", &response.results);
     Ok(())
 }
 
@@ -181,20 +181,20 @@ async fn brave_live_pagination() -> Result<()> {
     let crawler = build_brave_crawler();
     let engine = delulu_websearch::engines::brave::BraveEngine::new(crawler);
 
-    let page1 = engine.search("rust programming", SearchParams::default()).await?;
-    assert!(!page1.is_empty(), "Page 1 should have results");
-    println!("Brave page 1: {} results", page1.len());
+    let page1 = engine.search("rust programming", SearchParams::default(), None).await?;
+    assert!(!page1.results.is_empty(), "Page 1 should have results");
+    println!("Brave page 1: {} results", page1.results.len());
 
     // Long delay to avoid bot detection
     sleep(Duration::from_secs(8)).await;
 
-    match engine.search("rust programming", SearchParams { page: Some(2), ..Default::default() }).await {
-        Ok(results) => {
-            assert!(!results.is_empty(), "Page 2 should have results");
-            println!("Brave page 2: {} results", results.len());
-            let page1_urls: Vec<&str> = page1.iter().map(|r| r.url.as_str()).collect();
+    match engine.search("rust programming", SearchParams { page: Some(2), ..Default::default() }, None).await {
+        Ok(response) => {
+            assert!(!response.results.is_empty(), "Page 2 should have results");
+            println!("Brave page 2: {} results", response.results.len());
+            let page1_urls: Vec<&str> = page1.results.iter().map(|r| r.url.as_str()).collect();
             assert!(
-                results.iter().any(|r| !page1_urls.contains(&r.url.as_str())),
+                response.results.iter().any(|r| !page1_urls.contains(&r.url.as_str())),
                 "Page 2 should contain results not on page 1"
             );
         }
@@ -210,12 +210,12 @@ async fn brave_live_safesearch() -> Result<()> {
     let crawler = build_brave_crawler();
     let engine = delulu_websearch::engines::brave::BraveEngine::new(crawler);
 
-    let results = engine
-        .search("test", SearchParams { safesearch: Some("strict".into()), ..Default::default() })
+    let response = engine
+        .search("test", SearchParams { safesearch: Some("strict".into()), ..Default::default() }, None)
         .await?;
 
-    assert!(!results.is_empty(), "Expected results with safesearch=strict");
-    print_results("Brave (safesearch=strict)", "test", &results);
+    assert!(!response.results.is_empty(), "Expected results with safesearch=strict");
+    print_results("Brave (safesearch=strict)", "test", &response.results);
     Ok(())
 }
 
@@ -225,12 +225,12 @@ async fn brave_live_country() -> Result<()> {
     let crawler = build_brave_crawler();
     let engine = delulu_websearch::engines::brave::BraveEngine::new(crawler);
 
-    let results = engine
-        .search("news", SearchParams { country: Some("jp".into()), ..Default::default() })
+    let response = engine
+        .search("news", SearchParams { country: Some("jp".into()), ..Default::default() }, None)
         .await?;
 
-    assert!(!results.is_empty(), "Expected results with country=jp");
-    print_results("Brave (country=jp)", "news", &results);
+    assert!(!response.results.is_empty(), "Expected results with country=jp");
+    print_results("Brave (country=jp)", "news", &response.results);
     Ok(())
 }
 
@@ -240,8 +240,8 @@ async fn brave_detects_pow_captcha() -> Result<()> {
     let crawler = build_brave_crawler();
     let engine = delulu_websearch::engines::brave::BraveEngine::new(crawler);
 
-    match engine.search("test", SearchParams::default()).await {
-        Ok(r) => println!("Brave: NOT blocked ({} results)", r.len()),
+    match engine.search("test", SearchParams::default(), None).await {
+        Ok(r) => println!("Brave: NOT blocked ({} results)", r.results.len()),
         Err(delulu_websearch::WebsearchError::AccessDenied) => {
             println!("Brave: correctly detected AccessDenied");
         }
@@ -264,14 +264,14 @@ async fn registry_default_engines_both_work() -> Result<()> {
 
     let brave = registry.get_engine("brave").expect("Brave in registry");
 
-    let brave_results = brave.search("rust async trait", SearchParams::default()).await?;
-    assert!(!brave_results.is_empty(), "Brave should return results");
-    println!("Registry Brave: {} results", brave_results.len());
+    let brave_results = brave.search("rust async trait", SearchParams::default(), None).await?;
+    assert!(!brave_results.results.is_empty(), "Brave should return results");
+    println!("Registry Brave: {} results", brave_results.results.len());
 
     // DDG may be blocked — engine handles it
     let ddg = registry.get_engine("duckduckgo").expect("DDG in registry");
-    match ddg.search("rust async trait", SearchParams::default()).await {
-        Ok(r) => println!("Registry DDG: {} results", r.len()),
+    match ddg.search("rust async trait", SearchParams::default(), None).await {
+        Ok(r) => println!("Registry DDG: {} results", r.results.len()),
         Err(e) => println!("Registry DDG blocked: {e}"),
     }
 

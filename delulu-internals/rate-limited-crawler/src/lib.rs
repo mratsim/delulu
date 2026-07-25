@@ -280,7 +280,7 @@ pub struct GetBuilder<'a> {
 
 impl GetBuilder<'_> {
     pub fn with_headers(mut self, headers: Vec<(String, String)>) -> Self {
-        self.headers = headers;
+        self.headers.extend(headers);
         self
     }
 
@@ -291,6 +291,27 @@ impl GetBuilder<'_> {
 
     pub fn with_retry_limit(mut self, limit: u32) -> Self {
         self.retry_limit = Some(limit);
+        self
+    }
+
+    /// Set default browser masquerade headers to avoid bot detection.
+    /// These headers mimic a real browser navigation request.
+    /// Engine-specific headers (User-Agent, Cookie, etc.) can be added via `with_headers()`.
+    /// Duplicate header names are resolved by the HTTP client (last value wins for single-value headers).
+    pub fn with_default_masquerade_headers(mut self) -> Self {
+        self.headers = vec![
+            ("Accept".into(), "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8".into()),
+            ("Accept-Language".into(), "en-US,en;q=0.5".into()),
+            ("Accept-Encoding".into(), "gzip, deflate".into()),
+            ("DNT".into(), "1".into()),
+            ("Sec-GPC".into(), "1".into()),
+            ("Connection".into(), "keep-alive".into()),
+            ("Upgrade-Insecure-Requests".into(), "1".into()),
+            ("Sec-Fetch-Dest".into(), "document".into()),
+            ("Sec-Fetch-Mode".into(), "navigate".into()),
+            ("Sec-Fetch-Site".into(), "none".into()),
+            ("Sec-Fetch-User".into(), "?1".into()),
+        ];
         self
     }
 
