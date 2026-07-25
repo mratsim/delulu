@@ -127,6 +127,10 @@ pub enum WebsearchError {
         /// Details of the deserialization failure.
         detail: String,
     },
+    /// Session key not found or expired.
+    /// Recovery: Re-run the search without a continuation.
+    #[error("Session not found or expired")]
+    SessionNotFound,
 }
 
 impl From<CrawlerError> for WebsearchError {

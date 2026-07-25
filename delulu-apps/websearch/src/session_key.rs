@@ -17,13 +17,11 @@
 
 //! Session key type for MCP pagination.
 //!
-//! Format: `<timestamp>-<engine:3>-<id:11base58>`
-//! Example: `20260725T060000-brv-Pyz8q4fVDuL`
+//! Format: `<engine:3>-<id:11base58>`
+//! Example: `brv-Pyz8q4fVDuL`
 //!
-//! Hash is computed from the 8-byte random ID only (cryptographically random → ideal dispersion).
-//! The timestamp and engine are for debugging (eviction, log analysis).
+//! Hash and equality are computed from the 8-byte random ID only (cryptographically random → ideal dispersion).
 
-use chrono::{DateTime, Utc};
 use crate::engine::EngineId;
 use serde::{
     de::{self, Visitor},
@@ -35,15 +33,13 @@ use std::hash::{Hash, Hasher};
 
 /// A session key for MCP pagination.
 ///
-/// Format: `<timestamp>-<engine:3>-<id:11base58>`
-/// Example: `20260725T060000-brv-Pyz8q4fVDuL`
+/// Format: `<engine:3>-<id:11base58>`
+/// Example: `brv-Pyz8q4fVDuL`
 ///
 /// Hash and equality use the 8-byte random ID only.
-/// The timestamp and engine are for debugging (visible in the serialized form).
+/// The engine is for debugging (visible in the serialized form).
 #[derive(Debug, Clone)]
 pub struct SessionKey {
-    /// UTC timestamp for debugging eviction/logs.
-    timestamp: DateTime<Utc>,
     /// Engine identifier for debugging.
     engine: EngineId,
     /// 8 cryptographically random bytes — used for hash and equality.
@@ -54,18 +50,17 @@ impl SessionKey {
     /// Create a new session key from its components.
     /// Pure function — same inputs always produce the same key.
     /// The caller provides 8 cryptographically random bytes.
-    pub fn new(engine: EngineId, timestamp: DateTime<Utc>, id: [u8; 8]) -> Self {
-        SessionKey { timestamp, engine, id }
+    pub fn new(engine: EngineId, id: [u8; 8]) -> Self {
+        SessionKey { engine, id }
     }
 
-    /// The serialized form: `<timestamp>-<engine:3>-<id:11base58>`
+    /// The serialized form: `<engine:3>-<id:11base58>`
     pub fn as_str(&self) -> String {
-        let ts = self.timestamp.format("%Y%m%dT%H%M%S");
-        format!("{}-{}-{}", ts, self.engine.abbreviation(), base58_encode(&self.id))
+        format!("{}-{}", self.engine.abbreviation(), base58_encode(&self.id))
     }
 }
 
-// Hash and equality from the random ID only — no timestamp/engine involved.
+// Hash and equality from the random ID only — no engine involved.
 impl Hash for SessionKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
@@ -80,13 +75,25 @@ impl PartialEq for SessionKey {
 
 impl Eq for SessionKey {}
 
+impl PartialOrd for SessionKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SessionKey {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id)
+    }
+}
+
 impl fmt::Display for SessionKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }
 
-// --- Serialization: produces "<timestamp>-<engine>-<hex_id>" ---
+// --- Serialization: produces "<engine>-<base58_id>" ---
 
 impl Serialize for SessionKey {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -101,30 +108,20 @@ impl<'de> Deserialize<'de> for SessionKey {
             type Value = SessionKey;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "a session key in format <timestamp>-<engine>-<hex_id>")
+                write!(f, "a session key in format <engine>-<base58_id>")
             }
 
             fn visit_str<E: de::Error>(self, s: &str) -> Result<SessionKey, E> {
-                // Parse "<timestamp>-<engine>-<hex_id>"
-                let parts: Vec<&str> = s.splitn(3, '-').collect();
-                if parts.len() != 3 {
+                // Parse "<engine>-<base58_id>"
+                let parts: Vec<&str> = s.splitn(2, '-').collect();
+                if parts.len() != 2 {
                     return Err(E::custom(format!(
-                        "expected 3 dash-separated parts, got {}",
+                        "expected 2 dash-separated parts, got {}",
                         parts.len()
                     )));
                 }
-                let timestamp_str = parts[0];
-                let engine_str = parts[1];
-                let hex_id = parts[2];
-
-                // Parse timestamp
-                let ts_format = "%Y%m%dT%H%M%S";
-                let timestamp = DateTime::parse_from_str(
-                    &format!("{} +0000", timestamp_str),
-                    &format!("{} %z", ts_format),
-                )
-                .map_err(|e| E::custom(format!("invalid timestamp '{}': {}", timestamp_str, e)))?
-                .with_timezone(&Utc);
+                let engine_str = parts[0];
+                let b58_id = parts[1];
 
                 // Parse engine
                 let engine = match engine_str {
@@ -136,17 +133,17 @@ impl<'de> Deserialize<'de> for SessionKey {
                 };
 
                 // Parse base58 ID (11 chars = 8 bytes)
-                if hex_id.len() != 11 {
+                if b58_id.len() != 11 {
                     return Err(E::custom(format!(
                         "expected 11 base58 chars for ID, got {}",
-                        hex_id.len()
+                        b58_id.len()
                     )));
                 }
-                let id = base58_decode(hex_id).ok_or_else(|| {
-                    E::custom(format!("invalid base58 ID '{}'", hex_id))
+                let id = base58_decode(b58_id).ok_or_else(|| {
+                    E::custom(format!("invalid base58 ID '{}'", b58_id))
                 })?;
 
-                Ok(SessionKey { timestamp, engine, id })
+                Ok(SessionKey { engine, id })
             }
         }
         deserializer.deserialize_str(KeyVisitor)

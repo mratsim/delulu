@@ -24,6 +24,7 @@ pub mod error;
 pub mod engines;
 pub mod parsers;
 pub mod session_key;
+pub mod session_cache;
 
 pub use engine::{Continuation, Engine, EngineId, SearchParams, SearchResult, SearchResponse};
 pub use error::WebsearchError;
@@ -32,6 +33,7 @@ pub use parsers::{
     parse_country, parse_max_results, parse_page, parse_safesearch, validate_query,
 };
 pub use session_key::SessionKey;
+pub use session_cache::SessionCache;
 
 /// Sanitize a string for logging: strip control characters, truncate at 2048 bytes.
 ///

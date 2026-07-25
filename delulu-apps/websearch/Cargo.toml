@@ -31,6 +31,7 @@ futures-util = { version = "0.3", default-features = false, features = ["std", "
 async-trait = "0.1"
 urlencoding = "2"
 zstd = "0.13"
+getrandom = "0.2"
 
 [dependencies.clap]
 version = "4"
@@ -92,6 +93,10 @@ path = "tests/unit/error_test.rs"
 [[test]]
 name = "lib_test"
 path = "tests/unit/lib_test.rs"
+
+[[test]]
+name = "session_cache_test"
+path = "tests/unit/session_cache_test.rs"
 
 [[test]]
 name = "brave_test"

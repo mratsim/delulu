@@ -1,4 +1,4 @@
-//!  Delulu Web Search — CLI
+//!  Delulu Web Search
 //!
 //!  Copyright (C) 2026  Mamy Ratsimbazafy
 //!
@@ -29,6 +29,13 @@
 
 use anyhow::Result;
 use clap::Parser;
+use delulu_websearch::engines::brave::BraveContinuation;
+use delulu_websearch::engines::duckduckgo::DuckDuckGoContinuation;
+use delulu_websearch::engines::create_default_registry;
+use delulu_websearch::{validate_query, SearchParams};
+
+/// Default engine when neither `--engine` nor `--continuation` is provided.
+const DEFAULT_ENGINE: &str = "duckduckgo";
 
 /// CLI arguments for web search.
 #[derive(Parser, Debug)]
@@ -40,8 +47,8 @@ struct Cli {
     query: Option<String>,
 
     /// Search engine to use (default: "duckduckgo").
-    #[arg(short = 'e', long, default_value = "duckduckgo")]
-    engine: String,
+    #[arg(short = 'e', long)]
+    engine: Option<String>,
 
     /// Page number (1-indexed).
     #[arg(short = 'p', long)]
@@ -66,6 +73,10 @@ struct Cli {
     /// Output compact JSON (no pretty-print).
     #[arg(long)]
     json: bool,
+
+    /// Continuation JSON string for pagination.
+    #[arg(short = 'c', long)]
+    continuation: Option<String>,
 }
 
 #[tokio::main]
@@ -73,11 +84,78 @@ async fn main() -> Result<()> {
     let args = Cli::parse();
 
     let query = args.query.as_deref().unwrap_or("");
-    if query.trim().is_empty() {
-        anyhow::bail!("'query' must be a non-empty string");
+    let trimmed = validate_query(query)?;
+
+    // Parse search parameters
+    let params = SearchParams {
+        page: args.page,
+        country: args.country,
+        safesearch: args.safesearch,
+        time_range: args.time_range,
+        max_results: args.max_results,
+    };
+
+    // Parse continuation if provided
+    let (continuation, inferred_engine) =
+        if let Some(ref cont_json) = args.continuation {
+            // Try Brave first, then DuckDuckGo
+            if let Ok(brave_cont) = serde_json::from_str::<BraveContinuation>(cont_json) {
+                let brave: Box<dyn delulu_websearch::Continuation> = Box::new(brave_cont);
+                (Some(brave), Some("brave"))
+            } else if let Ok(ddg_cont) =
+                serde_json::from_str::<DuckDuckGoContinuation>(cont_json)
+            {
+                let ddg: Box<dyn delulu_websearch::Continuation> = Box::new(ddg_cont);
+                (Some(ddg), Some("duckduckgo"))
+            } else {
+                anyhow::bail!("Invalid --continuation JSON: failed to parse as BraveContinuation or DuckDuckGoContinuation");
+            }
+        } else {
+            (None, None)
+        };
+
+    // Determine engine name with validation against continuation type
+    let engine_name = match (args.engine.as_deref(), inferred_engine) {
+        (Some(explicit), Some(inferred)) => {
+            if explicit != inferred {
+                anyhow::bail!(
+                    "Engine/continuation mismatch: continuation type {} does not match engine {}",
+                    inferred,
+                    explicit,
+                );
+            }
+            explicit.to_string()
+        }
+        (Some(explicit), None) => explicit.to_string(),
+        (None, Some(inferred)) => inferred.to_string(),
+        (None, None) => DEFAULT_ENGINE.to_string(),
+    };
+
+    // Get registry and engine
+    let registry = create_default_registry();
+    let engine = registry
+        .get_engine(&engine_name)
+        .ok_or_else(|| anyhow::anyhow!("Engine '{}' not found", engine_name))?;
+
+    // Execute search
+    let response = engine
+        .search(trimmed, params, continuation.as_deref())
+        .await?;
+
+    // Build output JSON
+    let has_next_page = response.continuation.is_some();
+    let output = serde_json::json!({
+        "results": response.results,
+        "session_key": null,
+        "has_next_page": has_next_page,
+    });
+
+    // Print JSON
+    if args.json {
+        println!("{}", output);
+    } else {
+        println!("{}", serde_json::to_string_pretty(&output)?);
     }
 
-    // Stub: print placeholder message
-    println!("CLI not yet implemented");
     Ok(())
 }

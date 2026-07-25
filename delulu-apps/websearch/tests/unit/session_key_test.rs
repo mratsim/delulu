@@ -17,17 +17,8 @@
 
 //! Unit tests for session key module.
 
-use chrono::{DateTime, Utc};
 use delulu_websearch::{EngineId, SessionKey};
 use std::collections::HashSet;
-
-fn fixed_time() -> DateTime<Utc> {
-    DateTime::from_timestamp(1784959200, 0).unwrap()
-}
-
-fn alt_time() -> DateTime<Utc> {
-    DateTime::from_timestamp(1767268800, 0).unwrap()
-}
 
 fn fixed_id() -> [u8; 8] {
     [0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89]
@@ -39,38 +30,38 @@ fn alt_id() -> [u8; 8] {
 
 #[test]
 fn session_key_format() {
-    let key = SessionKey::new(EngineId::Brave, fixed_time(), fixed_id());
+    let key = SessionKey::new(EngineId::Brave, fixed_id());
     let s = key.as_str();
-    assert_eq!(s, "20260725T060000-brv-Pyz8q4fVDuL");
+    assert_eq!(s, "brv-Pyz8q4fVDuL");
 }
 
 #[test]
 fn session_key_deterministic() {
-    let key1 = SessionKey::new(EngineId::Brave, fixed_time(), fixed_id());
-    let key2 = SessionKey::new(EngineId::Brave, fixed_time(), fixed_id());
+    let key1 = SessionKey::new(EngineId::Brave, fixed_id());
+    let key2 = SessionKey::new(EngineId::Brave, fixed_id());
     assert_eq!(key1, key2);
 }
 
 #[test]
 fn hash_and_eq_use_id_only() {
-    let key1 = SessionKey::new(EngineId::Brave, fixed_time(), fixed_id());
-    let key2 = SessionKey::new(EngineId::Brave, alt_time(), fixed_id());
-    // Same ID, different timestamp — must be equal (hash from ID only)
+    let key1 = SessionKey::new(EngineId::Brave, fixed_id());
+    let key2 = SessionKey::new(EngineId::DuckDuckGo, fixed_id());
+    // Same ID, different engine — must be equal (hash from ID only)
     assert_eq!(key1, key2);
 }
 
 #[test]
 fn different_ids_are_not_equal() {
-    let key1 = SessionKey::new(EngineId::Brave, fixed_time(), fixed_id());
-    let key2 = SessionKey::new(EngineId::Brave, fixed_time(), alt_id());
+    let key1 = SessionKey::new(EngineId::Brave, fixed_id());
+    let key2 = SessionKey::new(EngineId::Brave, alt_id());
     assert_ne!(key1, key2);
 }
 
 #[test]
 fn round_trip_serialization() {
-    let key = SessionKey::new(EngineId::Brave, fixed_time(), fixed_id());
+    let key = SessionKey::new(EngineId::Brave, fixed_id());
     let json = serde_json::to_string(&key).unwrap();
-    assert_eq!(json, "\"20260725T060000-brv-Pyz8q4fVDuL\"");
+    assert_eq!(json, "\"brv-Pyz8q4fVDuL\"");
 
     let deserialized: SessionKey = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized, key);
@@ -78,9 +69,9 @@ fn round_trip_serialization() {
 
 #[test]
 fn round_trip_duckduckgo() {
-    let key = SessionKey::new(EngineId::DuckDuckGo, alt_time(), alt_id());
+    let key = SessionKey::new(EngineId::DuckDuckGo, alt_id());
     let json = serde_json::to_string(&key).unwrap();
-    assert_eq!(json, "\"20260101T120000-ddg-hHjzwFVc9gd\"");
+    assert_eq!(json, "\"ddg-hHjzwFVc9gd\"");
 
     let deserialized: SessionKey = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized, key);
@@ -88,8 +79,8 @@ fn round_trip_duckduckgo() {
 
 #[test]
 fn hashmap_usage() {
-    let key1 = SessionKey::new(EngineId::Brave, fixed_time(), fixed_id());
-    let key2 = SessionKey::new(EngineId::Brave, fixed_time(), alt_id());
+    let key1 = SessionKey::new(EngineId::Brave, fixed_id());
+    let key2 = SessionKey::new(EngineId::Brave, alt_id());
 
     let mut map = HashSet::new();
     map.insert(key1.clone());
@@ -99,7 +90,7 @@ fn hashmap_usage() {
 
 #[test]
 fn display_matches_as_str() {
-    let key = SessionKey::new(EngineId::Brave, fixed_time(), fixed_id());
+    let key = SessionKey::new(EngineId::Brave, fixed_id());
     assert_eq!(format!("{}", key), key.as_str());
 }
 
@@ -111,6 +102,6 @@ fn deserialize_invalid_format() {
     let result: Result<SessionKey, _> = serde_json::from_str("\"20260725T060000-unknown-Pyz8q4fVDuL\"");
     assert!(result.is_err());
 
-    let result: Result<SessionKey, _> = serde_json::from_str("\"20260725T060000-brv-short\"");
+    let result: Result<SessionKey, _> = serde_json::from_str("\"brv-short\"");
     assert!(result.is_err());
 }
