@@ -17,7 +17,7 @@
 
 //! Unit tests for engine registry.
 
-use delulu_websearch::engines::{create_default_registry, duckduckgo::DuckDuckGoEngine, EngineRegistry};
+use super::{create_default_registry, duckduckgo::DuckDuckGoEngine, EngineRegistry};
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use std::sync::Arc;
 

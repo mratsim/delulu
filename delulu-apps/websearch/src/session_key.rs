@@ -154,16 +154,24 @@ impl<'de> Deserialize<'de> for SessionKey {
 /// Base58 alphabet (no 0, O, I, l to avoid ambiguity).
 const BASE58_ALPHABET: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
-/// Encode 8 bytes as base58 (produces 11 characters).
+/// Encode 8 bytes as base58 (produces exactly 11 characters).
+/// Left-pads with '1' (base58 zero) to ensure fixed length.
 fn base58_encode(bytes: &[u8; 8]) -> String {
     let mut value = u64::from_le_bytes(*bytes);
     let mut result = Vec::new();
+    // Handle zero explicitly: encode as all zeros
+    if value == 0 {
+        return "11111111111".to_string();
+    }
     while value > 0 {
         result.push(BASE58_ALPHABET[(value % 58) as usize]);
         value /= 58;
     }
     result.reverse();
-    String::from_utf8(result).unwrap()
+    // Left-pad with '1' (base58 zero) to exactly 11 characters
+    let mut padded = vec![b'1'; 11 - result.len()];
+    padded.append(&mut result);
+    String::from_utf8(padded).unwrap()
 }
 
 /// Decode 11 base58 characters back into 8 bytes.
@@ -176,3 +184,7 @@ fn base58_decode(s: &str) -> Option<[u8; 8]> {
     }
     Some(value.to_le_bytes())
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/session_key_test.rs"]
+mod session_key_test;

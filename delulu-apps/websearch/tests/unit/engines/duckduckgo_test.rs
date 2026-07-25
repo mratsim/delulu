@@ -17,11 +17,11 @@
 
 //! Unit tests for DuckDuckGo search engine backend.
 
-use delulu_websearch::engines::duckduckgo::{
-    DuckDuckGoContinuation, DuckDuckGoEngine, extract_json_from_js, html_entity_decode,
-    is_leap_year, parse_ddg_date,
+use super::{
+    validate_n_token, DuckDuckGoContinuation, DuckDuckGoEngine, extract_json_from_js,
+    html_entity_decode, is_leap_year, parse_ddg_date,
 };
-use delulu_websearch::{Continuation, SearchParams, WebsearchError};
+use crate::{Continuation, SearchParams, WebsearchError};
 
 
 #[test]
@@ -260,5 +260,31 @@ fn duckduckgo_continuation_roundtrip() {
 fn duckduckgo_continuation_from_json() {
     let cont: DuckDuckGoContinuation = serde_json::from_str(r#"{"n_token":"/d.js?q=test&vqd=xyz"}"#).unwrap();
     assert_eq!(cont.n_token, "/d.js?q=test&vqd=xyz");
+}
+
+#[test]
+fn validate_n_token_accepts_valid_paths() {
+    assert!(validate_n_token("/d.js?q=rust&vqd=abc"));
+    assert!(validate_n_token("d.js?o=jsonp&q=test"));
+    assert!(validate_n_token("/d.js"));
+    assert!(validate_n_token("abc123/def"));
+}
+
+#[test]
+fn validate_n_token_rejects_path_traversal() {
+    assert!(!validate_n_token("../../../etc/passwd"));
+    assert!(!validate_n_token("..\\..\\windows\\system32"));
+    assert!(!validate_n_token("/d.js?q=../escape"));
+}
+
+#[test]
+fn validate_n_token_rejects_protocol_injection() {
+    assert!(!validate_n_token("https://internal.service/admin"));
+    assert!(!validate_n_token("http://evil.com/payload"));
+}
+
+#[test]
+fn validate_n_token_rejects_empty() {
+    assert!(!validate_n_token(""));
 }
 

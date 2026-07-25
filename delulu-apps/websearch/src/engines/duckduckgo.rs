@@ -63,9 +63,15 @@ const DDG_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0
 /// DuckDuckGo uses an opaque "n" token extracted from the d.js response
 /// items for pagination. The token is used as a direct URL path to
 /// `https://links.duckduckgo.com/{n_token}`.
+///
+/// # Security
+/// The n_token is validated to contain only safe URL path characters
+/// (`[a-zA-Z0-9/?=._-]`) to prevent SSRF via path traversal or
+/// protocol injection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DuckDuckGoContinuation {
     /// The next-page token extracted from the d.js response "n" field.
+    /// Must contain only safe URL path characters.
     pub n_token: String,
 }
 
@@ -73,6 +79,17 @@ impl Continuation for DuckDuckGoContinuation {
     fn as_any(&self) -> &dyn Any {
         self
     }
+}
+
+/// Validate that n_token contains only safe URL path/query characters.
+/// This prevents SSRF via path traversal (`..`) or protocol injection
+/// (`https://...`). Allowed: alphanumeric, `/`, `?`, `=`, `.`, `_`, `-`, `&`.
+pub(crate) fn validate_n_token(token: &str) -> bool {
+    !token.is_empty()
+        && token.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '?' | '=' | '.' | '_' | '-' | '&'))
+        && !token.contains("..")
+        && !token.starts_with("https://")
+        && !token.starts_with("http://")
 }
 
 impl DuckDuckGoEngine {
@@ -280,8 +297,9 @@ impl DuckDuckGoEngine {
                 break;
             }
 
-            // Track the "n" (next page token) field from items
-            if let Some(n_val) = item.get("n").and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+            // Track the "n" (next page token) field from items.
+            // Validate to prevent SSRF: reject path traversal or protocol injection.
+            if let Some(n_val) = item.get("n").and_then(|v| v.as_str()).filter(|v| validate_n_token(v)) {
                 n_token = Some(n_val.to_string());
             }
 
@@ -433,6 +451,12 @@ impl Engine for DuckDuckGoEngine {
                         received: std::any::type_name_of_val(c),
                     }
                 })?;
+                // Validate n_token to prevent SSRF via continuation injection.
+                if !validate_n_token(&ddg_cont.n_token) {
+                    return Err(WebsearchError::ContinuationInvalidValue {
+                        reason: "n_token contains unsafe characters",
+                    });
+                }
                 // Use the n_token as a direct URL path
                 djs_url = Self::build_djs_url(&ddg_cont.n_token);
                 djs_start = Instant::now();
@@ -670,3 +694,6 @@ fn days_since_epoch(year: i64, month: u32, day: u32) -> Option<u64> {
 pub fn is_leap_year(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
+#[cfg(test)]
+#[path = "../../tests/unit/engines/duckduckgo_test.rs"]
+mod duckduckgo_test;

@@ -17,8 +17,8 @@
 
 //! Unit tests for Brave search engine backend.
 
-use delulu_websearch::engines::brave::{BraveContinuation, BraveEngine, strip_date_prefix};
-use delulu_websearch::{Continuation, SearchParams};
+use super::{BraveContinuation, BraveEngine, strip_date_prefix};
+use crate::{Continuation, SearchParams};
 
 
 #[test]

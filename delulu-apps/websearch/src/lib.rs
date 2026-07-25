@@ -54,3 +54,7 @@ pub fn sanitize_for_log(s: &str) -> String {
     let end = cleaned.floor_char_boundary(byte_limit);
     cleaned[..end].to_string()
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/lib_test.rs"]
+mod lib_test;

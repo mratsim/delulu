@@ -115,3 +115,7 @@ pub fn create_default_registry() -> EngineRegistry {
 
     registry
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/engines/mod_test.rs"]
+mod engines_test;

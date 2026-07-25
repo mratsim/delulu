@@ -17,7 +17,7 @@
 
 //! Unit tests for engine module types (SearchResult, SearchParams, etc.)
 
-use delulu_websearch::{SearchParams, SearchResult};
+use crate::{SearchParams, SearchResult};
 
 #[test]
 fn search_result_serialize_roundtrip() {

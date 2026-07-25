@@ -17,8 +17,8 @@
 
 //! Unit tests for WebsearchError display and conversion.
 
+use crate::WebsearchError;
 use delulu_rate_limited_crawler::error::CrawlerError;
-use delulu_websearch::WebsearchError;
 
 #[test]
 fn error_display_http() {

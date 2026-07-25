@@ -119,3 +119,7 @@ pub fn validate_query(query: &str) -> Result<&str, WebsearchError> {
     Ok(trimmed)
 }
 
+
+#[cfg(test)]
+#[path = "../tests/unit/parsers_test.rs"]
+mod parsers_test;

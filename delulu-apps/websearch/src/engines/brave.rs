@@ -325,3 +325,7 @@ pub fn strip_date_prefix(raw_text: String, date_str: Option<String>) -> (String,
 
     (cleaned, parsed)
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/engines/brave_test.rs"]
+mod brave_test;

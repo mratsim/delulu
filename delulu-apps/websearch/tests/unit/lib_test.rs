@@ -17,7 +17,7 @@
 
 //! Unit tests for lib-level functions (sanitize_for_log).
 
-use delulu_websearch::sanitize_for_log;
+use crate::sanitize_for_log;
 
 #[test]
 fn sanitize_for_log_strips_control_chars() {

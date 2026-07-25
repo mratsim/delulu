@@ -23,8 +23,8 @@
 use std::any::Any;
 use std::time::{Duration, Instant};
 
-use delulu_websearch::{
-    Continuation, EngineId, SearchParams, SessionCache, WebsearchError,
+use crate::{
+    Continuation, EngineId, SearchParams, SessionCache, SessionKey, WebsearchError,
 };
 
 /// Fixed 8 random bytes for deterministic tests.
@@ -150,7 +150,7 @@ fn session_cache_update_nonexistent() {
     let now = Instant::now();
 
     // Create a key that was never stored
-    let fake_key = delulu_websearch::SessionKey::new(
+    let fake_key = SessionKey::new(
         EngineId::Brave,
         alt_id(),
     );

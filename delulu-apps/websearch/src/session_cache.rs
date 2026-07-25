@@ -272,3 +272,7 @@ impl SessionCache {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/session_cache_test.rs"]
+mod session_cache_test;

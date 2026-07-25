@@ -74,38 +74,3 @@ path = "tests/integration/t_brave_fixtures.rs"
 name = "t_duckduckgo_fixtures"
 path = "tests/integration/t_duckduckgo_fixtures.rs"
 
-[[test]]
-name = "parsers"
-path = "tests/unit/parsers_test.rs"
-
-[[test]]
-name = "session_key_test"
-path = "tests/unit/session_key_test.rs"
-
-[[test]]
-name = "engine_test"
-path = "tests/unit/engine_test.rs"
-
-[[test]]
-name = "error_test"
-path = "tests/unit/error_test.rs"
-
-[[test]]
-name = "lib_test"
-path = "tests/unit/lib_test.rs"
-
-[[test]]
-name = "session_cache_test"
-path = "tests/unit/session_cache_test.rs"
-
-[[test]]
-name = "brave_test"
-path = "tests/unit/engines/brave_test.rs"
-
-[[test]]
-name = "duckduckgo_test"
-path = "tests/unit/engines/duckduckgo_test.rs"
-
-[[test]]
-name = "engines_test"
-path = "tests/unit/engines/mod_test.rs"
