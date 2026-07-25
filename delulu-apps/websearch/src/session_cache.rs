@@ -134,12 +134,19 @@ impl SessionCache {
 
         // Pop expired entries from the min-heap and remove from map.
         // Min-heap guarantee: if the top is not expired, nothing below is.
+        //
+        // Edge case: `update_continuation()` pushes a new heap entry when
+        // refreshing expires_at. The old heap entry (stale, earlier expiry)
+        // may be at the top. We always pop it from the heap, but only remove
+        // from the map if the entry's actual expiry confirms it's expired.
         while let Some(Reverse((expires_at, _))) = heap.peek() {
             if *expires_at >= now {
                 break;
             }
             let Reverse((_, key)) = heap.pop().unwrap();
-            entries.remove(&key);
+            if entries.get(&key).map_or(true, |e| e.expires_at <= now) {
+                entries.remove(&key);
+            }
         }
     }
 

@@ -464,3 +464,37 @@ fn evict_expired_called_on_update_continuation() {
     // evict_expired should remove the expired entry, so update should fail
     assert!(result.is_err(), "expired entry should return SessionNotFound");
 }
+
+#[test]
+fn evict_expired_after_update_continuation_keeps_refreshed_entry() {
+    /// After update_continuation refreshes expires_at, evict_expired with
+    /// now between old and new expiry must keep the entry alive.
+    /// The stale heap entry (old expiry) is popped but the map entry survives.
+    let cache = SessionCache::new(10, Duration::from_secs(60));
+    let now = Instant::now();
+
+    let key = cache.store(
+        EngineId::Brave,
+        "refresh test",
+        SearchParams::default(),
+        None,
+        now,
+        fixed_id(),
+    );
+    assert!(cache.get(&key, now).is_some());
+
+    // Refresh the entry at now + 10s, extending expiry to now + 70s
+    let refresh_time = now + Duration::from_secs(10);
+    let result = cache.update_continuation(&key, None, refresh_time);
+    assert!(result.is_ok(), "update should succeed");
+
+    // evict_expired at now + 30s — stale heap entry says old expiry
+    // (now + 60s), but map entry says new expiry (now + 70s)
+    let evict_time = now + Duration::from_secs(30);
+    cache.evict_expired(evict_time);
+
+    // Entry should still be alive (refreshed expiry > evict_time)
+    let entry = cache.get(&key, evict_time);
+    assert!(entry.is_some(), "refreshed entry should survive evict_expired");
+    assert_eq!(entry.unwrap().engine, EngineId::Brave);
+}
