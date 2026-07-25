@@ -22,11 +22,14 @@
 pub mod engine;
 pub mod error;
 pub mod engines;
+pub mod parsers;
 
 pub use engine::{Engine, SearchParams, SearchResult};
 pub use error::WebsearchError;
 pub use engines::EngineRegistry;
-
+pub use parsers::{
+    parse_country, parse_max_results, parse_page, parse_safesearch, validate_query,
+};
 /// Sanitize a string for logging: strip control characters, truncate at 2048 bytes.
 ///
 /// This is shared across all engine backends to ensure consistent log output.

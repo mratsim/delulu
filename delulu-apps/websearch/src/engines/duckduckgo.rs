@@ -149,7 +149,7 @@ impl DuckDuckGoEngine {
     }
 
     /// Parse the d.js response to extract search results and next page token.
-    fn parse_djs_response(
+    pub fn parse_djs_response(
         body: &str,
         max_results: usize,
     ) -> Result<Vec<SearchResult>, WebsearchError> {
@@ -253,11 +253,9 @@ impl Engine for DuckDuckGoEngine {
         query: &str,
         params: SearchParams,
     ) -> Result<Vec<SearchResult>, WebsearchError> {
+        crate::parsers::validate_query(query)?;
         let start = Instant::now();
-        let max_results = params
-            .max_results
-            .map(|m| m.min(100) as usize)
-            .unwrap_or(20);
+        let max_results = crate::parsers::parse_max_results(params.max_results)?;
 
         // Step 1: Fetch the initial HTML page to get the d.js URL
         let search_url = Self::build_search_url(query, &params);
@@ -282,6 +280,7 @@ impl Engine for DuckDuckGoEngine {
         ];
         let response = self.crawler.get(&search_url)
             .with_headers(headers)
+            .with_exponential_retry(1)
             .send()
             .await?;
 
@@ -349,6 +348,7 @@ impl Engine for DuckDuckGoEngine {
         ];
         let djs_response = self.crawler.get(&djs_url)
             .with_headers(djs_headers)
+            .with_exponential_retry(1)
             .send()
             .await?;
 
@@ -519,15 +519,15 @@ fn parse_iso_with_tz(s: &str) -> Option<i64> {
     let min: u32 = s[14..16].parse().ok()?;
     let sec: u32 = s[17..19].parse().ok()?;
 
-    // Parse timezone offset
+    // Parse timezone offset using safe byte slicing (get() returns None on invalid boundaries)
     let offset_secs: i64 = if s.len() > 19 {
         let tz = &s[19..];
         if tz == "Z" || tz == "+00:00" || tz == "-00:00" {
             0
         } else if tz.len() >= 6 && (tz.starts_with('+') || tz.starts_with('-')) {
             let sign: i64 = if tz.starts_with('-') { -1 } else { 1 };
-            let tz_hour: i64 = tz[1..3].parse().ok()?;
-            let tz_min: i64 = tz[4..6].parse().ok()?;
+            let tz_hour: i64 = tz.get(1..3)?.parse().ok()?;
+            let tz_min: i64 = tz.get(4..6)?.parse().ok()?;
             sign * (tz_hour * 3600 + tz_min * 60)
         } else {
             0

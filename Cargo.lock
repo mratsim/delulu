@@ -1316,6 +1316,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
  "clap",
  "delulu-mcp-server-helper",
  "delulu-rate-limited-crawler",
@@ -1332,6 +1333,7 @@ dependencies = [
  "url",
  "urlencoding",
  "wreq-util",
+ "zstd",
 ]
 
 [[package]]
