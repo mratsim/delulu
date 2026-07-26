@@ -532,6 +532,17 @@ pub fn extract_json_from_js(s: &str) -> Result<String, WebsearchError> {
             _ if in_string => {}
             '[' => depth += 1,
             ']' => {
+                // Defense-in-depth: depth cannot be 0 here with the current
+                // code structure because s.find('[') (line 512) ensures the
+                // loop starts at the first '[', setting depth = 1. However,
+                // this guard prevents a u32 underflow panic if a future
+                // refactor changes the loop entry point.
+                if depth == 0 {
+                    return Err(WebsearchError::ParseFailed {
+                        parser: "duckduckgo_djs_json_extract",
+                        source: "unmatched closing bracket".into(),
+                    });
+                }
                 depth -= 1;
                 if depth == 0 {
                     end = start + i + 1;

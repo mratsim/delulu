@@ -289,3 +289,20 @@ fn validate_n_token_rejects_protocol_injection() {
 fn validate_n_token_rejects_empty() {
     assert!(!validate_n_token(""));
 }
+
+#[test]
+fn extract_json_from_js_unmatched_close_bracket() {
+    // Anti-regression: input starting with unmatched ] must never cause a
+    // u32 underflow panic. The depth guard at line 535 is defense-in-depth
+    // (currently unreachable due to s.find('[') at line 512), but the no-panic
+    // invariant is the critical guarantee.
+    let result = extract_json_from_js("]abc");
+    assert!(result.is_err());
+}
+
+#[test]
+fn extract_json_from_js_multiple_unmatched_close_brackets() {
+    // Anti-regression: multiple unmatched ]] must also not cause a panic.
+    let result = extract_json_from_js("]]abc");
+    assert!(result.is_err());
+}
