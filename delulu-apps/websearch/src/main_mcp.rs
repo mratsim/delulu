@@ -41,9 +41,10 @@ use delulu_mcp_server_helper::{
 };
 use delulu_websearch::engine::{EngineId, SearchParams};
 use delulu_websearch::engines::{EngineRegistry, create_default_registry};
-use delulu_websearch::mcp_serialization::{McpSearchResponse, engine_name_to_id};
+use delulu_websearch::mcp_serialization::{McpNextPageResponse, McpSearchResponse, sanitize_error_for_client, engine_name_to_id};
 use delulu_websearch::parsers::{parse_max_results, parse_safesearch, parse_country, validate_query};
 use delulu_websearch::SessionCache;
+use delulu_websearch::SessionKey;
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -88,6 +89,15 @@ struct WebSearchInput {
     /// Maximum number of results to return. Defaults to 20, hard limit 100.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_results: Option<u32>,
+}
+
+/// Input parameters for the `web_search_next_page` MCP tool.
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+#[serde(rename_all = "snake_case")]
+struct WebSearchNextPageInput {
+    /// Session key from a previous `web_search` response.
+    pub session_key: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +249,84 @@ impl WebsearchServer {
             } else {
                 Some(engine_errors)
             },
+        };
+
+        serde_json::to_string(&mcp_response).map_err(|e| format!("Serialization failed: {e}"))
+    }
+
+    /// Fetch the next page of results for an existing search session.
+    ///
+    /// Parameters:
+    /// - `session_key` (required): The session key from a previous `web_search` response.
+    #[tool(
+        name = "web_search_next_page",
+        description = "Fetch the next page of results for a search session. Parameters: session_key (required, from web_search response). Returns JSON with results and has_next_page."
+    )]
+    async fn web_search_next_page(
+        &self,
+        params: Parameters<WebSearchNextPageInput>,
+    ) -> Result<String, String> {
+        let input = params.0;
+        let now = std::time::Instant::now();
+
+        // Parse session key
+        let key: SessionKey = match serde_json::from_value(
+            serde_json::Value::String(input.session_key.clone()),
+        ) {
+            Ok(k) => k,
+            Err(_) => {
+                tracing::warn!("Invalid session key format");
+                return Err("Session not found or expired".to_string());
+            }
+        };
+
+        // Look up session in cache
+        let entry = match self.session_cache.get(&key, now) {
+            Some(e) => e,
+            None => {
+                tracing::warn!("Session not found or expired");
+                return Err("Session not found or expired".to_string());
+            }
+        };
+
+        // Check if continuation exists
+        let continuation = match entry.continuation {
+            Some(c) => c,
+            None => {
+                tracing::info!("No more pages available");
+                return Err("No more pages available".to_string());
+            }
+        };
+
+        // Check max pages guard
+        // Look up engine in registry
+        let engine_name = entry.engine.to_string();
+        let engine = match self.engine_registry.get_engine(&engine_name) {
+            Some(e) => e,
+            None => {
+                tracing::warn!("Session engine not available: {}", engine_name);
+                return Err(format!("Session engine not available: {engine_name}"));
+            }
+        };
+
+        // Call engine.search with continuation
+        let response = match engine.search(&entry.query, entry.params, Some(&*continuation)).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                tracing::error!("Next page search failed for session: {e:?}");
+                return Err(sanitize_error_for_client(&e));
+            }
+        };
+
+// Store new continuation
+        let has_next_page = response.continuation.is_some();
+        if let Err(e) = self.session_cache.update_continuation(&key, response.continuation, now) {
+            tracing::error!("Failed to update continuation: {e:?}");
+        }
+
+        let mcp_response = McpNextPageResponse {
+            results: response.results,
+            has_next_page,
         };
 
         serde_json::to_string(&mcp_response).map_err(|e| format!("Serialization failed: {e}"))

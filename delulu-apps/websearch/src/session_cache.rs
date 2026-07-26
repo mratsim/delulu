@@ -284,6 +284,26 @@ impl SessionCache {
 
         Ok(())
     }
+
+    /// Remove a session entry from the cache.
+    ///
+    /// Returns `Err(WebsearchError::SessionNotFound)` if the key doesn't
+    /// exist or the entry has expired.
+    pub fn remove(&self, key: &SessionKey, now: Instant) -> Result<(), WebsearchError> {
+        // Eagerly evict expired entries before doing any work
+        self.evict_expired(now);
+
+        let mut entries = self.entries.write();
+        let _heap = self.expiry_heap.write();
+
+        if entries.remove(key).is_none() {
+            return Err(WebsearchError::SessionNotFound);
+        }
+        // Note: heap entry remains as a zombie — evict_expired will skip it
+        // when it finds the map entry is gone. This is O(log n) amortized.
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

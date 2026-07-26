@@ -27,7 +27,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use delulu_websearch::engine::{EngineId, SearchParams, SearchResult};
-use delulu_websearch::mcp_serialization::McpSearchResponse;
+use delulu_websearch::error::WebsearchError;
+use delulu_websearch::mcp_serialization::{McpNextPageResponse, McpSearchResponse};
 use delulu_websearch::SessionCache;
 use serde_json::Value;
 
@@ -130,6 +131,37 @@ fn session_cache_evict_expired() {
     assert!(entry.is_none(), "Entry should be gone after evict_expired");
 }
 
+#[test]
+fn session_cache_remove_entry() {
+    let cache = SessionCache::new(100, Duration::from_secs(3600));
+    let now = Instant::now();
+    let random_id = [0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22];
+
+    let key = cache.store(
+        EngineId::Brave,
+        "remove test",
+        SearchParams::default(),
+        None,
+        now,
+        random_id,
+    );
+
+    assert!(cache.get(&key, now).is_some(), "Entry should exist before remove");
+    cache.remove(&key, now).expect("remove should succeed");
+    assert!(cache.get(&key, now).is_none(), "Entry should be gone after remove");
+}
+
+#[test]
+fn session_cache_remove_nonexistent() {
+    let cache = SessionCache::new(100, Duration::from_secs(3600));
+    let now = Instant::now();
+    let key = delulu_websearch::SessionKey::new(EngineId::Brave, [0x00; 8]);
+
+    let result = cache.remove(&key, now);
+    assert!(result.is_err(), "remove on nonexistent key should fail");
+    assert!(matches!(result.unwrap_err(), WebsearchError::SessionNotFound));
+}
+
 // ---------------------------------------------------------------------------
 // McpSearchResponse serialization tests
 // ---------------------------------------------------------------------------
@@ -152,7 +184,7 @@ fn mcp_response_has_all_expected_fields() {
         results,
         has_next_page: true,
         continuation_engine: Some("brave".to_string()),
-            engine_errors: None,
+        engine_errors: None,
     };
 
     let json_str = serde_json::to_string(&response)
@@ -181,7 +213,7 @@ fn mcp_response_no_continuation_omits_field() {
         results,
         has_next_page: false,
         continuation_engine: None,
-            engine_errors: None,
+        engine_errors: None,
     };
 
     let json_str = serde_json::to_string(&response)
@@ -236,7 +268,7 @@ fn mcp_response_results_structure() {
         results,
         has_next_page: true,
         continuation_engine: None,
-            engine_errors: None,
+        engine_errors: None,
     };
 
     let json_str = serde_json::to_string(&response)
@@ -262,6 +294,57 @@ fn mcp_response_results_structure() {
     for result in brave_results.iter().chain(ddg_results.iter()) {
         assert!(result.get("title").and_then(|v| v.as_str()).is_some(), "Result missing 'title' string");
         assert!(result.get("url").and_then(|v| v.as_str()).is_some(), "Result missing 'url' string");
-        // snippet and date are optional
     }
+}
+
+// ---------------------------------------------------------------------------
+// Next-page response serialization tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mcp_next_page_response_serialization_integration() {
+    let results = vec![
+        SearchResult {
+            title: "Integration Next Page".to_string(),
+            url: "https://example.com/next".to_string(),
+            snippet: Some("Integration snippet.".to_string()),
+            date: Some(1700000002),
+        },
+    ];
+
+    let response = McpNextPageResponse {
+        results: results.clone(),
+        has_next_page: true,
+    };
+
+    let json_str = serde_json::to_string(&response)
+        .expect("McpNextPageResponse should serialize to JSON");
+    let parsed: Value = serde_json::from_str(&json_str)
+        .expect("Serialized JSON should be valid");
+
+    assert!(parsed.get("results").is_some(), "Missing 'results' field");
+    assert!(parsed.get("has_next_page").is_some(), "Missing 'has_next_page' field");
+
+    let results_arr = parsed["results"].as_array().unwrap();
+    assert_eq!(results_arr.len(), 1, "Expected 1 result");
+    assert_eq!(
+        results_arr[0]["title"].as_str().unwrap(),
+        "Integration Next Page"
+    );
+}
+
+#[test]
+fn mcp_next_page_response_no_more_pages() {
+    let response = McpNextPageResponse {
+        results: vec![],
+        has_next_page: false,
+    };
+
+    let json_str = serde_json::to_string(&response)
+        .expect("McpNextPageResponse should serialize to JSON");
+    let parsed: Value = serde_json::from_str(&json_str)
+        .expect("Serialized JSON should be valid");
+
+    assert!(!parsed["has_next_page"].as_bool().unwrap(), "has_next_page must be false");
+    assert!(parsed["results"].as_array().unwrap().is_empty(), "results should be empty");
 }

@@ -21,8 +21,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::mcp_serialization::{McpSearchResponse, engine_name_to_id};
+    use crate::mcp_serialization::{McpNextPageResponse, McpSearchResponse, engine_name_to_id, sanitize_error_for_client};
     use crate::engine::{EngineId, SearchResult};
+    use crate::error::WebsearchError;
     use serde_json::Value;
     use std::collections::HashMap;
 
@@ -177,5 +178,110 @@ mod tests {
     #[test]
     fn engine_name_to_id_case_sensitive() {
         assert_eq!(engine_name_to_id("Brave"), None);
+    }
+
+    /// Verify that `McpNextPageResponse` serializes correctly.
+    #[test]
+    fn mcp_next_page_response_serialization() {
+        let results = vec![
+            SearchResult {
+                title: "Next Page Result".to_string(),
+                url: "https://example.com/next".to_string(),
+                snippet: Some("Next page snippet.".to_string()),
+                date: Some(1700000001),
+            },
+        ];
+
+        let response = McpNextPageResponse {
+            results: results.clone(),
+            has_next_page: true,
+        };
+
+        let json_str = serde_json::to_string(&response)
+            .expect("McpNextPageResponse should serialize to JSON");
+        let parsed: Value = serde_json::from_str(&json_str)
+            .expect("Serialized JSON should be valid");
+
+        assert!(parsed.get("results").is_some(), "Missing 'results' field");
+        assert!(parsed.get("has_next_page").is_some(), "Missing 'has_next_page' field");
+        assert!(parsed["has_next_page"].as_bool().unwrap(), "has_next_page must be true");
+
+        let results_arr = parsed["results"].as_array().unwrap();
+        assert_eq!(results_arr.len(), 1, "Expected 1 result");
+        assert_eq!(results_arr[0]["title"].as_str().unwrap(), "Next Page Result");
+    }
+
+    /// Verify that `sanitize_error_for_client` produces sanitized messages.
+    #[test]
+    fn mcp_error_sanitization() {
+        // SessionNotFound
+        let err = WebsearchError::SessionNotFound;
+        let msg = sanitize_error_for_client(&err);
+        assert_eq!(msg, "Session not found or expired");
+
+        // EngineNotFound
+        let err = WebsearchError::EngineNotFound {
+            name: "unknown".to_string(),
+        };
+        let msg = sanitize_error_for_client(&err);
+        assert_eq!(msg, "Session engine not available: unknown");
+
+        // HttpStatus
+        let err = WebsearchError::HttpStatus {
+            code: 403,
+            engine: "brave",
+        };
+        let msg = sanitize_error_for_client(&err);
+        assert_eq!(msg, "Search engine error: brave");
+
+        // Http (transport)
+        let err = WebsearchError::Http(
+            delulu_rate_limited_crawler::error::CrawlerError::QpsZero,
+        );
+        let msg = sanitize_error_for_client(&err);
+        assert_eq!(msg, "Search engine error");
+
+        // AccessDenied
+        let err = WebsearchError::AccessDenied;
+        let msg = sanitize_error_for_client(&err);
+        assert_eq!(msg, "Search engine error");
+
+        // Internal errors
+        let err = WebsearchError::ContinuationTypeMismatch {
+            expected: "A",
+            received: "B",
+        };
+        let msg = sanitize_error_for_client(&err);
+        assert_eq!(msg, "Internal session error");
+
+        let err = WebsearchError::ContinuationDeserializationFailed {
+            engine: "brave".to_string(),
+            detail: "some internal detail".to_string(),
+        };
+        let msg = sanitize_error_for_client(&err);
+        assert_eq!(msg, "Internal session error");
+
+        // InvalidQuery
+        let err = WebsearchError::InvalidQuery {
+            reason: "bad chars",
+        };
+        let msg = sanitize_error_for_client(&err);
+        assert_eq!(msg, "Search engine error");
+
+        // ParseFailed
+        let err = WebsearchError::ParseFailed {
+            parser: "duckduckgo_djs",
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "parse error")),
+        };
+        let msg = sanitize_error_for_client(&err);
+        assert_eq!(msg, "Search engine error");
+
+        // MissingField
+        let err = WebsearchError::MissingField {
+            field: "title",
+            engine: "brave",
+        };
+        let msg = sanitize_error_for_client(&err);
+        assert_eq!(msg, "Search engine error: brave");
     }
 }

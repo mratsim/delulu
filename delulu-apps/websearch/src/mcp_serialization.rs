@@ -82,6 +82,53 @@ pub fn engine_name_to_id(name: &str) -> Option<EngineId> {
     }
 }
 
+/// The JSON response returned by the MCP `web_search_next_page` tool.
+#[derive(Debug, Clone, Serialize)]
+pub struct McpNextPageResponse {
+    /// Search results for this page.
+    pub results: Vec<SearchResult>,
+    /// Whether there are more pages available.
+    pub has_next_page: bool,
+}
+
+/// Sanitize a `WebsearchError` into a client-safe error message.
+///
+/// Internal error details (downcast errors, deserialization internals) are
+/// stripped to prevent leaking implementation details to the MCP client.
+pub fn sanitize_error_for_client(err: &crate::error::WebsearchError) -> String {
+    match err {
+        crate::error::WebsearchError::SessionNotFound => {
+            "Session not found or expired".to_string()
+        }
+        crate::error::WebsearchError::Http(_) => {
+            "Search engine error".to_string()
+        }
+        crate::error::WebsearchError::HttpStatus { engine, .. } => {
+            format!("Search engine error: {engine}")
+        }
+        crate::error::WebsearchError::ParseFailed { .. } => {
+            "Search engine error".to_string()
+        }
+        crate::error::WebsearchError::MissingField { engine, .. } => {
+            format!("Search engine error: {engine}")
+        }
+        crate::error::WebsearchError::AccessDenied => {
+            "Search engine error".to_string()
+        }
+        crate::error::WebsearchError::InvalidQuery { .. } => {
+            "Search engine error".to_string()
+        }
+        crate::error::WebsearchError::EngineNotFound { name } => {
+            format!("Session engine not available: {name}")
+        }
+        crate::error::WebsearchError::ContinuationTypeMismatch { .. }
+        | crate::error::WebsearchError::ContinuationInvalidValue { .. }
+        | crate::error::WebsearchError::ContinuationDeserializationFailed { .. } => {
+            "Internal session error".to_string()
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "../tests/unit/mcp_serialization_test.rs"]
 mod mcp_serialization_test;
