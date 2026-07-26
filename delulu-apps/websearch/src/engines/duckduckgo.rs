@@ -190,7 +190,7 @@ impl DuckDuckGoEngine {
         let djs_response = self
             .crawler
             .get(url)
-            .with_headers(vec![
+            .merge_with_headers(vec![
                 ("User-Agent".into(), DDG_USER_AGENT.into()),
                 ("Accept".into(), "*/*".into()),
                 ("Accept-Encoding".into(), "gzip, deflate, br, zstd".into()),
@@ -386,7 +386,7 @@ impl Engine for DuckDuckGoEngine {
                 let search_url = Self::build_search_url(query, &params);
                 debug!("DuckDuckGo: fetching initial page (query hidden, status=?, duration=?)");
                 let response = self.crawler.get(&search_url)
-                    .with_headers(vec![
+                    .merge_with_headers(vec![
                         ("User-Agent".into(), DDG_USER_AGENT.into()),
                         ("Accept".into(), "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8".into()),
                         ("Accept-Encoding".into(), "gzip".into()),

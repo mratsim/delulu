@@ -286,7 +286,10 @@ pub struct GetBuilder<'a> {
 }
 
 impl GetBuilder<'_> {
-    pub fn with_headers(mut self, headers: Vec<(String, String)>) -> Self {
+    /// Extend the request headers with the given pairs.
+    /// Existing headers with the same name are NOT replaced —
+    /// the underlying HTTP client may send multiple values for the same header.
+    pub fn merge_with_headers(mut self, headers: Vec<(String, String)>) -> Self {
         self.headers.extend(headers);
         self
     }

@@ -164,7 +164,7 @@ impl Engine for BraveEngine {
             .crawler
             .get(&search_url)
             .with_default_masquerade_headers()
-            .with_headers(vec![
+            .merge_with_headers(vec![
                 ("User-Agent".into(), BRAVE_USER_AGENT.into()),
                 ("Cookie".into(), cookie),
             ])
