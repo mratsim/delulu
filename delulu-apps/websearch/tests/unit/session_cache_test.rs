@@ -24,6 +24,18 @@ use crate::{Continuation, EngineId, SearchParams, SessionCache, SessionKey, Webs
 use std::any::Any;
 use std::time::{Duration, Instant};
 
+// Test helpers that access SessionCache private internals.
+// These live in the test file (not src/) since they're test-only.
+
+fn cache_heap_len(cache: &super::SessionCache) -> usize {
+    cache.inner.read().expiry_heap.len()
+}
+
+fn cache_remove_entry(cache: &super::SessionCache, key: &super::SessionKey) {
+    let mut inner = cache.inner.write();
+    inner.entries.remove(key);
+}
+
 /// Fixed 8 random bytes for deterministic tests.
 fn fixed_id() -> [u8; 8] {
     [0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89]
@@ -636,9 +648,9 @@ fn update_continuation_does_not_grow_heap() {
     // Check heap size -- the heap should have at most 2 entries:
     // original store + at most one re-push
     assert!(
-        cache.heap_len() <= 2,
+        cache_heap_len(&cache) <= 2,
         "heap should not grow beyond 2 entries despite 100 updates, got {}",
-        cache.heap_len()
+        cache_heap_len(&cache)
     );
 }
 
@@ -662,9 +674,8 @@ fn store_stale_cleanup_only_checks_key_presence() {
         fixed_id(),
     );
     assert!(cache.get(&key1, now).is_some());
-
     // Manually remove key1 from the map to orphan its heap entry
-    cache.remove_entry_for_test(&key1);
+    cache_remove_entry(&cache, &key1);
 
     // Store key2 with capacity 1.
     // entries.len() = 0 < capacity (1), so stale-cleanup doesn't run.

@@ -189,23 +189,6 @@ impl SessionCache {
         Self::evict_expired_inner(&mut inner, now);
     }
 
-    #[cfg(test)]
-    pub(crate) fn entries_len(&self) -> usize {
-        self.inner.read().entries.len()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn heap_len(&self) -> usize {
-        self.inner.read().expiry_heap.len()
-    }
-
-    #[cfg(test)]
-    /// Manually remove an entry from the map for testing stale-cleanup.
-    pub(crate) fn remove_entry_for_test(&self, key: &SessionKey) {
-        let mut inner = self.inner.write();
-        inner.entries.remove(key);
-    }
-
     /// Store a new session entry in the cache.
     ///
     /// Takes `now` and `random_id` as parameters (pure function — no IO).
@@ -314,22 +297,6 @@ impl SessionCache {
         Ok(())
     }
 
-    /// Remove a session entry from the cache.
-    ///
-    /// Returns `Err(WebsearchError::SessionNotFound)` if the key doesn't
-    /// exist or the entry has expired.
-    pub fn remove(&self, key: &SessionKey, now: Instant) -> Result<(), WebsearchError> {
-        let mut inner = self.inner.write();
-        Self::evict_expired_inner(&mut inner, now);
-
-        if inner.entries.remove(key).is_none() {
-            return Err(WebsearchError::SessionNotFound);
-        }
-        // Note: heap entry remains as a zombie — evict_expired_inner will skip it
-        // when it finds the map entry is gone. This is O(log n) amortized.
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]

@@ -51,12 +51,12 @@ pub fn sanitize_for_log(s: &str) -> String {
         .collect();
 
     // Truncate to 2048 bytes at a UTF-8 boundary
-    let byte_limit = 2048;
-    if cleaned.len() <= byte_limit {
-        return cleaned;
+    if cleaned.len() <= 2048 {
+        cleaned
+    } else {
+        let end = cleaned.floor_char_boundary(2048);
+        cleaned[..end].to_string()
     }
-    let end = cleaned.floor_char_boundary(byte_limit);
-    cleaned[..end].to_string()
 }
 
 #[cfg(test)]

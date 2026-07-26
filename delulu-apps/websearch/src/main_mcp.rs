@@ -230,7 +230,7 @@ impl WebsearchServer {
         let session_engine = stored_continuation_engine
             .as_deref()
             .or_else(|| engine_names.first().copied())
-            .unwrap_or("duckduckgo")
+            .unwrap_or("duckduckgo");
 
         let session_engine_id = engine_name_to_id(session_engine).unwrap_or(EngineId::Brave);
 
@@ -329,6 +329,7 @@ impl WebsearchServer {
         if let Err(e) = self
             .session_cache
             .update_continuation(&key, response.continuation, now)
+        {
             tracing::error!("Failed to update continuation: {e}");
         }
 
