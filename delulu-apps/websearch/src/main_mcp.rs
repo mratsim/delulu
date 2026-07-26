@@ -131,11 +131,11 @@ impl WebsearchServer {
 
 #[tool_router]
 impl WebsearchServer {
-    /// Search the web using one or more search engines.
+    /// Search the web using a search engine.
     ///
     /// Parameters:
     /// - `query` (required): The search query.
-    /// - `engine` (optional, default "all"): Engine to use ("brave", "duckduckgo", "all").
+    /// - `engine` (optional, default "duckduckgo"): Engine to use ("brave", "duckduckgo").
     /// - `page` (optional, default 1): Page number (1-indexed).
     /// - `country` (optional): Country / region code.
     /// - `safesearch` (optional): Safesearch level ("strict", "moderate", "off").
@@ -143,7 +143,7 @@ impl WebsearchServer {
     /// - `max_results` (optional): Maximum results (default 20, max 100).
     #[tool(
         name = "web_search",
-        description = "Search the web using DuckDuckGo. Parameters: query (required), engine (optional, default 'duckduckgo': 'brave', 'duckduckgo'), country (optional, ISO alpha-2), safesearch (optional, 'strict'/'moderate'/'off'), time_range (optional), max_results (optional, default 20, max 100). Returns JSON with session_key, results, has_next_page, and continuation_engine."
+        description = "Search the web. Parameters: query (required), engine (optional, default 'duckduckgo': 'brave', 'duckduckgo'), country (optional, ISO alpha-2), safesearch (optional, 'strict'/'moderate'/'off'), time_range (optional), max_results (optional, default 20, max 100). Returns JSON with session_key, results, has_next_page, and continuation_engine."
     )]
     async fn web_search(&self, params: Parameters<WebSearchInput>) -> Result<String, String> {
         let input = params.0;
@@ -152,7 +152,7 @@ impl WebsearchServer {
         let query =
             validate_query(input.query.trim()).map_err(|e| format!("Invalid query: {e}"))?;
 
-        // Determine engine to search
+        // Determine which engine to search
         let engine_names: Vec<&str> = match input.engine.as_deref() {
             None | Some("duckduckgo") => vec!["duckduckgo"],
             Some(name) => vec![name],
@@ -230,7 +230,7 @@ impl WebsearchServer {
         let session_engine = stored_continuation_engine
             .as_deref()
             .or_else(|| engine_names.first().copied())
-            .unwrap_or("all");
+            .unwrap_or("duckduckgo")
 
         let session_engine_id = engine_name_to_id(session_engine).unwrap_or(EngineId::Brave);
 
