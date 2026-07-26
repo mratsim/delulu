@@ -109,26 +109,33 @@ pub struct SessionEntry {
     pub(crate) expires_at: Instant,
 }
 
+/// Internal data behind the single RwLock.
+struct CacheInner {
+    entries: HashMap<SessionKey, SessionEntry>,
+    /// Min-heap of `(expires_at, SessionKey)` for O(log n) eviction.
+    /// Always consistent with `entries` -- every key in the heap has a
+    /// corresponding entry in the map.
+    expiry_heap: BinaryHeap<Reverse<(Instant, SessionKey)>>,
+}
+
 /// Thread-safe session cache for pagination state.
 ///
 /// Entries are keyed directly by `SessionKey` (which hashes by its 8-byte
 /// random ID). Expired entries are eagerly evicted at the start of `store()`
-/// and `update_continuation()` via `evict_expired()`, and also checked
+/// and `update_continuation()` via `evict_expired_inner()`, and also checked
 /// lazily on `get()`.
 ///
 /// Capacity enforcement uses a `BinaryHeap` (min-heap) of `(Instant, SessionKey)`
 /// keyed by expiry time, providing O(log n) eviction cost.
 ///
 /// # Thread Safety
-/// - Uses `std::sync::RwLock` for interior mutability.
+/// - Uses a single `parking_lot::RwLock` wrapping both `entries` and `expiry_heap`.
+///   This eliminates the dual-lock deadlock risk (both fields are always
+///   accessed together).
 /// - All public methods take `&self` (not `&mut self`).
-/// - Lock `parking_lot::RwLock`: no poisoning on panic.
+/// - `parking_lot::RwLock`: no poisoning on panic.
 pub struct SessionCache {
-    entries: RwLock<HashMap<SessionKey, SessionEntry>>,
-    /// Min-heap of `(expires_at, SessionKey)` for O(log n) eviction.
-    /// Always consistent with `entries` -- every key in the heap has a
-    /// corresponding entry in the map.
-    expiry_heap: RwLock<BinaryHeap<Reverse<(Instant, SessionKey)>>>,
+    inner: RwLock<CacheInner>,
     capacity: usize,
     ttl: Duration,
 }
@@ -141,36 +148,62 @@ impl SessionCache {
     pub fn new(capacity: usize, ttl: Duration) -> Self {
         assert!(capacity > 0, "SessionCache capacity must be > 0");
         Self {
-            entries: RwLock::new(HashMap::new()),
-            expiry_heap: RwLock::new(BinaryHeap::new()),
+            inner: RwLock::new(CacheInner {
+                entries: HashMap::new(),
+                expiry_heap: BinaryHeap::new(),
+            }),
             capacity,
             ttl,
         }
     }
 
-    pub fn evict_expired(&self, now: Instant) {
-        let mut entries = self.entries.write();
-        let mut heap = self.expiry_heap.write();
-
+    /// Internal eviction helper — operates on the unlocked inner data.
+    /// Must be called while holding the write lock on `self.inner`.
+    fn evict_expired_inner(inner: &mut CacheInner, now: Instant) {
         // Pop expired entries from the min-heap.
         // Min-heap guarantee: if the top is not expired, nothing below is.
-        while let Some(Reverse((expires_at, _))) = heap.peek() {
+        while let Some(Reverse((expires_at, _))) = inner.expiry_heap.peek() {
             if *expires_at >= now {
                 break;
             }
-            let Reverse((_, key)) = heap.pop().unwrap();
-            match entries.get(&key) {
+            let Reverse((_, key)) = inner.expiry_heap.pop().unwrap();
+            match inner.entries.get(&key) {
                 Some(entry) if entry.expires_at > now => {
                     // Entry was refreshed and is still valid.
                     // Re-push with correct expiry so it remains evictable.
-                    heap.push(Reverse((entry.expires_at, key)));
+                    inner.expiry_heap.push(Reverse((entry.expires_at, key)));
                 }
                 _ => {
                     // Entry genuinely expired (or was already removed).
-                    entries.remove(&key);
+                    inner.entries.remove(&key);
                 }
             }
         }
+    }
+
+    /// Eagerly evict all expired entries from the cache.
+    ///
+    /// Acquires the write lock and delegates to `evict_expired_inner`.
+    pub fn evict_expired(&self, now: Instant) {
+        let mut inner = self.inner.write();
+        Self::evict_expired_inner(&mut inner, now);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn entries_len(&self) -> usize {
+        self.inner.read().entries.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn heap_len(&self) -> usize {
+        self.inner.read().expiry_heap.len()
+    }
+
+    #[cfg(test)]
+    /// Manually remove an entry from the map for testing stale-cleanup.
+    pub(crate) fn remove_entry_for_test(&self, key: &SessionKey) {
+        let mut inner = self.inner.write();
+        inner.entries.remove(key);
     }
 
     /// Store a new session entry in the cache.
@@ -196,24 +229,21 @@ impl SessionCache {
         now: Instant,
         random_id: [u8; 8],
     ) -> SessionKey {
-        // Eagerly evict expired entries before doing any work
-        self.evict_expired(now);
+        let mut inner = self.inner.write();
+        Self::evict_expired_inner(&mut inner, now);
 
         let key = SessionKey::new(engine, random_id);
         let expires_at = now + self.ttl;
 
-        let mut entries = self.entries.write();
-        let mut heap = self.expiry_heap.write();
-
         // Evict oldest-expiring entry if at capacity
-        if entries.len() >= self.capacity
-            && let Some(Reverse((_, oldest_key))) = heap.pop()
+        if inner.entries.len() >= self.capacity
+            && let Some(Reverse((_, oldest_key))) = inner.expiry_heap.pop()
         {
-            entries.remove(&oldest_key);
+            inner.entries.remove(&oldest_key);
         }
 
-        heap.push(Reverse((expires_at, key.clone())));
-        entries.insert(
+        inner.expiry_heap.push(Reverse((expires_at, key.clone())));
+        inner.entries.insert(
             key.clone(),
             SessionEntry {
                 engine,
@@ -226,20 +256,18 @@ impl SessionCache {
 
         key
     }
-
     /// Retrieve a session entry by key.
     ///
     /// Returns `None` if the key is not found or the entry has expired
-    /// (lazy eviction — expired entries are NOT removed here to avoid
-    /// upgrading the read lock to a write lock. They are cleaned up on
-    /// the next `store()` or `update_continuation()` via `evict_expired()`).
+    /// (lazy eviction — expired entries are NOT removed here. They are cleaned
+    /// up on the next `store()` or `update_continuation()` via `evict_expired_inner()`.
     ///
     /// The returned entry contains a cloned `Arc<dyn Continuation>` that
     /// shares ownership with the cached entry. The continuation can be
     /// downcast via `as_any()` on the `Arc`.
     pub fn get(&self, key: &SessionKey, now: Instant) -> Option<SessionEntry> {
-        let entries = self.entries.read();
-        let entry = entries.get(key)?;
+        let inner = self.inner.read();
+        let entry = inner.entries.get(key)?;
 
         if entry.expires_at < now {
             return None;
@@ -268,12 +296,11 @@ impl SessionCache {
         continuation: Option<Box<dyn Continuation>>,
         now: Instant,
     ) -> Result<(), WebsearchError> {
-        // Eagerly evict expired entries before doing any work
-        self.evict_expired(now);
+        let mut inner = self.inner.write();
+        Self::evict_expired_inner(&mut inner, now);
 
-        let mut entries = self.entries.write();
-
-        let entry = entries
+        let entry = inner
+            .entries
             .get_mut(key)
             .ok_or(WebsearchError::SessionNotFound)?;
 
@@ -281,7 +308,7 @@ impl SessionCache {
         entry.expires_at = now + self.ttl;
 
         // No heap push needed -- the original heap entry from store() is
-        // sufficient. evict_expired will re-push with the correct expiry
+        // sufficient. evict_expired_inner will re-push with the correct expiry
         // when it pops the stale entry and finds the map entry still valid.
 
         Ok(())
@@ -292,16 +319,13 @@ impl SessionCache {
     /// Returns `Err(WebsearchError::SessionNotFound)` if the key doesn't
     /// exist or the entry has expired.
     pub fn remove(&self, key: &SessionKey, now: Instant) -> Result<(), WebsearchError> {
-        // Eagerly evict expired entries before doing any work
-        self.evict_expired(now);
+        let mut inner = self.inner.write();
+        Self::evict_expired_inner(&mut inner, now);
 
-        let mut entries = self.entries.write();
-        let _heap = self.expiry_heap.write();
-
-        if entries.remove(key).is_none() {
+        if inner.entries.remove(key).is_none() {
             return Err(WebsearchError::SessionNotFound);
         }
-        // Note: heap entry remains as a zombie — evict_expired will skip it
+        // Note: heap entry remains as a zombie — evict_expired_inner will skip it
         // when it finds the map entry is gone. This is O(log n) amortized.
 
         Ok(())
