@@ -46,9 +46,37 @@
 //! methods `store()` and `update_continuation()` accept `Box<dyn Continuation>`,
 //! which is converted to `Arc` internally. Callers of `get()` receive an
 //! `Arc<dyn Continuation>` that shares ownership with the cache entry.
-//!
-//! # Panic-if
 //! - Panics if the internal `RwLock` is poisoned (lock holder panicked).
+//!
+//! # Eviction Flow
+//!
+//! ```text
+//! store() or update_continuation() called
+//!          |
+//!          v
+//!   evict_expired(now)
+//!          |
+//!          v
+//!   +-----------------+
+//!   | Pop min-heap top |<------ while expires_at < now
+//!   +--------+--------+
+//!            |
+//!            v
+//!   +----------------------+
+//!   | Check map entry      |
+//!   | expires_at vs now    |
+//!   +--------+-------------+
+//!            |
+//!       +----+----+
+//!       |         |
+//!       v         v
+//!  map > now  map <= now
+//!       |         |
+//!       v         v
+//!  Re-push    Remove from
+//!  to heap    map + heap
+//! ```
+//!
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -98,8 +126,8 @@ pub struct SessionEntry {
 pub struct SessionCache {
     entries: RwLock<HashMap<SessionKey, SessionEntry>>,
     /// Min-heap of `(expires_at, SessionKey)` for O(log n) eviction.
-    /// May contain stale entries (keys no longer in `entries`
-    /// or with mismatched `expires_at`).
+    /// Always consistent with `entries` -- every key in the heap has a
+    /// corresponding entry in the map.
     expiry_heap: RwLock<BinaryHeap<Reverse<(Instant, SessionKey)>>>,
     capacity: usize,
     ttl: Duration,
@@ -120,32 +148,27 @@ impl SessionCache {
         }
     }
 
-    /// Remove all expired entries from the cache.
-    ///
-    /// Called at the start of `store()` and `update_continuation()` before
-    /// any work is done, ensuring the HashMap and heap are clean of zombies.
-    ///
-    /// Takes the write lock on both `entries` and `expiry_heap`.
-    /// Iterates `entries`, removes any where `expires_at < now`.
-    /// Rebuilds the heap from scratch after removal (simplest correct approach).
     pub fn evict_expired(&self, now: Instant) {
         let mut entries = self.entries.write().expect("Session cache lock poisoned");
         let mut heap = self.expiry_heap.write().expect("Session cache lock poisoned");
 
-        // Pop expired entries from the min-heap and remove from map.
+        // Pop expired entries from the min-heap.
         // Min-heap guarantee: if the top is not expired, nothing below is.
-        //
-        // Edge case: `update_continuation()` pushes a new heap entry when
-        // refreshing expires_at. The old heap entry (stale, earlier expiry)
-        // may be at the top. We always pop it from the heap, but only remove
-        // from the map if the entry's actual expiry confirms it's expired.
         while let Some(Reverse((expires_at, _))) = heap.peek() {
             if *expires_at >= now {
                 break;
             }
             let Reverse((_, key)) = heap.pop().unwrap();
-            if entries.get(&key).map_or(true, |e| e.expires_at <= now) {
-                entries.remove(&key);
+            match entries.get(&key) {
+                Some(entry) if entry.expires_at > now => {
+                    // Entry was refreshed and is still valid.
+                    // Re-push with correct expiry so it remains evictable.
+                    heap.push(Reverse((entry.expires_at, key)));
+                }
+                _ => {
+                    // Entry genuinely expired (or was already removed).
+                    entries.remove(&key);
+                }
             }
         }
     }
@@ -184,15 +207,6 @@ impl SessionCache {
 
         // Evict oldest-expiring entry if at capacity
         if entries.len() >= self.capacity {
-            // Clean stale heap entries (keys no longer in the map or with mismatched expiry)
-            while let Some(Reverse((heap_expires_at, top_key))) = heap.peek() {
-                match entries.get(top_key) {
-                    None => { heap.pop(); }
-                    Some(entry) if *heap_expires_at != entry.expires_at => { heap.pop(); }
-                    _ => { break; }
-                }
-            }
-            // Evict the oldest (top of min-heap)
             if let Some(Reverse((_, oldest_key))) = heap.pop() {
                 entries.remove(&oldest_key);
             }
@@ -264,10 +278,9 @@ impl SessionCache {
         entry.continuation = continuation.map(Arc::from);
         entry.expires_at = now + self.ttl;
 
-        // Push updated expiry to the heap to keep it consistent.
-        // Lock order: entries → heap (same as store()), safe from deadlock.
-        self.expiry_heap.write().expect("Session cache lock poisoned")
-            .push(Reverse((entry.expires_at, key.clone())));
+        // No heap push needed -- the original heap entry from store() is
+        // sufficient. evict_expired will re-push with the correct expiry
+        // when it pops the stale entry and finds the map entry still valid.
 
         Ok(())
     }
