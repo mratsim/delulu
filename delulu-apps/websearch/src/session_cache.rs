@@ -46,7 +46,7 @@
 //! methods `store()` and `update_continuation()` accept `Box<dyn Continuation>`,
 //! which is converted to `Arc` internally. Callers of `get()` receive an
 //! `Arc<dyn Continuation>` that shares ownership with the cache entry.
-//! - Panics if the internal `RwLock` is poisoned (lock holder panicked).
+//! - No poisoning: `parking_lot::RwLock` does not poison on panic.
 //!
 //! # Eviction Flow
 //!
@@ -81,7 +81,7 @@
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use std::sync::Arc;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 use std::time::{Duration, Instant};
 
 use crate::engine::{Continuation, EngineId, SearchParams};
@@ -122,7 +122,7 @@ pub struct SessionEntry {
 /// # Thread Safety
 /// - Uses `std::sync::RwLock` for interior mutability.
 /// - All public methods take `&self` (not `&mut self`).
-/// - Lock poisoning: if a lock is poisoned, the panic propagates.
+/// - Lock `parking_lot::RwLock`: no poisoning on panic.
 pub struct SessionCache {
     entries: RwLock<HashMap<SessionKey, SessionEntry>>,
     /// Min-heap of `(expires_at, SessionKey)` for O(log n) eviction.
@@ -149,8 +149,8 @@ impl SessionCache {
     }
 
     pub fn evict_expired(&self, now: Instant) {
-        let mut entries = self.entries.write().expect("Session cache lock poisoned");
-        let mut heap = self.expiry_heap.write().expect("Session cache lock poisoned");
+        let mut entries = self.entries.write();
+        let mut heap = self.expiry_heap.write();
 
         // Pop expired entries from the min-heap.
         // Min-heap guarantee: if the top is not expired, nothing below is.
@@ -202,8 +202,8 @@ impl SessionCache {
         let key = SessionKey::new(engine, random_id);
         let expires_at = now + self.ttl;
 
-        let mut entries = self.entries.write().expect("Session cache lock poisoned");
-        let mut heap = self.expiry_heap.write().expect("Session cache lock poisoned");
+        let mut entries = self.entries.write();
+        let mut heap = self.expiry_heap.write();
 
         // Evict oldest-expiring entry if at capacity
         if entries.len() >= self.capacity {
@@ -238,7 +238,7 @@ impl SessionCache {
     /// shares ownership with the cached entry. The continuation can be
     /// downcast via `as_any()` on the `Arc`.
     pub fn get(&self, key: &SessionKey, now: Instant) -> Option<SessionEntry> {
-        let entries = self.entries.read().expect("Session cache lock poisoned");
+        let entries = self.entries.read();
         let entry = entries.get(key)?;
 
         if entry.expires_at < now {
@@ -271,7 +271,7 @@ impl SessionCache {
         // Eagerly evict expired entries before doing any work
         self.evict_expired(now);
 
-        let mut entries = self.entries.write().expect("Session cache lock poisoned");
+        let mut entries = self.entries.write();
 
         let entry = entries.get_mut(key).ok_or(WebsearchError::SessionNotFound)?;
 

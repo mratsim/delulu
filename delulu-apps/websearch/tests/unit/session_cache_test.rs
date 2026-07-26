@@ -588,7 +588,7 @@ fn update_continuation_does_not_grow_heap() {
 
     // Check heap size -- we can access the internal heap via the module test path
     // The heap should have at most 2 entries: original store + at most one re-push
-    let heap = cache.expiry_heap.read().unwrap();
+    let heap = cache.expiry_heap.read();
     assert!(
         heap.len() <= 2,
         "heap should not grow beyond 2 entries despite 100 updates, got {}",
@@ -619,7 +619,7 @@ fn store_stale_cleanup_only_checks_key_presence() {
 
     // Manually remove key1 from the map to orphan its heap entry
     {
-        let mut entries = cache.entries.write().unwrap();
+        let mut entries = cache.entries.write();
         entries.remove(&key1);
     }
 

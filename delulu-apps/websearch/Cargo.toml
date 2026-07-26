@@ -32,6 +32,7 @@ async-trait = "0.1"
 urlencoding = "2"
 zstd = "0.13"
 getrandom = "0.2"
+parking_lot = "0.12"
 
 [dependencies.clap]
 version = "4"
