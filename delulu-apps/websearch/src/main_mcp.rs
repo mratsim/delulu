@@ -319,7 +319,7 @@ impl WebsearchServer {
         {
             Ok(resp) => resp,
             Err(e) => {
-                tracing::error!("Next page search failed for session: {e:?}");
+                tracing::error!("Next page search failed for session: {e}");
                 return Err(sanitize_error_for_client(&e));
             }
         };
@@ -329,8 +329,7 @@ impl WebsearchServer {
         if let Err(e) = self
             .session_cache
             .update_continuation(&key, response.continuation, now)
-        {
-            tracing::error!("Failed to update continuation: {e:?}");
+            tracing::error!("Failed to update continuation: {e}");
         }
 
         let mcp_response = McpNextPageResponse {
