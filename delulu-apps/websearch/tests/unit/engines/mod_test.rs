@@ -23,19 +23,19 @@ use std::sync::Arc;
 
 #[test]
 fn registry_empty_on_new() {
-    let registry = EngineRegistry::new();
+    let mut registry = EngineRegistry::new();
     assert!(registry.list_engines().is_empty());
 }
 
 #[test]
 fn registry_get_nonexistent() {
-    let registry = EngineRegistry::new();
+    let mut registry = EngineRegistry::new();
     assert!(registry.get_engine("nonexistent").is_none());
 }
 
 #[test]
 fn registry_register_and_get() {
-    let registry = EngineRegistry::new();
+    let mut registry = EngineRegistry::new();
     let ddg_crawler = RateLimitedCrawler::builder()
         .with_qps(1)
         .with_max_resp_size(5 * 1024 * 1024)

@@ -22,51 +22,41 @@ pub mod brave;
 
 use crate::engine::EngineRef;
 use std::collections::HashMap;
-use std::sync::RwLock;
 
 /// Thread-safe registry of search engine backends.
 ///
 /// Engines are stored as `Arc<dyn Engine + Send + Sync>` and keyed by
 /// their string name (e.g., "duckduckgo", "brave").
+///
+/// Engines are registered once at startup and never modified afterward.
+/// No lock needed — the HashMap is immutable after construction.
 pub struct EngineRegistry {
-    engines: RwLock<HashMap<&'static str, EngineRef>>,
+    engines: HashMap<&'static str, EngineRef>,
 }
 
 impl EngineRegistry {
     /// Create a new empty engine registry.
     pub fn new() -> Self {
         Self {
-            engines: RwLock::new(HashMap::new()),
+            engines: HashMap::new(),
         }
     }
 
     /// Register an engine under the given name.
-    pub fn register(&self, name: &'static str, engine: EngineRef) {
-        self.engines
-            .write()
-            .expect("Engine registry lock poisoned")
-            .insert(name, engine);
+    pub fn register(&mut self, name: &'static str, engine: EngineRef) {
+        self.engines.insert(name, engine);
     }
 
     /// Get an engine by name.
     ///
     /// Returns `None` if the engine name is not registered.
     pub fn get_engine(&self, name: &str) -> Option<EngineRef> {
-        self.engines
-            .read()
-            .expect("Engine registry lock poisoned")
-            .get(name)
-            .cloned()
+        self.engines.get(name).cloned()
     }
 
     /// List all registered engine names.
     pub fn list_engines(&self) -> Vec<&'static str> {
-        self.engines
-            .read()
-            .expect("Engine registry lock poisoned")
-            .keys()
-            .copied()
-            .collect()
+        self.engines.keys().copied().collect()
     }
 }
 
@@ -86,7 +76,7 @@ impl Default for EngineRegistry {
 pub fn create_default_registry() -> EngineRegistry {
     use std::sync::Arc;
 
-    let registry = EngineRegistry::new();
+    let mut registry = EngineRegistry::new();
     // DuckDuckGo — uses Safari TLS/HTTP2 fingerprint (Firefox gets blocked from this IP)
     let ddg_crawler = delulu_rate_limited_crawler::RateLimitedCrawler::builder()
         .with_emulation(wreq_util::Profile::Safari18_5)
