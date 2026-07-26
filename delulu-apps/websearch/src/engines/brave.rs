@@ -300,10 +300,11 @@ pub fn parse_search_results(
     }
 
     // If HTML parsing found nothing, check for PoW captcha
-    if results.is_empty()
-        && (body.to_lowercase().contains("pow captcha") || body.to_lowercase().contains("captcha"))
-    {
-        return Err(WebsearchError::AccessDenied);
+    if results.is_empty() {
+        let body_lower = body.to_lowercase();
+        if body_lower.contains("pow captcha") || body_lower.contains("captcha") {
+            return Err(WebsearchError::AccessDenied);
+        }
     }
 
     Ok(results)

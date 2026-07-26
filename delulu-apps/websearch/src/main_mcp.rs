@@ -360,7 +360,20 @@ async fn main() -> Result<(), Error> {
     let engine_registry = Arc::new(create_default_registry());
 
     tracing::debug!("Creating session cache...");
-    let session_cache = Arc::new(SessionCache::new(1024, Duration::from_secs(3600)));
+    // Bounds for worst-case sizing:
+    //   - 256 concurrent users (vLLM default)
+    //   - 2 QPS per engine (rate-limited crawler)
+    //   - 600s TTL
+    //
+    // Under sustained load the cache fills at 2 QPS. At capacity 512:
+    //   time-to-fill = 512 / 2 = 256s
+    // After that every store() evicts the oldest entry (~256s old).
+    // So capacity, not TTL, determines entry lifetime under load.
+    //
+    // 256s is sufficient for a conversation turn (search + pagination).
+    // If users batch >2 searches each concurrently, sessions may be evicted
+    // before the full TTL — increase capacity if that becomes the pattern.
+    let session_cache = Arc::new(SessionCache::new(512, Duration::from_secs(600)));
 
     match args.command {
         McpServerConfig::Stdio => {
