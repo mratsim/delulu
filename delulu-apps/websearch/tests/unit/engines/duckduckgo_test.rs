@@ -19,7 +19,8 @@
 
 use super::{
     DuckDuckGoContinuation, DuckDuckGoEngine, extract_json_from_js, html_entity_decode,
-    is_leap_year, parse_ddg_date, validate_n_token,
+    is_leap_year, parse_ddg_date, parse_iso_with_tz, parse_naive_iso, unix_timestamp,
+    validate_n_token,
 };
 use crate::{Continuation, SearchParams, WebsearchError};
 
@@ -305,4 +306,100 @@ fn extract_json_from_js_multiple_unmatched_close_brackets() {
     // Anti-regression: multiple unmatched ]] must also not cause a panic.
     let result = extract_json_from_js("]]abc");
     assert!(result.is_err());
+}
+
+#[test]
+fn unix_timestamp_epoch() {
+    // Unix epoch: 1970-01-01 00:00:00 UTC
+    assert_eq!(unix_timestamp(1970, 1, 1, 0, 0, 0, 0), Some(0));
+}
+
+#[test]
+fn unix_timestamp_known_date() {
+    // 2024-06-15 12:30:00 UTC = 1718454600
+    assert_eq!(unix_timestamp(2024, 6, 15, 12, 30, 0, 0), Some(1718454600));
+}
+
+#[test]
+fn unix_timestamp_with_offset() {
+    // 2024-01-01 00:00:00 +05:30 = 2023-12-31 18:30:00 UTC = 1704047400
+    assert_eq!(unix_timestamp(2024, 1, 1, 0, 0, 0, 19800), Some(1704047400));
+}
+
+#[test]
+fn unix_timestamp_invalid_month() {
+    assert!(unix_timestamp(2024, 13, 1, 0, 0, 0, 0).is_none());
+}
+
+#[test]
+fn unix_timestamp_invalid_day() {
+    assert!(unix_timestamp(2024, 1, 32, 0, 0, 0, 0).is_none());
+}
+
+#[test]
+fn unix_timestamp_invalid_hour() {
+    assert!(unix_timestamp(2024, 1, 1, 24, 0, 0, 0).is_none());
+}
+
+#[test]
+fn unix_timestamp_before_epoch() {
+    // 1969-12-31 23:59:00 UTC — days_since_epoch returns a positive count of
+    // days within the year since the year loop (1970..1969) is empty, so the
+    // result represents the offset from start-of-1970 counting backwards.
+    let ts = unix_timestamp(1969, 12, 31, 23, 59, 0, 0);
+    assert!(ts.is_some());
+    assert_eq!(ts.unwrap(), 364 * 86400 + 23 * 3600 + 59 * 60);
+}
+
+#[test]
+fn parse_iso_with_tz_utc_z() {
+    let ts = parse_iso_with_tz("2024-01-15T12:00:00Z");
+    assert_eq!(ts, unix_timestamp(2024, 1, 15, 12, 0, 0, 0));
+}
+
+#[test]
+fn parse_iso_with_tz_positive_offset() {
+    // +05:30 = 19800 seconds
+    let ts = parse_iso_with_tz("2024-01-15T12:00:00+05:30");
+    assert_eq!(ts, unix_timestamp(2024, 1, 15, 12, 0, 0, 19800));
+}
+
+#[test]
+fn parse_iso_with_tz_negative_offset() {
+    // -08:00 = -28800 seconds
+    let ts = parse_iso_with_tz("2024-01-15T12:00:00-08:00");
+    assert_eq!(ts, unix_timestamp(2024, 1, 15, 12, 0, 0, -28800));
+}
+
+#[test]
+fn parse_iso_with_tz_invalid_too_short() {
+    assert!(parse_iso_with_tz("2024-01-15").is_none());
+}
+
+#[test]
+fn parse_iso_with_tz_malformed() {
+    assert!(parse_iso_with_tz("not-a-date").is_none());
+}
+
+#[test]
+fn parse_naive_iso_basic() {
+    let ts = parse_naive_iso("2024-01-15T12:00:00");
+    assert_eq!(ts, unix_timestamp(2024, 1, 15, 12, 0, 0, 0));
+}
+
+#[test]
+fn parse_naive_iso_leap_year() {
+    // 2024-02-29 is valid (leap year)
+    let ts = parse_naive_iso("2024-02-29T00:00:00");
+    assert!(ts.is_some());
+}
+
+#[test]
+fn parse_naive_iso_invalid_too_short() {
+    assert!(parse_naive_iso("short").is_none());
+}
+
+#[test]
+fn parse_naive_iso_malformed() {
+    assert!(parse_naive_iso("abcdefghijklmnopqrs").is_none());
 }
