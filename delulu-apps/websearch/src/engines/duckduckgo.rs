@@ -83,14 +83,16 @@ impl Continuation for DuckDuckGoContinuation {
 }
 
 /// Validate that n_token contains only safe URL path/query characters.
-/// This prevents SSRF via path traversal (`..`) or protocol injection
-/// (`https://...`). Allowed: alphanumeric, `/`, `?`, `=`, `.`, `_`, `-`, `&`.
+/// This prevents SSRF via path traversal (`..`), protocol injection
+/// (`https://...`), or protocol-relative URLs (`//...`).
+/// Allowed: alphanumeric, `/`, `?`, `=`, `.`, `_`, `-`, `&`.
 pub(crate) fn validate_n_token(token: &str) -> bool {
     !token.is_empty()
         && token.chars().all(|c| {
             c.is_ascii_alphanumeric() || matches!(c, '/' | '?' | '=' | '.' | '_' | '-' | '&')
         })
         && !token.contains("..")
+        && !token.starts_with("//")
         && !token.starts_with("https://")
         && !token.starts_with("http://")
 }
@@ -291,11 +293,8 @@ impl DuckDuckGoEngine {
         let mut n_token: Option<String> = None;
 
         for item in &items {
-            if results.len() >= max_results {
-                break;
-            }
-
-            // Track the "n" (next page token) field from items.
+            // Track the "n" (next page token) FIRST — before the max_results
+            // break, because n_token can appear on any item, not just the last one.
             // Validate to prevent SSRF: reject path traversal or protocol injection.
             if let Some(n_val) = item
                 .get("n")
@@ -304,6 +303,11 @@ impl DuckDuckGoEngine {
             {
                 n_token = Some(n_val.to_string());
             }
+
+            if results.len() >= max_results {
+                break;
+            }
+
 
             // Skip items without URL field
             let url_val = match item.get("c") {
