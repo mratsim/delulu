@@ -66,10 +66,17 @@ impl RateLimitedCrawler {
         let parsed = Url::parse(url).map_err(CrawlerError::UrlParse)?;
         let queue = self.domain_queue(&parsed)?;
         queue.acquire().await;
-        let mut req = self.client.get(url);
+        // Build a HeaderMap with insert (not append) so later headers
+        // override earlier ones. This makes with_headers() override
+        // with_default_masquerade_headers() for overlapping header names.
+        let mut map = http::HeaderMap::new();
         for (name, value) in headers {
-            req = req.header(name.as_str(), value.as_str());
+            map.insert(
+                http::HeaderName::from_bytes(name.as_bytes()).expect("valid header name"),
+                value.parse().expect("valid header value"),
+            );
         }
+        let req = self.client.get(url).headers(map);
         let resp = req.send().await.map_err(CrawlerError::Http)?;
 
         // Check Content-Length against max_resp_size for early rejection

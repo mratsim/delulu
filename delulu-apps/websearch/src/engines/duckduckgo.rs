@@ -191,14 +191,15 @@ impl DuckDuckGoEngine {
         max_results: usize,
     ) -> Result<(Vec<SearchResult>, Option<String>), WebsearchError> {
         let djs_response = self.crawler.get(url)
-            .with_default_masquerade_headers()
             .with_headers(vec![
                 ("User-Agent".into(), DDG_USER_AGENT.into()),
                 ("Accept".into(), "*/*".into()),
                 ("Accept-Encoding".into(), "gzip, deflate, br, zstd".into()),
                 ("Accept-Language".into(), "en-US,en;q=0.9".into()),
                 ("Referer".into(), "https://duckduckgo.com/".into()),
+                ("DNT".into(), "1".into()),
                 ("Sec-GPC".into(), "1".into()),
+                ("Connection".into(), "keep-alive".into()),
                 ("Sec-Fetch-Dest".into(), "script".into()),
                 ("Sec-Fetch-Mode".into(), "no-cors".into()),
                 ("Sec-Fetch-Site".into(), "same-site".into()),
@@ -382,12 +383,19 @@ impl Engine for DuckDuckGoEngine {
                     "DuckDuckGo: fetching initial page (query hidden, status=?, duration=?)"
                 );
                 let response = self.crawler.get(&search_url)
-                    .with_default_masquerade_headers()
                     .with_headers(vec![
                         ("User-Agent".into(), DDG_USER_AGENT.into()),
+                        ("Accept".into(), "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8".into()),
                         ("Accept-Encoding".into(), "gzip".into()),
+                        ("Accept-Language".into(), "en-US,en;q=0.5".into()),
+                        ("DNT".into(), "1".into()),
                         ("Sec-GPC".into(), "1".into()),
+                        ("Connection".into(), "keep-alive".into()),
+                        ("Upgrade-Insecure-Requests".into(), "1".into()),
+                        ("Sec-Fetch-Dest".into(), "document".into()),
+                        ("Sec-Fetch-Mode".into(), "navigate".into()),
                         ("Sec-Fetch-Site".into(), "same-origin".into()),
+                        ("Sec-Fetch-User".into(), "?1".into()),
                         ("Priority".into(), "u=0, i".into()),
                         ("TE".into(), "trailers".into()),
                     ])

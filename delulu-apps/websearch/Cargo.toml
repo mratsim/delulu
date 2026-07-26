@@ -64,8 +64,20 @@ path = "src/main_mcp.rs"
 required-features = ["mcp"]
 
 [[test]]
-name = "t_websearch_live"
-path = "tests/manual/t_websearch_live.rs"
+name = "t_websearch_ddg_live"
+path = "tests/manual/t_websearch_ddg_live.rs"
+
+[[test]]
+name = "t_websearch_ddg_next_page_live"
+path = "tests/manual/t_websearch_ddg_next_page_live.rs"
+
+[[test]]
+name = "t_websearch_brv_live"
+path = "tests/manual/t_websearch_brv_live.rs"
+
+[[test]]
+name = "t_websearch_brv_next_page_live"
+path = "tests/manual/t_websearch_brv_next_page_live.rs"
 
 [[test]]
 name = "t_brave_fixtures"
