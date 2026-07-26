@@ -78,15 +78,15 @@
 //! ```
 //!
 
+use parking_lot::RwLock;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use std::sync::Arc;
-use parking_lot::RwLock;
 use std::time::{Duration, Instant};
 
+use crate::SessionKey;
 use crate::engine::{Continuation, EngineId, SearchParams};
 use crate::error::WebsearchError;
-use crate::SessionKey;
 
 /// A single session entry in the cache.
 ///
@@ -206,10 +206,10 @@ impl SessionCache {
         let mut heap = self.expiry_heap.write();
 
         // Evict oldest-expiring entry if at capacity
-        if entries.len() >= self.capacity {
-            if let Some(Reverse((_, oldest_key))) = heap.pop() {
-                entries.remove(&oldest_key);
-            }
+        if entries.len() >= self.capacity
+            && let Some(Reverse((_, oldest_key))) = heap.pop()
+        {
+            entries.remove(&oldest_key);
         }
 
         heap.push(Reverse((expires_at, key.clone())));
@@ -273,7 +273,9 @@ impl SessionCache {
 
         let mut entries = self.entries.write();
 
-        let entry = entries.get_mut(key).ok_or(WebsearchError::SessionNotFound)?;
+        let entry = entries
+            .get_mut(key)
+            .ok_or(WebsearchError::SessionNotFound)?;
 
         entry.continuation = continuation.map(Arc::from);
         entry.expires_at = now + self.ttl;

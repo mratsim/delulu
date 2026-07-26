@@ -49,7 +49,7 @@ pub fn parse_safesearch(value: Option<&str>) -> Result<&str, WebsearchError> {
 pub fn parse_country(value: Option<&str>) -> Result<&str, WebsearchError> {
     match value {
         None => Ok("all"),
-        Some(c) if c == "all" => Ok("all"),
+        Some("all") => Ok("all"),
         Some(c) if c.len() == 2 && c.chars().all(|ch| ch.is_ascii_alphabetic()) => Ok(c),
         Some(c) if c.len() == 5 => {
             let parts: Vec<&str> = c.split('-').collect();
@@ -118,7 +118,6 @@ pub fn validate_query(query: &str) -> Result<&str, WebsearchError> {
     }
     Ok(trimmed)
 }
-
 
 #[cfg(test)]
 #[path = "../tests/unit/parsers_test.rs"]

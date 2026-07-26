@@ -45,22 +45,29 @@ fn print_results(label: &str, results: &[delulu_websearch::SearchResult]) {
     }
 }
 
-
-
 #[tokio::test]
 #[ignore]
 async fn brave_next_page_basic() {
-    let engine = create_default_registry().get_engine("brave").expect("Brave in registry");
+    let engine = create_default_registry()
+        .get_engine("brave")
+        .expect("Brave in registry");
     let cache = SessionCache::new(100, Duration::from_secs(3600));
     let now = Instant::now();
 
     let page1 = engine
-        .search("Flash Attention with tensor cores", SearchParams::default(), None)
+        .search(
+            "Flash Attention with tensor cores",
+            SearchParams::default(),
+            None,
+        )
         .await
         .expect("Brave page 1 should succeed");
     assert!(!page1.results.is_empty(), "Page 1 should have results");
     print_results("page 1 — Flash Attention with tensor cores", &page1.results);
-    assert!(page1.continuation.is_some(), "Brave should have continuation for page 2");
+    assert!(
+        page1.continuation.is_some(),
+        "Brave should have continuation for page 2"
+    );
 
     let mut random_id = [0u8; 8];
     getrandom::getrandom(&mut random_id).expect("random id");
@@ -77,26 +84,39 @@ async fn brave_next_page_basic() {
     let entry = cache.get(&key, now2).expect("Session should exist");
     let cont = entry.continuation.expect("Continuation should exist");
     let page2 = engine
-        .search("Flash Attention with tensor cores", SearchParams::default(), Some(&*cont))
+        .search(
+            "Flash Attention with tensor cores",
+            SearchParams::default(),
+            Some(&*cont),
+        )
         .await
         .expect("Brave page 2 should succeed");
     assert!(!page2.results.is_empty(), "Page 2 should have results");
     print_results("page 2", &page2.results);
 
     let page1_urls: Vec<&str> = page1.results.iter().map(|r| r.url.as_str()).collect();
-    let has_new = page2.results.iter().any(|r| !page1_urls.contains(&r.url.as_str()));
+    let has_new = page2
+        .results
+        .iter()
+        .any(|r| !page1_urls.contains(&r.url.as_str()));
     assert!(has_new, "Page 2 should contain results not on page 1");
 }
 
 #[tokio::test]
 #[ignore]
 async fn brave_next_page_expired_session() {
-    let engine = create_default_registry().get_engine("brave").expect("Brave in registry");
+    let engine = create_default_registry()
+        .get_engine("brave")
+        .expect("Brave in registry");
     let cache = SessionCache::new(100, Duration::from_secs(1));
     let now = Instant::now();
 
     let page1 = engine
-        .search("Flash Attention with tensor cores", SearchParams::default(), None)
+        .search(
+            "Flash Attention with tensor cores",
+            SearchParams::default(),
+            None,
+        )
         .await
         .expect("Brave page 1 should succeed");
 

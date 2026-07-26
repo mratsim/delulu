@@ -35,7 +35,6 @@ fn search_result_serialize_roundtrip() {
     assert_eq!(back.date, Some(1234567890));
 }
 
-
 #[test]
 fn search_result_no_panic_fields() {
     // Verify no `position` or `engine` fields exist by round-tripping

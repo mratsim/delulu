@@ -17,8 +17,8 @@
 
 //! Engine registry and backend modules.
 
-pub mod duckduckgo;
 pub mod brave;
+pub mod duckduckgo;
 
 use crate::engine::EngineRef;
 use std::collections::HashMap;
@@ -98,10 +98,7 @@ pub fn create_default_registry() -> EngineRegistry {
         .with_timeout(std::time::Duration::from_secs(10))
         .build()
         .expect("Failed to build Brave crawler");
-    registry.register(
-        "brave",
-        Arc::new(brave::BraveEngine::new(brave_crawler)),
-    );
+    registry.register("brave", Arc::new(brave::BraveEngine::new(brave_crawler)));
 
     registry
 }

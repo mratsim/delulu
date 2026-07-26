@@ -39,12 +39,16 @@ use delulu_mcp_server_helper::rmcp::tool_router;
 use delulu_mcp_server_helper::{
     McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing,
 };
-use delulu_websearch::engine::{EngineId, SearchParams};
-use delulu_websearch::engines::{EngineRegistry, create_default_registry};
-use delulu_websearch::mcp_serialization::{McpNextPageResponse, McpSearchResponse, sanitize_error_for_client, engine_name_to_id};
-use delulu_websearch::parsers::{parse_max_results, parse_safesearch, parse_country, validate_query};
 use delulu_websearch::SessionCache;
 use delulu_websearch::SessionKey;
+use delulu_websearch::engine::{EngineId, SearchParams};
+use delulu_websearch::engines::{EngineRegistry, create_default_registry};
+use delulu_websearch::mcp_serialization::{
+    McpNextPageResponse, McpSearchResponse, engine_name_to_id, sanitize_error_for_client,
+};
+use delulu_websearch::parsers::{
+    parse_country, parse_max_results, parse_safesearch, validate_query,
+};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -145,8 +149,8 @@ impl WebsearchServer {
         let input = params.0;
 
         // Validate query
-        let query = validate_query(input.query.trim())
-            .map_err(|e| format!("Invalid query: {e}"))?;
+        let query =
+            validate_query(input.query.trim()).map_err(|e| format!("Invalid query: {e}"))?;
 
         // Determine engine to search
         let engine_names: Vec<&str> = match input.engine.as_deref() {
@@ -163,8 +167,8 @@ impl WebsearchServer {
             .map_err(|e| format!("Invalid max_results: {e}"))?;
         let safesearch = parse_safesearch(input.safesearch.as_deref())
             .map_err(|e| format!("Invalid safesearch: {e}"))?;
-        let country = parse_country(input.country.as_deref())
-            .map_err(|e| format!("Invalid country: {e}"))?;
+        let country =
+            parse_country(input.country.as_deref()).map_err(|e| format!("Invalid country: {e}"))?;
         let search_params = SearchParams {
             page: None,
             country: Some(country.to_string()),
@@ -270,15 +274,14 @@ impl WebsearchServer {
         let now = std::time::Instant::now();
 
         // Parse session key
-        let key: SessionKey = match serde_json::from_value(
-            serde_json::Value::String(input.session_key.clone()),
-        ) {
-            Ok(k) => k,
-            Err(_) => {
-                tracing::warn!("Invalid session key format");
-                return Err("Session not found or expired".to_string());
-            }
-        };
+        let key: SessionKey =
+            match serde_json::from_value(serde_json::Value::String(input.session_key.clone())) {
+                Ok(k) => k,
+                Err(_) => {
+                    tracing::warn!("Invalid session key format");
+                    return Err("Session not found or expired".to_string());
+                }
+            };
 
         // Look up session in cache
         let entry = match self.session_cache.get(&key, now) {
@@ -310,7 +313,10 @@ impl WebsearchServer {
         };
 
         // Call engine.search with continuation
-        let response = match engine.search(&entry.query, entry.params, Some(&*continuation)).await {
+        let response = match engine
+            .search(&entry.query, entry.params, Some(&*continuation))
+            .await
+        {
             Ok(resp) => resp,
             Err(e) => {
                 tracing::error!("Next page search failed for session: {e:?}");
@@ -318,9 +324,12 @@ impl WebsearchServer {
             }
         };
 
-// Store new continuation
+        // Store new continuation
         let has_next_page = response.continuation.is_some();
-        if let Err(e) = self.session_cache.update_continuation(&key, response.continuation, now) {
+        if let Err(e) = self
+            .session_cache
+            .update_continuation(&key, response.continuation, now)
+        {
             tracing::error!("Failed to update continuation: {e:?}");
         }
 

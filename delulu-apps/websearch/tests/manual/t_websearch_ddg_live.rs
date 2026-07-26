@@ -29,7 +29,10 @@ use delulu_websearch::engines::create_default_registry;
 use delulu_websearch::{Engine, EngineRef, SearchParams};
 
 fn print_results(label: &str, results: &[delulu_websearch::SearchResult]) {
-    println!("\n=== DuckDuckGo -- {label} -- {} results ===", results.len());
+    println!(
+        "\n=== DuckDuckGo -- {label} -- {} results ===",
+        results.len()
+    );
     for (i, r) in results.iter().enumerate() {
         println!("  [{}] {}", i + 1, r.title);
         println!("      URL: {}", r.url);
@@ -40,15 +43,24 @@ fn print_results(label: &str, results: &[delulu_websearch::SearchResult]) {
     }
 }
 
-
-
 #[tokio::test]
 #[ignore]
 async fn duckduckgo_live_basic() -> Result<()> {
-    let engine = create_default_registry().get_engine("duckduckgo").expect("DDG in registry");
+    let engine = create_default_registry()
+        .get_engine("duckduckgo")
+        .expect("DDG in registry");
 
-    let response = engine.search("CuTe Layout Algebra tutorial", SearchParams::default(), None).await?;
-    assert!(!response.results.is_empty(), "Expected results from DuckDuckGo");
+    let response = engine
+        .search(
+            "CuTe Layout Algebra tutorial",
+            SearchParams::default(),
+            None,
+        )
+        .await?;
+    assert!(
+        !response.results.is_empty(),
+        "Expected results from DuckDuckGo"
+    );
     print_results("CuTe Layout Algebra tutorial", &response.results);
     Ok(())
 }
@@ -56,9 +68,10 @@ async fn duckduckgo_live_basic() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn duckduckgo_live_empty_query() -> Result<()> {
-    let engine = create_default_registry().get_engine("duckduckgo").expect("DDG in registry");
+    let engine = create_default_registry()
+        .get_engine("duckduckgo")
+        .expect("DDG in registry");
     let result = engine.search("", SearchParams::default(), None).await;
     assert!(result.is_err(), "Empty query should return an error");
     Ok(())
 }
-

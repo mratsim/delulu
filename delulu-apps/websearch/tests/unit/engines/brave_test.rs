@@ -20,7 +20,6 @@
 use super::{BraveContinuation, BraveEngine, strip_date_prefix};
 use crate::{Continuation, SearchParams};
 
-
 #[test]
 fn build_search_url_basic() {
     let params = SearchParams::default();
@@ -124,4 +123,3 @@ fn brave_continuation_from_json() {
     let cont: BraveContinuation = serde_json::from_str(r#"{"page":7}"#).unwrap();
     assert_eq!(cont.page, 7);
 }
-

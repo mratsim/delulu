@@ -20,11 +20,9 @@
 //! All tests use `Instant::now()` as the base time — the cache is a pure
 //! domain type that receives time and randomness from the caller.
 
+use crate::{Continuation, EngineId, SearchParams, SessionCache, SessionKey, WebsearchError};
 use std::any::Any;
 use std::time::{Duration, Instant};
-use crate::{
-    Continuation, EngineId, SearchParams, SessionCache, SessionKey, WebsearchError,
-};
 
 /// Fixed 8 random bytes for deterministic tests.
 fn fixed_id() -> [u8; 8] {
@@ -91,7 +89,10 @@ fn session_cache_store_and_get_with_continuation() {
     assert_eq!(entry.engine, EngineId::Brave);
     assert_eq!(entry.query, "cont test");
     // Continuation should be retrievable (via Arc clone)
-    assert!(entry.continuation.is_some(), "continuation should be retrievable from get()");
+    assert!(
+        entry.continuation.is_some(),
+        "continuation should be retrievable from get()"
+    );
 }
 
 #[test]
@@ -129,8 +130,7 @@ fn session_cache_update_continuation() {
         fixed_id(),
     );
 
-    let cont: Option<Box<dyn Continuation>> =
-        Some(Box::new(TestContinuation));
+    let cont: Option<Box<dyn Continuation>> = Some(Box::new(TestContinuation));
 
     let result = cache.update_continuation(&key, cont, now);
     assert!(result.is_ok(), "update should succeed");
@@ -140,7 +140,10 @@ fn session_cache_update_continuation() {
     assert!(entry.is_some(), "entry should still exist after update");
     let entry = entry.unwrap();
     assert_eq!(entry.engine, EngineId::Brave);
-    assert!(entry.continuation.is_some(), "continuation should be retrievable after update");
+    assert!(
+        entry.continuation.is_some(),
+        "continuation should be retrievable after update"
+    );
 }
 
 #[test]
@@ -149,16 +152,9 @@ fn session_cache_update_nonexistent() {
     let now = Instant::now();
 
     // Create a key that was never stored
-    let fake_key = SessionKey::new(
-        EngineId::Brave,
-        alt_id(),
-    );
+    let fake_key = SessionKey::new(EngineId::Brave, alt_id());
 
-    let result = cache.update_continuation(
-        &fake_key,
-        Some(Box::new(TestContinuation)),
-        now,
-    );
+    let result = cache.update_continuation(&fake_key, Some(Box::new(TestContinuation)), now);
 
     match result {
         Err(WebsearchError::SessionNotFound) => {} // expected
@@ -191,9 +187,15 @@ fn session_cache_capacity_eviction() {
     );
 
     // First entry should be evicted (capacity 1)
-    assert!(cache.get(&key1, now).is_none(), "first entry should be evicted");
+    assert!(
+        cache.get(&key1, now).is_none(),
+        "first entry should be evicted"
+    );
     // Second entry should still be present
-    assert!(cache.get(&key2, now).is_some(), "second entry should be present");
+    assert!(
+        cache.get(&key2, now).is_some(),
+        "second entry should be present"
+    );
 }
 
 #[test]
@@ -231,8 +233,14 @@ fn session_cache_thread_safety() {
     let key2 = handle2.join().expect("thread 2 panicked");
 
     // Both entries should be retrievable
-    assert!(cache.get(&key1, now).is_some(), "thread1's entry should exist");
-    assert!(cache.get(&key2, now).is_some(), "thread2's entry should exist");
+    assert!(
+        cache.get(&key1, now).is_some(),
+        "thread1's entry should exist"
+    );
+    assert!(
+        cache.get(&key2, now).is_some(),
+        "thread2's entry should exist"
+    );
 }
 
 #[test]
@@ -249,7 +257,10 @@ fn session_cache_defaults() {
             (i >> 8) as u8,
             (i >> 16) as u8,
             (i >> 24) as u8,
-            0x00, 0x00, 0x00, 0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
         ];
         let key = cache.store(
             EngineId::Brave,
@@ -342,14 +353,20 @@ fn evict_expired_removes_expired() {
     );
 
     // Entry should exist before expiry
-    assert!(cache.get(&key, now).is_some(), "entry should exist before expiry");
+    assert!(
+        cache.get(&key, now).is_some(),
+        "entry should exist before expiry"
+    );
 
     // Advance time past TTL
     let later = now + Duration::from_secs(61);
     cache.evict_expired(later);
 
     // Entry should be gone
-    assert!(cache.get(&key, later).is_none(), "entry should be removed after expiry");
+    assert!(
+        cache.get(&key, later).is_none(),
+        "entry should be removed after expiry"
+    );
 }
 
 #[test]
@@ -368,7 +385,10 @@ fn evict_expired_keeps_valid() {
 
     // Entry should survive eviction before expiry
     cache.evict_expired(now);
-    assert!(cache.get(&key, now).is_some(), "entry should survive eviction before expiry");
+    assert!(
+        cache.get(&key, now).is_some(),
+        "entry should survive eviction before expiry"
+    );
 }
 
 #[test]
@@ -399,14 +419,26 @@ fn evict_expired_removes_only_expired() {
 
     // Evict at `now` — neither should be removed (before expiry)
     cache.evict_expired(now);
-    assert!(cache.get(&key1, now).is_some(), "key1 should survive before expiry");
-    assert!(cache.get(&key2, now).is_some(), "key2 should survive before expiry");
+    assert!(
+        cache.get(&key1, now).is_some(),
+        "key1 should survive before expiry"
+    );
+    assert!(
+        cache.get(&key2, now).is_some(),
+        "key2 should survive before expiry"
+    );
 
     // Evict after both expire
     let later = now + Duration::from_secs(61);
     cache.evict_expired(later);
-    assert!(cache.get(&key1, later).is_none(), "key1 should be removed after expiry");
-    assert!(cache.get(&key2, later).is_none(), "key2 should be removed after expiry");
+    assert!(
+        cache.get(&key1, later).is_none(),
+        "key1 should be removed after expiry"
+    );
+    assert!(
+        cache.get(&key2, later).is_none(),
+        "key2 should be removed after expiry"
+    );
 }
 
 #[test]
@@ -436,7 +468,10 @@ fn evict_expired_called_on_store() {
     );
 
     // key1 should have been evicted by evict_expired called from store()
-    assert!(cache.get(&key1, later).is_none(), "entry should be evicted by store()");
+    assert!(
+        cache.get(&key1, later).is_none(),
+        "entry should be evicted by store()"
+    );
     // key2 should still be present
     assert!(cache.get(&key2, later).is_some(), "new entry should exist");
 }
@@ -461,7 +496,10 @@ fn evict_expired_called_on_update_continuation() {
     let result = cache.update_continuation(&key, None, later);
 
     // evict_expired should remove the expired entry, so update should fail
-    assert!(result.is_err(), "expired entry should return SessionNotFound");
+    assert!(
+        result.is_err(),
+        "expired entry should return SessionNotFound"
+    );
 }
 
 #[test]
@@ -494,7 +532,10 @@ fn evict_expired_after_update_continuation_keeps_refreshed_entry() {
 
     // Entry should still be alive (refreshed expiry > evict_time)
     let entry = cache.get(&key, evict_time);
-    assert!(entry.is_some(), "refreshed entry should survive evict_expired");
+    assert!(
+        entry.is_some(),
+        "refreshed entry should survive evict_expired"
+    );
     assert_eq!(entry.unwrap().engine, EngineId::Brave);
 }
 
@@ -528,7 +569,10 @@ fn evict_expired_re_pushes_refreshed_entry() {
 
     // Entry should survive because re-push put correct expiry on heap
     let entry = cache.get(&key, evict_time);
-    assert!(entry.is_some(), "refreshed entry should survive evict_expired via re-push");
+    assert!(
+        entry.is_some(),
+        "refreshed entry should survive evict_expired via re-push"
+    );
     assert_eq!(entry.unwrap().engine, EngineId::Brave);
 }
 
@@ -559,7 +603,10 @@ fn evict_expired_removes_expired_even_if_refreshed() {
     cache.evict_expired(far_future);
 
     // Entry should be removed: map expiry 70 is not > 1000
-    assert!(cache.get(&key, far_future).is_none(), "entry should be removed when both original and refreshed expiry have passed");
+    assert!(
+        cache.get(&key, far_future).is_none(),
+        "entry should be removed when both original and refreshed expiry have passed"
+    );
 }
 
 #[test]
@@ -636,7 +683,13 @@ fn store_stale_cleanup_only_checks_key_presence() {
     );
 
     // key1 should not be in the map (was removed manually)
-    assert!(cache.get(&key1, now).is_none(), "orphaned key should not be in map");
+    assert!(
+        cache.get(&key1, now).is_none(),
+        "orphaned key should not be in map"
+    );
     // key2 should be in the map
-    assert!(cache.get(&key2, now).is_some(), "new entry should be present");
+    assert!(
+        cache.get(&key2, now).is_some(),
+        "new entry should be present"
+    );
 }

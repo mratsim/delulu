@@ -17,7 +17,7 @@
 
 //! Unit tests for engine registry.
 
-use super::{create_default_registry, duckduckgo::DuckDuckGoEngine, EngineRegistry};
+use super::{EngineRegistry, create_default_registry, duckduckgo::DuckDuckGoEngine};
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use std::sync::Arc;
 
@@ -42,10 +42,7 @@ fn registry_register_and_get() {
         .with_timeout(std::time::Duration::from_secs(10))
         .build()
         .unwrap();
-    registry.register(
-        "duckduckgo",
-        Arc::new(DuckDuckGoEngine::new(ddg_crawler)),
-    );
+    registry.register("duckduckgo", Arc::new(DuckDuckGoEngine::new(ddg_crawler)));
     let engine = registry.get_engine("duckduckgo");
     assert!(engine.is_some());
     let names = registry.list_engines();

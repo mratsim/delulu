@@ -21,9 +21,11 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::mcp_serialization::{McpNextPageResponse, McpSearchResponse, engine_name_to_id, sanitize_error_for_client};
     use crate::engine::{EngineId, SearchResult};
     use crate::error::WebsearchError;
+    use crate::mcp_serialization::{
+        McpNextPageResponse, McpSearchResponse, engine_name_to_id, sanitize_error_for_client,
+    };
     use serde_json::Value;
     use std::collections::HashMap;
 
@@ -60,18 +62,15 @@ mod tests {
 
         let json_str = serde_json::to_string_pretty(&response)
             .expect("McpSearchResponse should serialize to JSON");
-        let parsed: Value = serde_json::from_str(&json_str)
-            .expect("Serialized JSON should be valid");
+        let parsed: Value =
+            serde_json::from_str(&json_str).expect("Serialized JSON should be valid");
 
         // Verify top-level fields exist and have correct types
         assert!(
             parsed.get("session_key").and_then(|v| v.as_str()).is_some(),
             "session_key must be present and a string"
         );
-        assert_eq!(
-            parsed["session_key"].as_str().unwrap(),
-            "brv-test12345"
-        );
+        assert_eq!(parsed["session_key"].as_str().unwrap(), "brv-test12345");
 
         assert!(
             parsed.get("results").and_then(|v| v.as_object()).is_some(),
@@ -79,19 +78,25 @@ mod tests {
         );
 
         assert!(
-            parsed.get("has_next_page").and_then(|v| v.as_bool()).is_some(),
+            parsed
+                .get("has_next_page")
+                .and_then(|v| v.as_bool())
+                .is_some(),
             "has_next_page must be present and a boolean"
         );
-        assert!(parsed["has_next_page"].as_bool().unwrap(), "has_next_page must be true");
+        assert!(
+            parsed["has_next_page"].as_bool().unwrap(),
+            "has_next_page must be true"
+        );
 
         assert!(
-            parsed.get("continuation_engine").and_then(|v| v.as_str()).is_some(),
+            parsed
+                .get("continuation_engine")
+                .and_then(|v| v.as_str())
+                .is_some(),
             "continuation_engine must be present and a string"
         );
-        assert_eq!(
-            parsed["continuation_engine"].as_str().unwrap(),
-            "brave"
-        );
+        assert_eq!(parsed["continuation_engine"].as_str().unwrap(), "brave");
 
         // Verify results structure
         let results_obj = parsed["results"].as_object().unwrap();
@@ -137,13 +142,16 @@ mod tests {
             engine_errors: None,
         };
 
-        let json_str = serde_json::to_string(&response)
-            .expect("McpSearchResponse should serialize to JSON");
-        let parsed: Value = serde_json::from_str(&json_str)
-            .expect("Serialized JSON should be valid");
+        let json_str =
+            serde_json::to_string(&response).expect("McpSearchResponse should serialize to JSON");
+        let parsed: Value =
+            serde_json::from_str(&json_str).expect("Serialized JSON should be valid");
 
         assert_eq!(parsed["session_key"].as_str().unwrap(), "ddg-test67890");
-        assert!(!parsed["has_next_page"].as_bool().unwrap(), "has_next_page must be false");
+        assert!(
+            !parsed["has_next_page"].as_bool().unwrap(),
+            "has_next_page must be false"
+        );
         assert!(
             parsed.get("continuation_engine").is_none(),
             "continuation_engine should be absent when None"
@@ -183,32 +191,39 @@ mod tests {
     /// Verify that `McpNextPageResponse` serializes correctly.
     #[test]
     fn mcp_next_page_response_serialization() {
-        let results = vec![
-            SearchResult {
-                title: "Next Page Result".to_string(),
-                url: "https://example.com/next".to_string(),
-                snippet: Some("Next page snippet.".to_string()),
-                date: Some(1700000001),
-            },
-        ];
+        let results = vec![SearchResult {
+            title: "Next Page Result".to_string(),
+            url: "https://example.com/next".to_string(),
+            snippet: Some("Next page snippet.".to_string()),
+            date: Some(1700000001),
+        }];
 
         let response = McpNextPageResponse {
             results: results.clone(),
             has_next_page: true,
         };
 
-        let json_str = serde_json::to_string(&response)
-            .expect("McpNextPageResponse should serialize to JSON");
-        let parsed: Value = serde_json::from_str(&json_str)
-            .expect("Serialized JSON should be valid");
+        let json_str =
+            serde_json::to_string(&response).expect("McpNextPageResponse should serialize to JSON");
+        let parsed: Value =
+            serde_json::from_str(&json_str).expect("Serialized JSON should be valid");
 
         assert!(parsed.get("results").is_some(), "Missing 'results' field");
-        assert!(parsed.get("has_next_page").is_some(), "Missing 'has_next_page' field");
-        assert!(parsed["has_next_page"].as_bool().unwrap(), "has_next_page must be true");
+        assert!(
+            parsed.get("has_next_page").is_some(),
+            "Missing 'has_next_page' field"
+        );
+        assert!(
+            parsed["has_next_page"].as_bool().unwrap(),
+            "has_next_page must be true"
+        );
 
         let results_arr = parsed["results"].as_array().unwrap();
         assert_eq!(results_arr.len(), 1, "Expected 1 result");
-        assert_eq!(results_arr[0]["title"].as_str().unwrap(), "Next Page Result");
+        assert_eq!(
+            results_arr[0]["title"].as_str().unwrap(),
+            "Next Page Result"
+        );
     }
 
     /// Verify that `sanitize_error_for_client` produces sanitized messages.
@@ -235,9 +250,7 @@ mod tests {
         assert_eq!(msg, "Search engine error: brave");
 
         // Http (transport)
-        let err = WebsearchError::Http(
-            delulu_rate_limited_crawler::error::CrawlerError::QpsZero,
-        );
+        let err = WebsearchError::Http(delulu_rate_limited_crawler::error::CrawlerError::QpsZero);
         let msg = sanitize_error_for_client(&err);
         assert_eq!(msg, "Search engine error");
 
@@ -271,7 +284,10 @@ mod tests {
         // ParseFailed
         let err = WebsearchError::ParseFailed {
             parser: "duckduckgo_djs",
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "parse error")),
+            source: Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "parse error",
+            )),
         };
         let msg = sanitize_error_for_client(&err);
         assert_eq!(msg, "Search engine error");

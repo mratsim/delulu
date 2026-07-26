@@ -42,8 +42,12 @@ fn load_fixture(relative_path: &str) -> String {
     let compressed = std::fs::read(&path)
         .unwrap_or_else(|e| panic!("Failed to read fixture '{}': {e}", path.display()));
 
-    let mut decoder = zstd::Decoder::new(compressed.as_slice())
-        .unwrap_or_else(|e| panic!("Failed to create zstd decoder for '{}': {e}", path.display()));
+    let mut decoder = zstd::Decoder::new(compressed.as_slice()).unwrap_or_else(|e| {
+        panic!(
+            "Failed to create zstd decoder for '{}': {e}",
+            path.display()
+        )
+    });
 
     let mut content = String::new();
     decoder
@@ -73,16 +77,8 @@ fn brave_fixture_parse_search_results() {
 
     // Verify each result has required fields
     for (i, result) in results.iter().enumerate() {
-        assert!(
-            !result.title.is_empty(),
-            "Result {} has empty title",
-            i
-        );
-        assert!(
-            !result.url.is_empty(),
-            "Result {} has empty URL",
-            i
-        );
+        assert!(!result.title.is_empty(), "Result {} has empty title", i);
+        assert!(!result.url.is_empty(), "Result {} has empty URL", i);
         // URL must be valid
         assert!(
             url::Url::parse(&result.url).is_ok(),
@@ -120,8 +116,7 @@ fn brave_fixture_parse_with_max_results() {
 fn brave_fixture_results_have_dates() {
     let html = load_fixture("brave/20260724-hashing-to-elliptic-curves/response.html.zst");
 
-    let results = parse_search_results(&html, 20)
-        .expect("parse_search_results should succeed");
+    let results = parse_search_results(&html, 20).expect("parse_search_results should succeed");
 
     // At least some results should have dates (the fixture has t-secondary spans)
     let results_with_dates: Vec<_> = results.iter().filter(|r| r.date.is_some()).collect();
@@ -152,8 +147,7 @@ fn brave_fixture_results_have_dates() {
 fn brave_fixture_results_have_snippets() {
     let html = load_fixture("brave/20260724-hashing-to-elliptic-curves/response.html.zst");
 
-    let results = parse_search_results(&html, 20)
-        .expect("parse_search_results should succeed");
+    let results = parse_search_results(&html, 20).expect("parse_search_results should succeed");
 
     // Most results should have snippets
     let results_with_snippets: Vec<_> = results.iter().filter(|r| r.snippet.is_some()).collect();

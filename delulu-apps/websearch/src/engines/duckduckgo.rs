@@ -27,10 +27,10 @@
 use async_trait::async_trait;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::time::Instant;
 use tracing::{debug, warn};
-use serde::{Deserialize, Serialize};
 
 use crate::engine::{Continuation, Engine, SearchParams, SearchResponse, SearchResult};
 use crate::error::WebsearchError;
@@ -56,7 +56,8 @@ pub struct DuckDuckGoEngine {
 }
 
 /// DuckDuckGo User-Agent
-const DDG_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0";
+const DDG_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0";
 
 /// Continuation token for DuckDuckGo pagination.
 ///
@@ -86,7 +87,9 @@ impl Continuation for DuckDuckGoContinuation {
 /// (`https://...`). Allowed: alphanumeric, `/`, `?`, `=`, `.`, `_`, `-`, `&`.
 pub(crate) fn validate_n_token(token: &str) -> bool {
     !token.is_empty()
-        && token.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '?' | '=' | '.' | '_' | '-' | '&'))
+        && token.chars().all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '/' | '?' | '=' | '.' | '_' | '-' | '&')
+        })
         && !token.contains("..")
         && !token.starts_with("https://")
         && !token.starts_with("http://")
@@ -100,10 +103,7 @@ impl DuckDuckGoEngine {
 
     /// Build the initial search URL with query parameters.
     pub fn build_search_url(query: &str, params: &SearchParams) -> String {
-        let mut url = format!(
-            "https://duckduckgo.com/?q={}",
-            urlencoding::encode(query)
-        );
+        let mut url = format!("https://duckduckgo.com/?q={}", urlencoding::encode(query));
 
         // Country parameter (kl)
         match params.country.as_deref() {
@@ -152,33 +152,28 @@ impl DuckDuckGoEngine {
         let document = Html::parse_document(html);
 
         // Check for captcha first
-        let challenge_selector =
-            Selector::parse("form#challenge-form").expect("valid selector");
+        let challenge_selector = Selector::parse("form#challenge-form").expect("valid selector");
         if document.select(&challenge_selector).next().is_some() {
             return Err(WebsearchError::AccessDenied);
         }
 
         // Extract deep_preload_link href
-        let link_selector =
-            Selector::parse("link#deep_preload_link").expect("valid selector");
-        let link = document
-            .select(&link_selector)
-            .next()
-            .ok_or_else(|| {
-                WebsearchError::ParseFailed {
+        let link_selector = Selector::parse("link#deep_preload_link").expect("valid selector");
+        let link =
+            document
+                .select(&link_selector)
+                .next()
+                .ok_or_else(|| WebsearchError::ParseFailed {
                     parser: "duckduckgo_deep_preload",
                     source: "no <link id='deep_preload_link'> found".into(),
-                }
-            })?;
+                })?;
 
         let href = link
             .value()
             .attr("href")
-            .ok_or_else(|| {
-                WebsearchError::MissingField {
-                    field: "href",
-                    engine: "duckduckgo",
-                }
+            .ok_or_else(|| WebsearchError::MissingField {
+                field: "href",
+                engine: "duckduckgo",
             })?;
 
         Ok(href.to_string())
@@ -190,7 +185,9 @@ impl DuckDuckGoEngine {
         url: &str,
         max_results: usize,
     ) -> Result<(Vec<SearchResult>, Option<String>), WebsearchError> {
-        let djs_response = self.crawler.get(url)
+        let djs_response = self
+            .crawler
+            .get(url)
             .with_headers(vec![
                 ("User-Agent".into(), DDG_USER_AGENT.into()),
                 ("Accept".into(), "*/*".into()),
@@ -228,12 +225,13 @@ impl DuckDuckGoEngine {
             });
         }
 
-        let djs_body = djs_response.text().await.map_err(|e| {
-            WebsearchError::ParseFailed {
+        let djs_body = djs_response
+            .text()
+            .await
+            .map_err(|e| WebsearchError::ParseFailed {
                 parser: "duckduckgo_djs_body",
                 source: Box::new(e),
-            }
-        })?;
+            })?;
 
         // Parse the d.js response
         match Self::parse_djs_response(&djs_body, max_results) {
@@ -283,12 +281,11 @@ impl DuckDuckGoEngine {
         let json_str = extract_json_from_js(parts[1])?;
 
         // Parse as JSON array
-        let items: Vec<serde_json::Value> = serde_json::from_str(&json_str).map_err(|e| {
-            WebsearchError::ParseFailed {
+        let items: Vec<serde_json::Value> =
+            serde_json::from_str(&json_str).map_err(|e| WebsearchError::ParseFailed {
                 parser: "duckduckgo_djs",
                 source: Box::new(e),
-            }
-        })?;
+            })?;
 
         let mut results = Vec::new();
         let mut n_token: Option<String> = None;
@@ -300,7 +297,11 @@ impl DuckDuckGoEngine {
 
             // Track the "n" (next page token) field from items.
             // Validate to prevent SSRF: reject path traversal or protocol injection.
-            if let Some(n_val) = item.get("n").and_then(|v| v.as_str()).filter(|v| validate_n_token(v)) {
+            if let Some(n_val) = item
+                .get("n")
+                .and_then(|v| v.as_str())
+                .filter(|v| validate_n_token(v))
+            {
                 n_token = Some(n_val.to_string());
             }
 
@@ -379,9 +380,7 @@ impl Engine for DuckDuckGoEngine {
             None => {
                 // Step 1: Fetch the initial HTML page to get the d.js URL
                 let search_url = Self::build_search_url(query, &params);
-                debug!(
-                    "DuckDuckGo: fetching initial page (query hidden, status=?, duration=?)"
-                );
+                debug!("DuckDuckGo: fetching initial page (query hidden, status=?, duration=?)");
                 let response = self.crawler.get(&search_url)
                     .with_headers(vec![
                         ("User-Agent".into(), DDG_USER_AGENT.into()),
@@ -412,7 +411,10 @@ impl Engine for DuckDuckGoEngine {
 
                 if !(200..300).contains(&status) {
                     if status == 429 {
-                        warn!("DuckDuckGo: rate limited (429) - retry after {:?}", response.headers().get("retry-after"));
+                        warn!(
+                            "DuckDuckGo: rate limited (429) - retry after {:?}",
+                            response.headers().get("retry-after")
+                        );
                         return Err(WebsearchError::HttpStatus {
                             code: status,
                             engine: "duckduckgo",
@@ -424,12 +426,13 @@ impl Engine for DuckDuckGoEngine {
                     });
                 }
 
-                let body = response.text().await.map_err(|e| {
-                    WebsearchError::ParseFailed {
+                let body = response
+                    .text()
+                    .await
+                    .map_err(|e| WebsearchError::ParseFailed {
                         parser: "duckduckgo_response_body",
                         source: Box::new(e),
-                    }
-                })?;
+                    })?;
 
                 let djs_path = match Self::extract_djs_url(&body) {
                     Ok(path) => path,
@@ -448,17 +451,16 @@ impl Engine for DuckDuckGoEngine {
                 djs_url = Self::build_djs_url(&djs_path);
                 djs_start = Instant::now();
 
-                debug!(
-                    "DuckDuckGo: fetching d.js (query hidden, status=?, duration=?)"
-                );
+                debug!("DuckDuckGo: fetching d.js (query hidden, status=?, duration=?)");
             }
             Some(c) => {
-                let ddg_cont = c.as_any().downcast_ref::<DuckDuckGoContinuation>().ok_or_else(|| {
-                    WebsearchError::ContinuationTypeMismatch {
+                let ddg_cont = c
+                    .as_any()
+                    .downcast_ref::<DuckDuckGoContinuation>()
+                    .ok_or_else(|| WebsearchError::ContinuationTypeMismatch {
                         expected: "DuckDuckGoContinuation",
                         received: std::any::type_name_of_val(c),
-                    }
-                })?;
+                    })?;
                 // Validate n_token to prevent SSRF via continuation injection.
                 if !validate_n_token(&ddg_cont.n_token) {
                     return Err(WebsearchError::ContinuationInvalidValue {
@@ -478,10 +480,7 @@ impl Engine for DuckDuckGoEngine {
         let (results, n_token) = self.fetch_and_parse_djs(&djs_url, max_results).await?;
 
         let djs_duration = djs_start.elapsed();
-        debug!(
-            "DuckDuckGo: d.js status=200, duration={:?}",
-            djs_duration
-        );
+        debug!("DuckDuckGo: d.js status=200, duration={:?}", djs_duration);
 
         // Build continuation from n_token
         let continuation: Option<Box<dyn Continuation>> = n_token.map(|token| {
@@ -502,7 +501,6 @@ impl Engine for DuckDuckGoEngine {
     }
 }
 
-
 /// Extract JSON from a JavaScript string starting after `DDG.pageLayout.load('d',`.
 ///
 /// The format is: `DDG.pageLayout.load('d', [...]);` — we need to extract
@@ -511,11 +509,9 @@ pub fn extract_json_from_js(s: &str) -> Result<String, WebsearchError> {
     let s = s.trim();
 
     // Find the first opening bracket
-    let start = s.find('[').ok_or_else(|| {
-        WebsearchError::ParseFailed {
-            parser: "duckduckgo_djs_json_extract",
-            source: "no opening bracket found after load marker".into(),
-        }
+    let start = s.find('[').ok_or_else(|| WebsearchError::ParseFailed {
+        parser: "duckduckgo_djs_json_extract",
+        source: "no opening bracket found after load marker".into(),
     })?;
 
     // Find the matching closing bracket (respecting string boundaries)
@@ -681,7 +677,11 @@ fn days_since_epoch(year: i64, month: u32, day: u32) -> Option<u64> {
 
     // Add days for months in the current year
     let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    for (m, &days_in_month) in month_days.iter().enumerate().take((month as usize).saturating_sub(1)) {
+    for (m, &days_in_month) in month_days
+        .iter()
+        .enumerate()
+        .take((month as usize).saturating_sub(1))
+    {
         total_days += days_in_month;
         if m == 1 && is_leap_year(year) {
             total_days += 1; // February in leap year

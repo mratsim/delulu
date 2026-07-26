@@ -25,12 +25,14 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::time::Instant;
 use tracing::{debug, warn};
-use serde::{Deserialize, Serialize};
 
-use crate::engine::{Continuation, DEFAULT_USER_AGENT, Engine, SearchParams, SearchResponse, SearchResult};
+use crate::engine::{
+    Continuation, DEFAULT_USER_AGENT, Engine, SearchParams, SearchResponse, SearchResult,
+};
 use crate::error::WebsearchError;
 
 /// Brave search engine implementation.
@@ -112,7 +114,6 @@ impl BraveEngine {
     }
 }
 
-
 #[async_trait]
 impl Engine for BraveEngine {
     async fn search(
@@ -129,12 +130,13 @@ impl Engine for BraveEngine {
         let page = match continuation {
             None => crate::parsers::parse_page(params.page)?,
             Some(c) => {
-                let brave_cont = c.as_any().downcast_ref::<BraveContinuation>().ok_or_else(|| {
-                    WebsearchError::ContinuationTypeMismatch {
-                        expected: "BraveContinuation",
-                        received: std::any::type_name_of_val(c),
-                    }
-                })?;
+                let brave_cont =
+                    c.as_any()
+                        .downcast_ref::<BraveContinuation>()
+                        .ok_or_else(|| WebsearchError::ContinuationTypeMismatch {
+                            expected: "BraveContinuation",
+                            received: std::any::type_name_of_val(c),
+                        })?;
                 if brave_cont.page == 0 {
                     return Err(WebsearchError::ContinuationInvalidValue {
                         reason: "Brave page cannot be 0",
@@ -194,12 +196,13 @@ impl Engine for BraveEngine {
             });
         }
 
-        let body = response.text().await.map_err(|e| {
-            WebsearchError::ParseFailed {
+        let body = response
+            .text()
+            .await
+            .map_err(|e| WebsearchError::ParseFailed {
                 parser: "brave_response_body",
                 source: Box::new(e),
-            }
-        })?;
+            })?;
         // Parse HTML for search results
         let results = parse_search_results(&body, max_results)?;
 
@@ -217,7 +220,6 @@ impl Engine for BraveEngine {
         })
     }
 }
-
 
 /// Parse Brave search results HTML into structured results.
 ///
@@ -237,7 +239,9 @@ pub fn parse_search_results(
     let mut results = Vec::new();
     for snippet in document.select(&snippet_selector) {
         // Extract URL from the first <a> href
-        let url = snippet.select(&url_selector).next()
+        let url = snippet
+            .select(&url_selector)
+            .next()
             .and_then(|a| a.value().attr("href").map(|s| s.to_string()))
             .unwrap_or_default();
         if url.is_empty() {
@@ -245,12 +249,17 @@ pub fn parse_search_results(
         }
         // Skip Brave-internal navigation links (search.brave.com),
         // but NOT legitimate external results (brave.com, brave.blog, etc.)
-        if url::Url::parse(&url).map(|u| u.host_str() == Some("search.brave.com")).unwrap_or(false) {
+        if url::Url::parse(&url)
+            .map(|u| u.host_str() == Some("search.brave.com"))
+            .unwrap_or(false)
+        {
             continue;
         }
 
         // Extract title from <div class="title">
-        let title = snippet.select(&title_selector).next()
+        let title = snippet
+            .select(&title_selector)
+            .next()
             .map(|t| t.text().collect::<Vec<_>>().join(" ").trim().to_string())
             .unwrap_or_default();
         if title.is_empty() {
@@ -262,9 +271,16 @@ pub fn parse_search_results(
 
         // Extract date from <span class="t-secondary"> inside content
         let (date, snippet_text) = if let Some(content) = &content_elem {
-            let date_str = content.select(&date_selector).next()
+            let date_str = content
+                .select(&date_selector)
+                .next()
                 .map(|d| d.text().collect::<String>().trim().to_string());
-            let raw_text = content.text().collect::<Vec<_>>().join(" ").trim().to_string();
+            let raw_text = content
+                .text()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .trim()
+                .to_string();
             let (cleaned, parsed_date) = strip_date_prefix(raw_text, date_str);
             (parsed_date, Some(cleaned))
         } else {
@@ -284,10 +300,10 @@ pub fn parse_search_results(
     }
 
     // If HTML parsing found nothing, check for PoW captcha
-    if results.is_empty() {
-        if body.to_lowercase().contains("pow captcha") || body.to_lowercase().contains("captcha") {
-            return Err(WebsearchError::AccessDenied);
-        }
+    if results.is_empty()
+        && (body.to_lowercase().contains("pow captcha") || body.to_lowercase().contains("captcha"))
+    {
+        return Err(WebsearchError::AccessDenied);
     }
 
     Ok(results)
@@ -304,10 +320,7 @@ pub fn strip_date_prefix(raw_text: String, date_str: Option<String>) -> (String,
     };
 
     // Strip trailing " -" separator from the date span text
-    let clean_date = raw
-        .trim_end_matches(|c: char| c == '-' || c == ' ')
-        .trim()
-        .to_string();
+    let clean_date = raw.trim_end_matches(['-', ' ']).trim().to_string();
 
     // Try parsing "Month Day, Year" format (e.g. "January 7, 2025")
     let parsed = NaiveDate::parse_from_str(&clean_date, "%B %d, %Y")

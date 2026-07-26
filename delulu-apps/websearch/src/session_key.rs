@@ -24,12 +24,11 @@
 
 use crate::engine::EngineId;
 use serde::{
-    de::{self, Visitor},
     Deserialize, Serialize, Serializer,
+    de::{self, Visitor},
 };
 use std::fmt;
 use std::hash::{Hash, Hasher};
-
 
 /// A session key for MCP pagination.
 ///
@@ -128,7 +127,10 @@ impl<'de> Deserialize<'de> for SessionKey {
                     "brv" => EngineId::Brave,
                     "ddg" => EngineId::DuckDuckGo,
                     other => {
-                        return Err(E::custom(format!("unknown engine abbreviation '{}'", other)));
+                        return Err(E::custom(format!(
+                            "unknown engine abbreviation '{}'",
+                            other
+                        )));
                     }
                 };
 
@@ -139,9 +141,8 @@ impl<'de> Deserialize<'de> for SessionKey {
                         b58_id.len()
                     )));
                 }
-                let id = base58_decode(b58_id).ok_or_else(|| {
-                    E::custom(format!("invalid base58 ID '{}'", b58_id))
-                })?;
+                let id = base58_decode(b58_id)
+                    .ok_or_else(|| E::custom(format!("invalid base58 ID '{}'", b58_id)))?;
 
                 Ok(SessionKey { engine, id })
             }
@@ -149,7 +150,6 @@ impl<'de> Deserialize<'de> for SessionKey {
         deserializer.deserialize_str(KeyVisitor)
     }
 }
-
 
 /// Base58 alphabet (no 0, O, I, l to avoid ambiguity).
 const BASE58_ALPHABET: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

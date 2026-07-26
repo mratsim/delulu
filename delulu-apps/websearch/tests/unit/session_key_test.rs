@@ -99,7 +99,8 @@ fn deserialize_invalid_format() {
     let result: Result<SessionKey, _> = serde_json::from_str("\"invalid\"");
     assert!(result.is_err());
 
-    let result: Result<SessionKey, _> = serde_json::from_str("\"20260725T060000-unknown-Pyz8q4fVDuL\"");
+    let result: Result<SessionKey, _> =
+        serde_json::from_str("\"20260725T060000-unknown-Pyz8q4fVDuL\"");
     assert!(result.is_err());
 
     let result: Result<SessionKey, _> = serde_json::from_str("\"brv-short\"");
@@ -113,8 +114,15 @@ fn base58_zero_id_produces_11_chars() {
     let key = SessionKey::new(EngineId::Brave, id);
     let s = key.as_str();
     // "brv-" + 11 '1's
-    assert_eq!(s.len(), 15, "key should be engine(3) + '-' + 11 base58 chars");
-    assert!(s.ends_with("11111111111"), "zero value should produce 11 padded chars");
+    assert_eq!(
+        s.len(),
+        15,
+        "key should be engine(3) + '-' + 11 base58 chars"
+    );
+    assert!(
+        s.ends_with("11111111111"),
+        "zero value should produce 11 padded chars"
+    );
 }
 
 #[test]
@@ -125,7 +133,10 @@ fn base58_small_id_produces_11_chars() {
     let s = key.as_str();
     let b58 = s.split('-').nth(1).unwrap();
     assert_eq!(b58.len(), 11, "base58 part should always be 11 chars");
-    assert!(b58.starts_with("1111111111"), "small values should be left-padded with '1'");
+    assert!(
+        b58.starts_with("1111111111"),
+        "small values should be left-padded with '1'"
+    );
 }
 
 #[test]

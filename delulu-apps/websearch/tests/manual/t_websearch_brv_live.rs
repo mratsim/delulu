@@ -40,15 +40,24 @@ fn print_results(label: &str, results: &[delulu_websearch::SearchResult]) {
     }
 }
 
-
-
 #[tokio::test]
 #[ignore]
 async fn brave_live_basic() -> Result<()> {
-    let engine = create_default_registry().get_engine("brave").expect("Brave in registry");
-    let response = engine.search("CuTe Layout Algebra tutorial", SearchParams::default(), None).await?;
+    let engine = create_default_registry()
+        .get_engine("brave")
+        .expect("Brave in registry");
+    let response = engine
+        .search(
+            "CuTe Layout Algebra tutorial",
+            SearchParams::default(),
+            None,
+        )
+        .await?;
 
-    assert!(!response.results.is_empty(), "Expected at least 1 result from Brave");
+    assert!(
+        !response.results.is_empty(),
+        "Expected at least 1 result from Brave"
+    );
     assert!(
         response.results.iter().any(|r| {
             r.title.contains("CuTe")
@@ -58,7 +67,11 @@ async fn brave_live_basic() -> Result<()> {
                 || r.url.contains("github")
         }),
         "Expected results related to 'CuTe Layout Algebra', got: {:?}",
-        response.results.iter().map(|r| &r.title).collect::<Vec<_>>()
+        response
+            .results
+            .iter()
+            .map(|r| &r.title)
+            .collect::<Vec<_>>()
     );
 
     print_results("CuTe Layout Algebra tutorial", &response.results);
@@ -68,26 +81,55 @@ async fn brave_live_basic() -> Result<()> {
 #[tokio::test]
 #[ignore]
 async fn brave_live_safesearch() -> Result<()> {
-    let engine = create_default_registry().get_engine("brave").expect("Brave in registry");
+    let engine = create_default_registry()
+        .get_engine("brave")
+        .expect("Brave in registry");
     let response = engine
-        .search("CuTe Layout Algebra tutorial", SearchParams { safesearch: Some("strict".into()), ..Default::default() }, None)
+        .search(
+            "CuTe Layout Algebra tutorial",
+            SearchParams {
+                safesearch: Some("strict".into()),
+                ..Default::default()
+            },
+            None,
+        )
         .await?;
 
-    assert!(!response.results.is_empty(), "Expected results with safesearch=strict");
-    print_results("safesearch=strict — CuTe Layout Algebra tutorial", &response.results);
+    assert!(
+        !response.results.is_empty(),
+        "Expected results with safesearch=strict"
+    );
+    print_results(
+        "safesearch=strict — CuTe Layout Algebra tutorial",
+        &response.results,
+    );
     Ok(())
 }
 
 #[tokio::test]
 #[ignore]
 async fn brave_live_country() -> Result<()> {
-    let engine = create_default_registry().get_engine("brave").expect("Brave in registry");
+    let engine = create_default_registry()
+        .get_engine("brave")
+        .expect("Brave in registry");
     let response = engine
-        .search("CuTe Layout Algebra tutorial", SearchParams { country: Some("jp".into()), ..Default::default() }, None)
+        .search(
+            "CuTe Layout Algebra tutorial",
+            SearchParams {
+                country: Some("jp".into()),
+                ..Default::default()
+            },
+            None,
+        )
         .await?;
 
-    assert!(!response.results.is_empty(), "Expected results with country=jp");
-    print_results("country=jp — CuTe Layout Algebra tutorial", &response.results);
+    assert!(
+        !response.results.is_empty(),
+        "Expected results with country=jp"
+    );
+    print_results(
+        "country=jp — CuTe Layout Algebra tutorial",
+        &response.results,
+    );
     Ok(())
 }
-

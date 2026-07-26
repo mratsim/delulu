@@ -30,7 +30,7 @@
 use anyhow::Result;
 use clap::Parser;
 use delulu_websearch::engines::create_default_registry;
-use delulu_websearch::{validate_query, SearchParams};
+use delulu_websearch::{SearchParams, validate_query};
 
 /// Default engine when `--engine` is not provided.
 const DEFAULT_ENGINE: &str = "duckduckgo";
@@ -71,7 +71,6 @@ struct Cli {
     /// Output compact JSON (no pretty-print).
     #[arg(long)]
     json: bool,
-
 }
 
 #[tokio::main]
@@ -100,9 +99,7 @@ async fn main() -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Engine '{}' not found", engine_name))?;
 
     // Execute search
-    let response = engine
-        .search(trimmed, params, None)
-        .await?;
+    let response = engine.search(trimmed, params, None).await?;
 
     // Build output JSON
     let output = serde_json::json!({

@@ -18,11 +18,10 @@
 //! Unit tests for DuckDuckGo search engine backend.
 
 use super::{
-    validate_n_token, DuckDuckGoContinuation, DuckDuckGoEngine, extract_json_from_js,
-    html_entity_decode, is_leap_year, parse_ddg_date,
+    DuckDuckGoContinuation, DuckDuckGoEngine, extract_json_from_js, html_entity_decode,
+    is_leap_year, parse_ddg_date, validate_n_token,
 };
 use crate::{Continuation, SearchParams, WebsearchError};
-
 
 #[test]
 fn extract_json_from_js_works() {
@@ -250,7 +249,9 @@ fn extract_djs_url_missing_href() {
 
 #[test]
 fn duckduckgo_continuation_roundtrip() {
-    let cont = DuckDuckGoContinuation { n_token: "/d.js?q=test&vqd=abc".into() };
+    let cont = DuckDuckGoContinuation {
+        n_token: "/d.js?q=test&vqd=abc".into(),
+    };
     let json = serde_json::to_string(&cont).unwrap();
     let back: DuckDuckGoContinuation = serde_json::from_str(&json).unwrap();
     assert_eq!(back.n_token, "/d.js?q=test&vqd=abc");
@@ -258,7 +259,8 @@ fn duckduckgo_continuation_roundtrip() {
 
 #[test]
 fn duckduckgo_continuation_from_json() {
-    let cont: DuckDuckGoContinuation = serde_json::from_str(r#"{"n_token":"/d.js?q=test&vqd=xyz"}"#).unwrap();
+    let cont: DuckDuckGoContinuation =
+        serde_json::from_str(r#"{"n_token":"/d.js?q=test&vqd=xyz"}"#).unwrap();
     assert_eq!(cont.n_token, "/d.js?q=test&vqd=xyz");
 }
 
@@ -287,4 +289,3 @@ fn validate_n_token_rejects_protocol_injection() {
 fn validate_n_token_rejects_empty() {
     assert!(!validate_n_token(""));
 }
-

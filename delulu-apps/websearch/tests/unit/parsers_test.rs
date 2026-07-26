@@ -17,9 +17,7 @@
 
 //! Unit tests for input validation and parsing (src/parsers.rs).
 
-use crate::{
-    parse_country, parse_max_results, parse_page, parse_safesearch, validate_query,
-};
+use crate::{parse_country, parse_max_results, parse_page, parse_safesearch, validate_query};
 
 // --- safesearch ---
 

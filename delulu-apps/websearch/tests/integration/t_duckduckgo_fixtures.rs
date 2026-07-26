@@ -27,8 +27,8 @@
 use std::io::Read;
 use std::path::PathBuf;
 
-use delulu_websearch::engines::duckduckgo::DuckDuckGoEngine;
 use delulu_websearch::WebsearchError;
+use delulu_websearch::engines::duckduckgo::DuckDuckGoEngine;
 
 /// Resolve the path to the websearch test fixtures directory.
 fn fixture_dir() -> PathBuf {
@@ -42,8 +42,12 @@ fn load_fixture(relative_path: &str) -> String {
     let compressed = std::fs::read(&path)
         .unwrap_or_else(|e| panic!("Failed to read fixture '{}': {e}", path.display()));
 
-    let mut decoder = zstd::Decoder::new(compressed.as_slice())
-        .unwrap_or_else(|e| panic!("Failed to create zstd decoder for '{}': {e}", path.display()));
+    let mut decoder = zstd::Decoder::new(compressed.as_slice()).unwrap_or_else(|e| {
+        panic!(
+            "Failed to create zstd decoder for '{}': {e}",
+            path.display()
+        )
+    });
 
     let mut content = String::new();
     decoder

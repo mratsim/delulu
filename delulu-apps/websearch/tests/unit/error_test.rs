@@ -88,4 +88,3 @@ fn error_from_crawler() {
     let web_err: WebsearchError = crawler_err.into();
     assert!(matches!(web_err, WebsearchError::Http(_)));
 }
-

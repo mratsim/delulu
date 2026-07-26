@@ -97,27 +97,17 @@ pub struct McpNextPageResponse {
 /// stripped to prevent leaking implementation details to the MCP client.
 pub fn sanitize_error_for_client(err: &crate::error::WebsearchError) -> String {
     match err {
-        crate::error::WebsearchError::SessionNotFound => {
-            "Session not found or expired".to_string()
-        }
-        crate::error::WebsearchError::Http(_) => {
-            "Search engine error".to_string()
-        }
+        crate::error::WebsearchError::SessionNotFound => "Session not found or expired".to_string(),
+        crate::error::WebsearchError::Http(_) => "Search engine error".to_string(),
         crate::error::WebsearchError::HttpStatus { engine, .. } => {
             format!("Search engine error: {engine}")
         }
-        crate::error::WebsearchError::ParseFailed { .. } => {
-            "Search engine error".to_string()
-        }
+        crate::error::WebsearchError::ParseFailed { .. } => "Search engine error".to_string(),
         crate::error::WebsearchError::MissingField { engine, .. } => {
             format!("Search engine error: {engine}")
         }
-        crate::error::WebsearchError::AccessDenied => {
-            "Search engine error".to_string()
-        }
-        crate::error::WebsearchError::InvalidQuery { .. } => {
-            "Search engine error".to_string()
-        }
+        crate::error::WebsearchError::AccessDenied => "Search engine error".to_string(),
+        crate::error::WebsearchError::InvalidQuery { .. } => "Search engine error".to_string(),
         crate::error::WebsearchError::EngineNotFound { name } => {
             format!("Session engine not available: {name}")
         }

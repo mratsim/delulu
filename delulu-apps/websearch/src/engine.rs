@@ -155,8 +155,7 @@ pub type EngineRef = Arc<dyn Engine + Send + Sync>;
 /// Realistic desktop browser User-Agent shared across all engines.
 ///
 /// Matches the Chrome-on-Linux pattern used by the scrapers.
-pub const DEFAULT_USER_AGENT: &str =
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+pub const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 #[cfg(test)]
 #[path = "../tests/unit/engine_test.rs"]

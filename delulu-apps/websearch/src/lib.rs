@@ -15,27 +15,29 @@
 //!  You should have received a copy of the GNU Affero General Public License
 //!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#![forbid(unsafe_code)]
+
 //! Multi-engine web search library providing a unified `Engine` trait, search
 //! result types, error types, and backend implementations for DuckDuckGo,
 //! Brave, Baidu, Yahoo Japan, and Startpage.
 
 pub mod engine;
-pub mod error;
 pub mod engines;
-pub mod parsers;
-pub mod session_key;
-pub mod session_cache;
+pub mod error;
 #[cfg(feature = "mcp")]
 pub mod mcp_serialization;
+pub mod parsers;
+pub mod session_cache;
+pub mod session_key;
 
-pub use engine::{Continuation, Engine, EngineId, EngineRef, SearchParams, SearchResult, SearchResponse};
-pub use error::WebsearchError;
-pub use engines::EngineRegistry;
-pub use parsers::{
-    parse_country, parse_max_results, parse_page, parse_safesearch, validate_query,
+pub use engine::{
+    Continuation, Engine, EngineId, EngineRef, SearchParams, SearchResponse, SearchResult,
 };
-pub use session_key::SessionKey;
+pub use engines::EngineRegistry;
+pub use error::WebsearchError;
+pub use parsers::{parse_country, parse_max_results, parse_page, parse_safesearch, validate_query};
 pub use session_cache::SessionCache;
+pub use session_key::SessionKey;
 
 /// Sanitize a string for logging: strip control characters, truncate at 2048 bytes.
 ///
