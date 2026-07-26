@@ -25,6 +25,8 @@ pub mod engines;
 pub mod parsers;
 pub mod session_key;
 pub mod session_cache;
+#[cfg(feature = "mcp")]
+pub mod mcp_serialization;
 
 pub use engine::{Continuation, Engine, EngineId, SearchParams, SearchResult, SearchResponse};
 pub use error::WebsearchError;

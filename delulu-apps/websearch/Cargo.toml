@@ -75,3 +75,8 @@ path = "tests/integration/t_brave_fixtures.rs"
 name = "t_duckduckgo_fixtures"
 path = "tests/integration/t_duckduckgo_fixtures.rs"
 
+[[test]]
+name = "t_mcp_session"
+path = "tests/integration/t_mcp_session.rs"
+required-features = ["mcp"]
+
