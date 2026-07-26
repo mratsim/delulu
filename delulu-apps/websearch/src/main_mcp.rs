@@ -136,7 +136,6 @@ impl WebsearchServer {
     /// Parameters:
     /// - `query` (required): The search query.
     /// - `engine` (optional, default "duckduckgo"): Engine to use ("brave", "duckduckgo").
-    /// - `page` (optional, default 1): Page number (1-indexed).
     /// - `country` (optional): Country / region code.
     /// - `safesearch` (optional): Safesearch level ("strict", "moderate", "off").
     /// - `time_range` (optional): Time range filter.

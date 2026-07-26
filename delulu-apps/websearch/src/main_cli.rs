@@ -48,10 +48,6 @@ struct Cli {
     #[arg(short = 'e', long)]
     engine: Option<String>,
 
-    /// Page number (1-indexed).
-    #[arg(short = 'p', long)]
-    page: Option<u32>,
-
     /// Country / region code.
     #[arg(long)]
     country: Option<String>,
@@ -82,7 +78,7 @@ async fn main() -> Result<()> {
 
     // Parse search parameters
     let params = SearchParams {
-        page: args.page,
+        page: None,
         country: args.country,
         safesearch: args.safesearch,
         time_range: args.time_range,
