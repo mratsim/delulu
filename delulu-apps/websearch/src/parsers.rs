@@ -100,6 +100,32 @@ pub fn parse_max_results(value: Option<u32>) -> Result<usize, WebsearchError> {
     }
 }
 
+/// Validate a time range filter string.
+///
+/// Accepts: `None` (passthrough) or short alphanumeric strings with
+/// `-`, `:`, `T`, `_`, `to` separators. Rejects anything containing
+/// URL-injection characters (`&`, `=`, `#`, `?`, `%`, `;`).
+/// Length is capped at 64 bytes to prevent abuse.
+pub fn parse_time_range(value: Option<&str>) -> Result<Option<&str>, WebsearchError> {
+    match value {
+        None => Ok(None),
+        Some(v) if v.is_empty() => Ok(None),
+        Some(v) => {
+            if v.len() > 64 {
+                return Err(WebsearchError::InvalidQuery {
+                    reason: "time_range too long (max 64 chars)",
+                });
+            }
+            if v.chars().any(|c| matches!(c, '&' | '=' | '#' | '?' | '%' | ';' | '+' | ' ')) {
+                return Err(WebsearchError::InvalidQuery {
+                    reason: "time_range contains invalid characters",
+                });
+            }
+            Ok(Some(v))
+        }
+    }
+}
+
 /// Validated search query.
 ///
 /// Accepts: non-empty strings up to 2048 bytes (after trimming).

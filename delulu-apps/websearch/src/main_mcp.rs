@@ -47,7 +47,7 @@ use delulu_websearch::mcp_serialization::{
     McpNextPageResponse, McpSearchResponse, engine_name_to_id, sanitize_error_for_client,
 };
 use delulu_websearch::parsers::{
-    parse_country, parse_max_results, parse_safesearch, validate_query,
+    parse_country, parse_max_results, parse_safesearch, parse_time_range, validate_query,
 };
 use serde::{Deserialize, Serialize};
 
@@ -168,11 +168,13 @@ impl WebsearchServer {
             .map_err(|e| format!("Invalid safesearch: {e}"))?;
         let country =
             parse_country(input.country.as_deref()).map_err(|e| format!("Invalid country: {e}"))?;
+        let time_range = parse_time_range(input.time_range.as_deref())
+            .map_err(|e| format!("Invalid time_range: {e}"))?;
         let search_params = SearchParams {
             page: None,
             country: Some(country.to_string()),
             safesearch: Some(safesearch.to_string()),
-            time_range: input.time_range,
+            time_range: time_range.map(|s| s.to_string()),
             max_results: Some(max_results as u32),
         };
 

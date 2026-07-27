@@ -35,6 +35,21 @@ use crate::engine::{
 };
 use crate::error::WebsearchError;
 
+/// Case-insensitive contains check — zero allocation.
+/// Scans the haystack bytes without copying or allocating.
+fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
+    let haystack = haystack.as_bytes();
+    let needle = needle.as_bytes();
+    if needle.is_empty() {
+        return true;
+    }
+    haystack.windows(needle.len()).any(|w| {
+        w.iter().zip(needle.iter()).all(|(a, b)| {
+            a.eq_ignore_ascii_case(b)
+        })
+    })
+}
+
 /// Brave search engine implementation.
 ///
 /// # Precondition
@@ -293,13 +308,15 @@ pub fn parse_search_results(
         });
     }
 
-    // If HTML parsing found nothing, check for PoW captcha
-    if results.is_empty() {
-        let body_lower = body.to_lowercase();
-        if body_lower.contains("pow captcha") || body_lower.contains("captcha") {
-            return Err(WebsearchError::AccessDenied);
-        }
+    // Check for PoW captcha regardless of whether results were found.
+    // A captcha page may contain HTML elements matching div.snippet selectors,
+    // producing zero results without triggering the empty-results path.
+    // Only check for "pow captcha" (not generic "captcha") to avoid false
+    // positives from Brave's built-in i18n translation dictionary.
+    if contains_ignore_ascii_case(body, "pow captcha") {
+        return Err(WebsearchError::AccessDenied);
     }
+
 
     Ok(results)
 }
@@ -308,7 +325,7 @@ pub fn parse_search_results(
 ///
 /// Brave renders dates inside `<span class="t-secondary">` inside the content div.
 /// The span text includes a trailing " -" separator (e.g. "January 7, 2025 -").
-pub fn strip_date_prefix(raw_text: String, date_str: Option<String>) -> (String, Option<i64>) {
+pub(crate) fn strip_date_prefix(raw_text: String, date_str: Option<String>) -> (String, Option<i64>) {
     let raw = match date_str {
         Some(ref d) if !d.is_empty() => d.trim().to_string(),
         _ => return (raw_text, None),

@@ -35,7 +35,7 @@ pub use engine::{
 };
 pub use engines::EngineRegistry;
 pub use error::WebsearchError;
-pub use parsers::{parse_country, parse_max_results, parse_page, parse_safesearch, validate_query};
+pub use parsers::{parse_country, parse_max_results, parse_safesearch, parse_time_range, validate_query};
 pub use session_cache::SessionCache;
 pub use session_key::SessionKey;
 

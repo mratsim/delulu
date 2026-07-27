@@ -32,6 +32,7 @@ use std::any::Any;
 use std::time::Instant;
 use tracing::{debug, warn};
 
+
 use crate::engine::{Continuation, Engine, SearchParams, SearchResponse, SearchResult};
 use crate::error::WebsearchError;
 use crate::sanitize_for_log;
@@ -497,7 +498,7 @@ impl Engine for DuckDuckGoEngine {
 ///
 /// The format is: `DDG.pageLayout.load('d', [...]);` — we need to extract
 /// the JSON array `[...]` by finding matching brackets.
-pub fn extract_json_from_js(s: &str) -> Result<String, WebsearchError> {
+pub(crate) fn extract_json_from_js(s: &str) -> Result<String, WebsearchError> {
     let s = s.trim();
 
     // Find the first opening bracket
@@ -559,7 +560,7 @@ pub fn extract_json_from_js(s: &str) -> Result<String, WebsearchError> {
 ///
 /// Uses a single-pass approach to prevent double-decoding (e.g., `&amp;lt;`
 /// should decode to `&lt;`, not `<`).
-pub fn html_entity_decode(s: &str) -> String {
+pub(crate) fn html_entity_decode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
@@ -585,15 +586,15 @@ pub fn html_entity_decode(s: &str) -> String {
 }
 
 /// Parse a DuckDuckGo date string (ISO format) into a Unix timestamp.
-pub fn parse_ddg_date(s: &str) -> Option<i64> {
+pub(crate) fn parse_ddg_date(s: &str) -> Option<i64> {
     let s = s.trim();
 
-    // Try ISO 8601 with timezone: "2024-01-15T12:00:00+00:00" or "2024-01-15T12:00:00Z"
+    // Try ISO 8601 with timezone (RFC 3339): "2024-01-15T12:00:00+00:00" or "2024-01-15T12:00:00Z"
     if let Some(ts) = parse_iso_with_tz(s) {
         return Some(ts);
     }
 
-    // Try naive ISO: "2024-01-15T12:00:00"
+    // Try naive ISO (no timezone): "2024-01-15T12:00:00" — assume UTC
     if let Some(ts) = parse_naive_iso(s) {
         return Some(ts);
     }
@@ -601,108 +602,28 @@ pub fn parse_ddg_date(s: &str) -> Option<i64> {
     None
 }
 
-/// Parse ISO 8601 date-time with timezone.
-pub fn parse_iso_with_tz(s: &str) -> Option<i64> {
-    if s.len() < 20 {
-        return None;
+/// Parse ISO 8601 date-time with timezone using chrono.
+pub(crate) fn parse_iso_with_tz(s: &str) -> Option<i64> {
+    // chrono::DateTime::parse_from_rfc3339 handles "2024-01-15T12:00:00+00:00" and "2024-01-15T12:00:00Z"
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.timestamp());
     }
-
-    let year: i64 = s[0..4].parse().ok()?;
-    let month: u32 = s[5..7].parse().ok()?;
-    let day: u32 = s[8..10].parse().ok()?;
-    let hour: u32 = s[11..13].parse().ok()?;
-    let min: u32 = s[14..16].parse().ok()?;
-    let sec: u32 = s[17..19].parse().ok()?;
-
-    // Parse timezone offset using safe byte slicing (get() returns None on invalid boundaries)
-    let offset_secs: i64 = if s.len() > 19 {
-        let tz = &s[19..];
-        if tz == "Z" || tz == "+00:00" || tz == "-00:00" {
-            0
-        } else if tz.len() >= 6 && (tz.starts_with('+') || tz.starts_with('-')) {
-            let sign: i64 = if tz.starts_with('-') { -1 } else { 1 };
-            let tz_hour: i64 = tz.get(1..3)?.parse().ok()?;
-            let tz_min: i64 = tz.get(4..6)?.parse().ok()?;
-            sign * (tz_hour * 3600 + tz_min * 60)
-        } else {
-            0
-        }
-    } else {
-        0
-    };
-
-    unix_timestamp(year, month, day, hour, min, sec, offset_secs)
+    // chrono::DateTime::parse_from_str with %:z handles "+05:30", "-08:00" etc.
+    if let Ok(dt) = chrono::DateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%:z") {
+        return Some(dt.timestamp());
+    }
+    None
 }
 
-/// Parse naive ISO date-time (no timezone).
-pub fn parse_naive_iso(s: &str) -> Option<i64> {
-    if s.len() < 19 {
-        return None;
-    }
-    let year: i64 = s[0..4].parse().ok()?;
-    let month: u32 = s[5..7].parse().ok()?;
-    let day: u32 = s[8..10].parse().ok()?;
-    let hour: u32 = s[11..13].parse().ok()?;
-    let min: u32 = s[14..16].parse().ok()?;
-    let sec: u32 = s[17..19].parse().ok()?;
-
-    unix_timestamp(year, month, day, hour, min, sec, 0)
-}
-
-/// Compute Unix timestamp from date components.
-pub fn unix_timestamp(
-    year: i64,
-    month: u32,
-    day: u32,
-    hour: u32,
-    min: u32,
-    sec: u32,
-    offset_secs: i64,
-) -> Option<i64> {
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || min > 59 || sec > 59 {
-        return None;
-    }
-
-    let days = days_since_epoch(year, month, day)?;
-    let total =
-        days as i64 * 86400 + hour as i64 * 3600 + min as i64 * 60 + sec as i64 - offset_secs;
-    Some(total)
-}
-
-/// Calculate days since 1970-01-01.
-fn days_since_epoch(year: i64, month: u32, day: u32) -> Option<u64> {
-    let mut total_days = 0i64;
-
-    // Add days for whole years
-    for y in 1970..year {
-        total_days += if is_leap_year(y) { 366 } else { 365 };
-    }
-
-    // Add days for months in the current year
-    let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    for (m, &days_in_month) in month_days
-        .iter()
-        .enumerate()
-        .take((month as usize).saturating_sub(1))
-    {
-        total_days += days_in_month;
-        if m == 1 && is_leap_year(year) {
-            total_days += 1; // February in leap year
-        }
-    }
-
-    // Add days in the current month
-    total_days += day as i64 - 1;
-
-    if total_days >= 0 {
-        Some(total_days as u64)
-    } else {
-        None
-    }
+/// Parse naive ISO date-time (no timezone) using chrono.
+pub(crate) fn parse_naive_iso(s: &str) -> Option<i64> {
+    let dt = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+        .ok()?;
+    Some(dt.and_utc().timestamp())
 }
 
 /// Check if a year is a leap year.
-pub fn is_leap_year(year: i64) -> bool {
+pub(crate) fn is_leap_year(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
 #[cfg(test)]

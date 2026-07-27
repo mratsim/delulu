@@ -257,7 +257,7 @@ mod tests {
         // AccessDenied
         let err = WebsearchError::AccessDenied;
         let msg = sanitize_error_for_client(&err);
-        assert_eq!(msg, "Search engine error");
+        assert_eq!(msg, "Access denied by search engine");
 
         // Internal errors
         let err = WebsearchError::ContinuationTypeMismatch {
@@ -290,7 +290,7 @@ mod tests {
             )),
         };
         let msg = sanitize_error_for_client(&err);
-        assert_eq!(msg, "Search engine error");
+        assert_eq!(msg, "Search engine parse error (duckduckgo_djs)");
 
         // MissingField
         let err = WebsearchError::MissingField {

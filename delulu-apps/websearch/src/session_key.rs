@@ -154,6 +154,18 @@ impl<'de> Deserialize<'de> for SessionKey {
 /// Base58 alphabet (no 0, O, I, l to avoid ambiguity).
 const BASE58_ALPHABET: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
+/// O(1) lookup table for base58 decode: maps ASCII byte to digit value (0-57),
+/// or 255 for invalid characters. Covers the full ASCII range (128 entries).
+const BASE58_DECODE: [u8; 128] = {
+    let mut table = [255u8; 128];
+    let alphabet = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let mut i = 0;
+    while i < alphabet.len() {
+        table[alphabet[i] as usize] = i as u8;
+        i += 1;
+    }
+    table
+};
 /// Encode 8 bytes as base58 (produces exactly 11 characters).
 /// Left-pads with '1' (base58 zero) to ensure fixed length.
 fn base58_encode(bytes: &[u8; 8]) -> String {
@@ -177,8 +189,8 @@ fn base58_encode(bytes: &[u8; 8]) -> String {
 /// Decode 11 base58 characters back into 8 bytes.
 fn base58_decode(s: &str) -> Option<[u8; 8]> {
     let mut value: u64 = 0;
-    for c in s.chars() {
-        let idx = BASE58_ALPHABET.iter().position(|&b| b == c as u8)?;
+    for c in s.bytes() {
+        let idx = BASE58_DECODE.get(c as usize).copied().filter(|&v| v != 255)?;
         value = value.checked_mul(58)?;
         value = value.checked_add(idx as u64)?;
     }
