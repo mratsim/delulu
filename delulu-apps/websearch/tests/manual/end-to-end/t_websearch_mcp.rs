@@ -59,7 +59,10 @@ fn find_python() -> (&'static str, Vec<&'static str>) {
         .map(|o| o.status.success())
         .unwrap_or(false)
     {
-        ("uv", vec!["run", "--directory", "tests/manual/end-to-end", "python3"])
+        (
+            "uv",
+            vec!["run", "--directory", "tests/manual/end-to-end", "python3"],
+        )
     } else if std::process::Command::new("python3")
         .arg("--version")
         .output()
@@ -85,10 +88,7 @@ async fn test_mcp_help_output() -> Result<()> {
 
     assert!(output.status.success(), "Help should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("stdio"),
-        "Help should show stdio command"
-    );
+    assert!(stdout.contains("stdio"), "Help should show stdio command");
     assert!(stdout.contains("http"), "Help should show http command");
 
     Ok(())
@@ -110,7 +110,10 @@ async fn test_mcp_version_output() -> Result<()> {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(!combined.is_empty(), "expected --version output on stdout or stderr");
+    assert!(
+        !combined.is_empty(),
+        "expected --version output on stdout or stderr"
+    );
 
     Ok(())
 }
@@ -149,15 +152,14 @@ async fn test_mcp_server_starts_stdio() -> Result<()> {
         "jsonrpc should be 2.0: {}",
         response
     );
-    assert_eq!(
-        response["id"], 1,
-        "id should be 1: {}",
-        response
-    );
+    assert_eq!(response["id"], 1, "id should be 1: {}", response);
     let server_name = response["result"]["serverInfo"]["name"]
         .as_str()
         .context("result.serverInfo.name should be a non-empty string")?;
-    assert!(!server_name.is_empty(), "serverInfo.name should be non-empty");
+    assert!(
+        !server_name.is_empty(),
+        "serverInfo.name should be non-empty"
+    );
     assert_eq!(
         response["result"]["protocolVersion"], PROTOCOL_VERSION,
         "protocolVersion should match PROTOCOL_VERSION"
@@ -253,7 +255,10 @@ async fn test_mcp_e2e_stdio() -> Result<()> {
 
     // Defensive file-exists check
     if !script.exists() {
-        eprintln!("Python test file not found — run Phase 2/3 first: {}", script_str);
+        eprintln!(
+            "Python test file not found — run Phase 2/3 first: {}",
+            script_str
+        );
         return Ok(());
     }
 
@@ -311,7 +316,10 @@ async fn test_mcp_e2e_http() -> Result<()> {
 
     // Defensive file-exists check
     if !script.exists() {
-        eprintln!("Python test file not found — run Phase 3 first: {}", script_str);
+        eprintln!(
+            "Python test file not found — run Phase 3 first: {}",
+            script_str
+        );
         return Ok(());
     }
 

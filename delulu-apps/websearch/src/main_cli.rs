@@ -80,14 +80,16 @@ async fn main() -> Result<()> {
     let trimmed = validate_query(query)?;
 
     // Validate and parse search parameters
-    let max_results = parse_max_results(args.max_results)
-        .context("Invalid max_results")? as u32;
+    let max_results = parse_max_results(args.max_results).context("Invalid max_results")? as u32;
     let safesearch = parse_safesearch(args.safesearch.as_deref())
-        .context("Invalid safesearch")?.to_string();
+        .context("Invalid safesearch")?
+        .to_string();
     let country = parse_country(args.country.as_deref())
-        .context("Invalid country")?.to_string();
+        .context("Invalid country")?
+        .to_string();
     let time_range = parse_time_range(args.time_range.as_deref())
-        .context("Invalid time_range")?.map(|s| s.to_string());
+        .context("Invalid time_range")?
+        .map(|s| s.to_string());
 
     let params = SearchParams {
         page: None,

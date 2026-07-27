@@ -32,7 +32,6 @@ use std::any::Any;
 use std::time::Instant;
 use tracing::{debug, warn};
 
-
 use crate::engine::{Continuation, Engine, SearchParams, SearchResponse, SearchResult};
 use crate::error::WebsearchError;
 use crate::sanitize_for_log;
@@ -148,7 +147,7 @@ impl DuckDuckGoEngine {
             Ok(href.to_string())
         } else {
             Err(WebsearchError::ContinuationInvalidValue {
-                reason: "deep_preload_link must be an absolute URL"
+                reason: "deep_preload_link must be an absolute URL",
             })
         }
     }
@@ -321,7 +320,6 @@ impl DuckDuckGoEngine {
             if results.len() >= max_results {
                 break;
             }
-
 
             // Skip items without URL field
             let url_val = match item.get("c") {
@@ -655,8 +653,7 @@ pub(crate) fn parse_iso_with_tz(s: &str) -> Option<i64> {
 
 /// Parse naive ISO date-time (no timezone) using chrono.
 pub(crate) fn parse_naive_iso(s: &str) -> Option<i64> {
-    let dt = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
-        .ok()?;
+    let dt = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").ok()?;
     Some(dt.and_utc().timestamp())
 }
 

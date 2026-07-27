@@ -139,7 +139,6 @@ fn session_cache_evict_expired() {
     assert!(entry.is_none(), "Entry should be gone after evict_expired");
 }
 
-
 // ---------------------------------------------------------------------------
 // McpSearchResponse serialization tests
 // ---------------------------------------------------------------------------

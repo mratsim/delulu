@@ -116,7 +116,9 @@ pub fn parse_time_range(value: Option<&str>) -> Result<Option<&str>, WebsearchEr
                     reason: "time_range too long (max 64 chars)",
                 });
             }
-            if v.chars().any(|c| matches!(c, '&' | '=' | '#' | '?' | '%' | ';' | '+' | ' ')) {
+            if v.chars()
+                .any(|c| matches!(c, '&' | '=' | '#' | '?' | '%' | ';' | '+' | ' '))
+            {
                 return Err(WebsearchError::InvalidQuery {
                     reason: "time_range contains invalid characters",
                 });

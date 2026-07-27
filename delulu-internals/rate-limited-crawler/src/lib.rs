@@ -304,8 +304,6 @@ impl GetBuilder<'_> {
         self
     }
 
-
-
     pub async fn send(self) -> Result<wreq::Response, CrawlerError> {
         let retry_base = self.exponential_retry_base;
         let retry_limit = self.retry_limit.unwrap_or(3);

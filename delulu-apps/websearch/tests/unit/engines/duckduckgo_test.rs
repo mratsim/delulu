@@ -19,8 +19,7 @@
 
 use super::{
     DuckDuckGoContinuation, DuckDuckGoEngine, extract_json_from_js, html_entity_decode,
-    parse_ddg_date, parse_iso_with_tz, parse_naive_iso,
-    validate_n_token,
+    parse_ddg_date, parse_iso_with_tz, parse_naive_iso, validate_n_token,
 };
 use crate::{Continuation, SearchParams, WebsearchError};
 
@@ -211,25 +210,25 @@ fn build_djs_url_from_preload_absolute_url() {
     // deep_preload_link from HTML is always an absolute URL.
     let url = DuckDuckGoEngine::build_djs_url_from_preload(
         "https://links.duckduckgo.com/d.js?q=test&vqd=abc",
-    ).expect("absolute URL should be accepted");
+    )
+    .expect("absolute URL should be accepted");
     assert_eq!(url, "https://links.duckduckgo.com/d.js?q=test&vqd=abc");
 }
 
 #[test]
 fn build_djs_url_from_preload_rejects_relative() {
-    let err = DuckDuckGoEngine::build_djs_url_from_preload("/d.js?q=test")
-        .unwrap_err();
-    assert!(matches!(err, WebsearchError::ContinuationInvalidValue { .. }));
+    let err = DuckDuckGoEngine::build_djs_url_from_preload("/d.js?q=test").unwrap_err();
+    assert!(matches!(
+        err,
+        WebsearchError::ContinuationInvalidValue { .. }
+    ));
 }
-
 
 #[test]
 #[should_panic(expected = "n_token should be a relative path")]
 fn build_djs_url_from_token_rejects_absolute() {
     // n_token must be a relative path; absolute URLs should be rejected.
-    DuckDuckGoEngine::build_djs_url_from_token(
-        "https://links.duckduckgo.com/d.js?q=test&vqd=abc",
-    );
+    DuckDuckGoEngine::build_djs_url_from_token("https://links.duckduckgo.com/d.js?q=test&vqd=abc");
 }
 
 // ---- NEW TESTS for extract_djs_url ----
@@ -321,7 +320,6 @@ fn extract_json_from_js_multiple_unmatched_close_brackets() {
     let result = extract_json_from_js("]]abc");
     assert!(result.is_err());
 }
-
 
 #[test]
 fn parse_iso_with_tz_utc_z() {

@@ -44,7 +44,7 @@ use delulu_websearch::SessionKey;
 use delulu_websearch::engine::SearchParams;
 use delulu_websearch::engines::{EngineRegistry, create_default_registry};
 use delulu_websearch::mcp_serialization::{
-    engine_name_to_id, McpNextPageResponse, McpSearchResponse, sanitize_error_for_client,
+    McpNextPageResponse, McpSearchResponse, engine_name_to_id, sanitize_error_for_client,
 };
 use delulu_websearch::parsers::{
     parse_country, parse_max_results, parse_safesearch, parse_time_range, validate_query,
@@ -160,7 +160,7 @@ impl WebsearchServer {
                 } else {
                     return Err(format!("Engine '{name}' not found"));
                 }
-            },
+            }
         };
 
         if engine_names.is_empty() {
@@ -334,9 +334,9 @@ impl WebsearchServer {
 
         // Store new continuation
         let has_next_page_check = response.continuation.is_some();
-        let has_next_page = if let Err(e) = self
-            .session_cache
-            .update_continuation(&key, response.continuation, now)
+        let has_next_page = if let Err(e) =
+            self.session_cache
+                .update_continuation(&key, response.continuation, now)
         {
             tracing::error!("Failed to update continuation: {e}");
             false

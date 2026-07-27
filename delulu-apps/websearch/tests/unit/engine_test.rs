@@ -45,10 +45,22 @@ fn search_result_no_panic_fields() {
         date: None,
     };
     let json = serde_json::to_string(&result).unwrap();
-    assert!(!json.contains("\"position\""), "serialized output should not contain 'position'");
-    assert!(!json.contains("\"engine\""), "serialized output should not contain 'engine'");
-    assert!(json.contains("\"title\""), "serialized output should contain 'title'");
-    assert!(json.contains("\"url\""), "serialized output should contain 'url'");
+    assert!(
+        !json.contains("\"position\""),
+        "serialized output should not contain 'position'"
+    );
+    assert!(
+        !json.contains("\"engine\""),
+        "serialized output should not contain 'engine'"
+    );
+    assert!(
+        json.contains("\"title\""),
+        "serialized output should contain 'title'"
+    );
+    assert!(
+        json.contains("\"url\""),
+        "serialized output should contain 'url'"
+    );
     // Round-trip should still work
     let back: SearchResult = serde_json::from_str(&json).unwrap();
     assert_eq!(back.title, "X");

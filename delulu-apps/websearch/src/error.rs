@@ -133,7 +133,6 @@ pub enum WebsearchError {
     SessionNotFound,
 }
 
-
 #[cfg(test)]
 #[path = "../tests/unit/error_test.rs"]
 mod error_test;

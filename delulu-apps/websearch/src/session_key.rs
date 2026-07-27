@@ -190,7 +190,10 @@ fn base58_encode(bytes: &[u8; 8]) -> String {
 fn base58_decode(s: &str) -> Option<[u8; 8]> {
     let mut value: u64 = 0;
     for c in s.bytes() {
-        let idx = BASE58_DECODE.get(c as usize).copied().filter(|&v| v != 255)?;
+        let idx = BASE58_DECODE
+            .get(c as usize)
+            .copied()
+            .filter(|&v| v != 255)?;
         value = value.checked_mul(58)?;
         value = value.checked_add(idx as u64)?;
     }

@@ -17,8 +17,8 @@
 
 //! Unit tests for input validation and parsing (src/parsers.rs).
 
-use crate::{parse_country, parse_max_results, parse_safesearch, parse_time_range, validate_query};
 use crate::parsers::parse_page;
+use crate::{parse_country, parse_max_results, parse_safesearch, parse_time_range, validate_query};
 
 // --- safesearch ---
 
@@ -155,12 +155,18 @@ fn time_range_empty_is_none() {
 
 #[test]
 fn time_range_valid_iso() {
-    assert_eq!(parse_time_range(Some("2024-01-01to2024-12-31")).unwrap(), Some("2024-01-01to2024-12-31"));
+    assert_eq!(
+        parse_time_range(Some("2024-01-01to2024-12-31")).unwrap(),
+        Some("2024-01-01to2024-12-31")
+    );
 }
 
 #[test]
 fn time_range_valid_short() {
-    assert_eq!(parse_time_range(Some("past_month")).unwrap(), Some("past_month"));
+    assert_eq!(
+        parse_time_range(Some("past_month")).unwrap(),
+        Some("past_month")
+    );
 }
 
 #[test]

@@ -61,17 +61,20 @@ pub fn find_binary() -> Result<PathBuf> {
 
     for path in &paths {
         if path.exists() {
-            let metadata = std::fs::metadata(path)
-                .map_err(|e| anyhow::anyhow!(
+            let metadata = std::fs::metadata(path).map_err(|e| {
+                anyhow::anyhow!(
                     "find_binary: failed to check metadata for {}: {}",
-                    path.display(), e
-                ))?;
+                    path.display(),
+                    e
+                )
+            })?;
             if metadata.permissions().mode() & 0o111 != 0 {
                 return Ok(path.to_path_buf());
             }
             anyhow::bail!(
                 "find_binary: {} exists but is not executable.\n  Run: chmod +x {}",
-                path.display(), path.display()
+                path.display(),
+                path.display()
             );
         }
     }

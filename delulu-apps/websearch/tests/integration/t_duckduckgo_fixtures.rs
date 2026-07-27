@@ -103,4 +103,3 @@ fn duckduckgo_fixture_detects_block() {
         }
     }
 }
-

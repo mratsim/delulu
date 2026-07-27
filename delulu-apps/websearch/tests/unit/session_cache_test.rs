@@ -732,7 +732,9 @@ fn capacity_eviction_preserves_refreshed_entry() {
     // Refresh entry A — extends its map expiry to refresh_time + 60s (now + 70s).
     // But the heap still has A at now + 30s (stale).
     let refresh_time = now + Duration::from_secs(10);
-    cache.update_continuation(&key_a, None, refresh_time).unwrap();
+    cache
+        .update_continuation(&key_a, None, refresh_time)
+        .unwrap();
 
     // Store entry C with capacity 2 — triggers capacity eviction.
     // The stale heap entry (key_a with old expiry) is popped first.
@@ -792,4 +794,3 @@ fn capacity_eviction_orphaned_heap_entry_skipped() {
     );
     assert!(cache.get(&key2, now).is_some());
 }
-

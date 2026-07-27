@@ -230,7 +230,9 @@ impl SessionCache {
                 Some(map_expires_at) if map_expires_at != heap_expires_at => {
                     // Stale heap expiry — entry was refreshed via update_continuation.
                     // Re-push with the map's current expiry.
-                    inner.expiry_heap.push(Reverse((map_expires_at, oldest_key)));
+                    inner
+                        .expiry_heap
+                        .push(Reverse((map_expires_at, oldest_key)));
                 }
                 Some(_) => {
                     // Valid entry — evict it.
@@ -314,7 +316,6 @@ impl SessionCache {
 
         Ok(())
     }
-
 }
 
 #[cfg(test)]

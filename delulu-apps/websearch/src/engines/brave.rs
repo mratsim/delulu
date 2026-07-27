@@ -30,9 +30,7 @@ use std::any::Any;
 use std::time::Instant;
 use tracing::{debug, warn};
 
-use crate::engine::{
-    Continuation, Engine, SearchParams, SearchResponse, SearchResult,
-};
+use crate::engine::{Continuation, Engine, SearchParams, SearchResponse, SearchResult};
 use crate::error::WebsearchError;
 
 /// Case-insensitive contains check — zero allocation.
@@ -44,9 +42,9 @@ fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
         return true;
     }
     haystack.windows(needle.len()).any(|w| {
-        w.iter().zip(needle.iter()).all(|(a, b)| {
-            a.eq_ignore_ascii_case(b)
-        })
+        w.iter()
+            .zip(needle.iter())
+            .all(|(a, b)| a.eq_ignore_ascii_case(b))
     })
 }
 
@@ -174,9 +172,7 @@ impl Engine for BraveEngine {
         let response = self
             .crawler
             .get(&search_url)
-            .merge_with_headers(vec![
-                ("Cookie".into(), cookie),
-            ])
+            .merge_with_headers(vec![("Cookie".into(), cookie)])
             .with_exponential_retry(1)
             .send()
             .await?;
@@ -243,7 +239,9 @@ pub fn parse_search_results(
 
     let mut results = Vec::new();
     for snippet in document.select(&snippet_selector) {
-        if results.len() >= max_results { break; }
+        if results.len() >= max_results {
+            break;
+        }
         // Extract URL from the first <a> href
         let url = snippet
             .select(&url_selector)
@@ -293,7 +291,6 @@ pub fn parse_search_results(
             (None, None)
         };
 
-
         results.push(SearchResult {
             title,
             url,
@@ -311,7 +308,6 @@ pub fn parse_search_results(
         return Err(WebsearchError::AccessDenied);
     }
 
-
     Ok(results)
 }
 
@@ -319,7 +315,10 @@ pub fn parse_search_results(
 ///
 /// Brave renders dates inside `<span class="t-secondary">` inside the content div.
 /// The span text includes a trailing " -" separator (e.g. "January 7, 2025 -").
-pub(crate) fn strip_date_prefix(raw_text: String, date_str: Option<String>) -> (String, Option<i64>) {
+pub(crate) fn strip_date_prefix(
+    raw_text: String,
+    date_str: Option<String>,
+) -> (String, Option<i64>) {
     let raw = match date_str {
         Some(ref d) if !d.is_empty() => d.trim().to_string(),
         _ => return (raw_text, None),
