@@ -157,6 +157,14 @@ fn html_entity_decode_works() {
 }
 
 #[test]
+fn html_entity_decode_bare_ampersand() {
+    // Bare ampersand without semicolon must not be consumed
+    assert_eq!(html_entity_decode("Tom & Jerry"), "Tom & Jerry");
+    assert_eq!(html_entity_decode("A&B"), "A&B");
+    assert_eq!(html_entity_decode("&&&"), "&&&");
+}
+
+#[test]
 fn html_entity_decode_no_double_decode() {
     // &amp;lt; should decode to &lt;, not <
     assert_eq!(html_entity_decode("&amp;lt;"), "&lt;");

@@ -41,10 +41,10 @@ use delulu_mcp_server_helper::{
 };
 use delulu_websearch::SessionCache;
 use delulu_websearch::SessionKey;
-use delulu_websearch::engine::{EngineId, SearchParams};
+use delulu_websearch::engine::SearchParams;
 use delulu_websearch::engines::{EngineRegistry, create_default_registry};
 use delulu_websearch::mcp_serialization::{
-    McpNextPageResponse, McpSearchResponse, engine_name_to_id, sanitize_error_for_client,
+    engine_name_to_id, McpNextPageResponse, McpSearchResponse, sanitize_error_for_client,
 };
 use delulu_websearch::parsers::{
     parse_country, parse_max_results, parse_safesearch, parse_time_range, validate_query,
@@ -154,7 +154,13 @@ impl WebsearchServer {
         // Determine which engine to search
         let engine_names: Vec<&str> = match input.engine.as_deref() {
             None | Some("duckduckgo") => vec!["duckduckgo"],
-            Some(name) => vec![name],
+            Some(name) => {
+                if self.engine_registry.get_engine(name).is_some() {
+                    vec![name]
+                } else {
+                    return Err(format!("Engine '{name}' not found"));
+                }
+            },
         };
 
         if engine_names.is_empty() {
@@ -233,7 +239,8 @@ impl WebsearchServer {
             .or_else(|| engine_names.first().copied())
             .unwrap_or("duckduckgo");
 
-        let session_engine_id = engine_name_to_id(session_engine).unwrap_or(EngineId::Brave);
+        let session_engine_id = engine_name_to_id(session_engine)
+            .ok_or_else(|| format!("Engine '{session_engine}' not found"))?;
 
         let session_key = self.session_cache.store(
             session_engine_id,
@@ -326,13 +333,16 @@ impl WebsearchServer {
         };
 
         // Store new continuation
-        let has_next_page = response.continuation.is_some();
-        if let Err(e) = self
+        let has_next_page_check = response.continuation.is_some();
+        let has_next_page = if let Err(e) = self
             .session_cache
             .update_continuation(&key, response.continuation, now)
         {
             tracing::error!("Failed to update continuation: {e}");
-        }
+            false
+        } else {
+            has_next_page_check
+        };
 
         let mcp_response = McpNextPageResponse {
             results: response.results,

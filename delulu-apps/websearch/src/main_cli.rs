@@ -42,7 +42,7 @@ const DEFAULT_ENGINE: &str = "duckduckgo";
 struct Cli {
     /// Search query (required, must be non-empty after trimming).
     #[arg(short = 'q', long)]
-    query: Option<String>,
+    query: String,
 
     /// Search engine to use (default: "duckduckgo").
     #[arg(short = 'e', long)]
@@ -73,7 +73,7 @@ struct Cli {
 async fn main() -> Result<()> {
     let args = Cli::parse();
 
-    let query = args.query.as_deref().unwrap_or("");
+    let query = &args.query;
     let trimmed = validate_query(query)?;
 
     // Parse search parameters

@@ -194,10 +194,6 @@ impl Engine for BraveEngine {
                     "Brave: rate limited (429) - retry after {:?}",
                     response.headers().get("retry-after")
                 );
-                return Err(WebsearchError::HttpStatus {
-                    code: status,
-                    engine: "brave",
-                });
             }
             return Err(WebsearchError::HttpStatus {
                 code: status,
@@ -247,6 +243,7 @@ pub fn parse_search_results(
 
     let mut results = Vec::new();
     for snippet in document.select(&snippet_selector) {
+        if results.len() >= max_results { break; }
         // Extract URL from the first <a> href
         let url = snippet
             .select(&url_selector)
@@ -296,9 +293,6 @@ pub fn parse_search_results(
             (None, None)
         };
 
-        if results.len() >= max_results {
-            break;
-        }
 
         results.push(SearchResult {
             title,

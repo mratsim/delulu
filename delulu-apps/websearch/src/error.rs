@@ -35,7 +35,7 @@ pub enum WebsearchError {
     /// retry exhaustion. It does NOT cover HTTP status-level errors (see HttpStatus).
     /// Recovery: Retry the request.
     #[error("HTTP transport error: {0}")]
-    Http(CrawlerError),
+    Http(#[from] CrawlerError),
 
     /// Application-level HTTP status error (e.g., 429 Too Many Requests, 403 Forbidden).
     /// Checked manually via response.status() after crawling (CrawlerError does not
@@ -133,11 +133,6 @@ pub enum WebsearchError {
     SessionNotFound,
 }
 
-impl From<CrawlerError> for WebsearchError {
-    fn from(e: CrawlerError) -> Self {
-        WebsearchError::Http(e)
-    }
-}
 
 #[cfg(test)]
 #[path = "../tests/unit/error_test.rs"]

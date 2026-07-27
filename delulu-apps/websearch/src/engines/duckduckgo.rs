@@ -106,7 +106,7 @@ impl DuckDuckGoEngine {
 
         // Country parameter (kl)
         match params.country.as_deref() {
-            Some("any") | None => url.push_str("&kl=wt-wt"),
+            Some("all") | None => url.push_str("&kl=wt-wt"),
             Some(country) => {
                 url.push_str("&kl=");
                 url.push_str(&urlencoding::encode(country));
@@ -586,18 +586,36 @@ pub(crate) fn html_entity_decode(s: &str) -> String {
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
         if c == '&' {
-            let entity: String = chars.by_ref().take_while(|&c| c != ';').collect();
-            match entity.as_str() {
-                "amp" => result.push('&'),
-                "lt" => result.push('<'),
-                "gt" => result.push('>'),
-                "quot" => result.push('"'),
-                "#39" | "#x27" => result.push('\''),
-                _ => {
-                    result.push('&');
-                    result.push_str(&entity);
-                    result.push(';');
+            // Only try to decode if there's a terminating semicolon
+            let mut entity = String::new();
+            let mut found_semicolon = false;
+            loop {
+                match chars.next() {
+                    Some(';') => {
+                        found_semicolon = true;
+                        break;
+                    }
+                    Some(ch) => entity.push(ch),
+                    None => break,
                 }
+            }
+            if found_semicolon {
+                match entity.as_str() {
+                    "amp" => result.push('&'),
+                    "lt" => result.push('<'),
+                    "gt" => result.push('>'),
+                    "quot" => result.push('\"'),
+                    "#39" | "#x27" => result.push('\''),
+                    _ => {
+                        result.push('&');
+                        result.push_str(&entity);
+                        result.push(';');
+                    }
+                }
+            } else {
+                // No semicolon found -- treat '&' as a literal character
+                result.push('&');
+                result.push_str(&entity);
             }
         } else {
             result.push(c);
@@ -605,7 +623,6 @@ pub(crate) fn html_entity_decode(s: &str) -> String {
     }
     result
 }
-
 /// Parse a DuckDuckGo date string (ISO format) into a Unix timestamp.
 pub(crate) fn parse_ddg_date(s: &str) -> Option<i64> {
     let s = s.trim();

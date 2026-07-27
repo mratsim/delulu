@@ -32,7 +32,7 @@ use crate::error::WebsearchError;
 /// unsanitized safesearch strings.
 pub fn parse_safesearch(value: Option<&str>) -> Result<&str, WebsearchError> {
     match value {
-        Some("strict") | Some("moderate") | Some("off") => Ok(value.unwrap()),
+        Some(v @ ("strict" | "moderate" | "off")) => Ok(v),
         None => Ok("moderate"),
         Some(_other) => Err(WebsearchError::InvalidQuery {
             reason: "safesearch must be 'strict', 'moderate', or 'off'",
