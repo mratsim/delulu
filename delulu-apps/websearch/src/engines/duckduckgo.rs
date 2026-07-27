@@ -643,10 +643,6 @@ pub(crate) fn parse_naive_iso(s: &str) -> Option<i64> {
     Some(dt.and_utc().timestamp())
 }
 
-/// Check if a year is a leap year.
-pub(crate) fn is_leap_year(year: i64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
-}
 #[cfg(test)]
 #[path = "../../tests/unit/engines/duckduckgo_test.rs"]
 mod duckduckgo_test;

@@ -19,7 +19,7 @@
 
 use super::{
     DuckDuckGoContinuation, DuckDuckGoEngine, extract_json_from_js, html_entity_decode,
-    is_leap_year, parse_ddg_date, parse_iso_with_tz, parse_naive_iso,
+    parse_ddg_date, parse_iso_with_tz, parse_naive_iso,
     validate_n_token,
 };
 use crate::{Continuation, SearchParams, WebsearchError};
@@ -187,21 +187,6 @@ fn parse_ddg_date_naive() {
 fn parse_ddg_date_invalid() {
     let ts = parse_ddg_date("not a date");
     assert!(ts.is_none());
-}
-
-#[test]
-fn is_leap_year_divisible_by_4() {
-    assert!(is_leap_year(2024));
-}
-
-#[test]
-fn is_leap_year_century() {
-    assert!(!is_leap_year(1900));
-}
-
-#[test]
-fn is_leap_year_400() {
-    assert!(is_leap_year(2000));
 }
 
 // ---- build_djs_url tests ----

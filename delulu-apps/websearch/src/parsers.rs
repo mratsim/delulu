@@ -109,7 +109,7 @@ pub fn parse_max_results(value: Option<u32>) -> Result<usize, WebsearchError> {
 pub fn parse_time_range(value: Option<&str>) -> Result<Option<&str>, WebsearchError> {
     match value {
         None => Ok(None),
-        Some(v) if v.is_empty() => Ok(None),
+        Some("") => Ok(None),
         Some(v) => {
             if v.len() > 64 {
                 return Err(WebsearchError::InvalidQuery {

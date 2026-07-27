@@ -19,7 +19,6 @@
 //!
 //! Tests for `McpSearchResponse` serialization format and `engine_name_to_id` mapping.
 
-#[cfg(test)]
 mod tests {
     use crate::engine::{EngineId, SearchResult};
     use crate::error::WebsearchError;
