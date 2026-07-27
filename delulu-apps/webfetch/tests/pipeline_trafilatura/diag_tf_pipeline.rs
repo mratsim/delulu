@@ -37,7 +37,8 @@ use delulu_webfetch::pipelines::trafilatura::filter_trafilatura;
 mod test_utils;
 
 use test_utils::{
-    classify_output, compute_confusion_matrix, first_diff_position, fixture_dir,
+    classify_output, compute_confusion_matrix, detect_backup_restore,
+    detect_body_xpath_pattern, detect_retry_level, first_diff_position, fixture_dir,
     normalize_output, tf_count_text_chars, Classification,
 };
 
@@ -255,7 +256,10 @@ fn run_deep_dive(case_name: &str, fixtures_arg: &Option<PathBuf>) {
     eprintln!("================================================================");
     eprintln!();
 
-    // Load fixture
+    // Load fixture — keep raw source HTML for introspection probes
+    let fixture_path = fixture_dir().join(case_name).join("source.html.zst");
+    let source_html = test_utils::try_decompress_zst(&fixture_path)
+        .unwrap_or_else(|e| panic!("failed to read source.html.zst: {e}"));
     let (root, expected_md, annotations) = test_utils::load_test_case_tf(case_name);
     let mut nodes = root;
     filter_trafilatura(&mut nodes);
@@ -316,16 +320,63 @@ fn run_deep_dive(case_name: &str, fixtures_arg: &Option<PathBuf>) {
     }
     eprintln!();
 
-    // ── Annotations Summary ───────────────────────────────────────────
+    // ── Section 5: Backup/Restore ─────────────────────────────────────
     eprintln!("---");
-    if let Some(ref ann) = annotations {
-        eprintln!("  Annotations:");
-        eprintln!("    with[]:    {} patterns", ann.with.len());
-        eprintln!("    without[]: {} patterns", ann.without.len());
-    } else {
-        eprintln!("  No annotations file found.");
+    eprintln!("  Backup/Restore:");
+    eprintln!("    Why: Detects if OVERALL_DISCARD_XPATH removed ≥86% of text and was");
+    eprintln!("         reverted. If yes, the discard patterns are too aggressive for");
+    eprintln!("         this page — the pipeline is 'working by accident'.");
+    {
+        let (backup, removed) = detect_backup_restore(&source_html);
+        if backup {
+            eprintln!("    Status:           TRIGGERED (restored from backup)");
+            eprintln!("    Items removed:     {removed}");
+            eprintln!("    Implication:      Discard patterns over-match on this page.");
+        } else if removed > 0 {
+            eprintln!("    Status:           not triggered");
+            eprintln!("    Items removed:     {removed} (safe — <86% of text)");
+        } else {
+            eprintln!("    Status:           not triggered");
+            eprintln!("    Items removed:     none (no unlikely candidates matched)");
+        }
     }
     eprintln!();
+
+    // ── Section 6: BODY_XPATH Pattern ─────────────────────────────────
+    eprintln!("---");
+    eprintln!("  BODY_XPATH Pattern:");
+    eprintln!("    Why: Identifies which container-isolation pattern matched.");
+    eprintln!("         Pattern 0 = strong signal (exact class/id match).");
+    eprintln!("         Pattern 3 = weak signal (generic 'main' heuristic).");
+    {
+        let pattern = detect_body_xpath_pattern(&source_html);
+        match pattern {
+            Some(0) => eprintln!("    Match: Pattern 0 (specific class/id selectors) — strong signal"),
+            Some(1) => eprintln!("    Match: Pattern 1 (bare <article>/<main> tag) — moderate signal"),
+            Some(2) => eprintln!("    Match: Pattern 2 (content class/id) — moderate signal"),
+            Some(3) => eprintln!("    Match: Pattern 3 (starts-with 'main') — weak signal, page may have unusual structure"),
+            None => eprintln!("    No container isolated — page structure may not match Trafilatura expectations"),
+            _ => eprintln!("    Unexpected pattern index: {:?}", pattern),
+        }
+    }
+    eprintln!();
+
+    // ── Section 7: Retry Level ────────────────────────────────────────
+    eprintln!("---");
+    eprintln!("  Retry Level:");
+    eprintln!("    Why: Shows whether the page needed relaxed filtering (Recall).");
+    eprintln!("         Frequent Recall wins = Balanced pass is over-filtering.");
+    {
+        let level = detect_retry_level(&source_html);
+        match level {
+            0 => eprintln!("    Level: Balanced (standard filtering) — page content extracted normally"),
+            1 => eprintln!("    Level: Recall (relaxed filtering) — Balanced was too aggressive (<500 chars)"),
+            _ => eprintln!("    Level: unknown ({level})"),
+        }
+    }
+    eprintln!();
+
+    // ── Annotations Summary ───────────────────────────────────────────
     eprintln!("================================================================");
 }
 

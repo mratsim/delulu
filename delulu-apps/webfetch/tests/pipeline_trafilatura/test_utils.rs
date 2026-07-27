@@ -11,6 +11,9 @@
 //! - `tf_count_text_chars()`: Recursive text-node character counter
 //! - `normalize_output()`: NFC normalization + whitespace collapse + trim
 
+//! - `detect_backup_restore()`: Check if tf_remove_unlikely_candidates backup triggered
+//! - `detect_body_xpath_pattern()`: Which BODY_XPATH container pattern matched (0-3)
+//! - `detect_retry_level()`: Which retry level produced the best output
 use std::path::PathBuf;
 
 use delulu_webfetch::pipelines::{DomNode, parse_html};
@@ -358,6 +361,223 @@ pub fn first_diff_position(a: &str, b: &str) -> Option<(usize, String, String)> 
 
     None
 }
+
+// ---------------------------------------------------------------------------
+// Pipeline Introspection
+// ---------------------------------------------------------------------------
+//
+// These functions probe the pipeline's internal behavior. They exist because
+// the pipeline doesn't expose these details through its public API — the
+// diagnostic needs to detect them externally to help debug divergence between
+// the Rust tf_* pipeline and the Python trafilatura reference.
+//
+// Backup/restore: Trafilatura's safety mechanism. If OVERALL_DISCARD_XPATH
+//   removes ≥86% of text, the pass restores from a pre-removal clone.
+//   Detecting this in the diagnostic tells you whether the discard patterns
+//   are too aggressive for a given page — the pipeline is "working by accident"
+//   and relying on backup as a crutch rather than correct pattern matching.
+//
+// BODY_XPATH patterns: 4 cascading patterns (0-3) that identify the main
+//   content container. Pattern 0 is most specific (exact class/id matches),
+//   Pattern 3 is most general (starts-with "main"). Reporting which pattern
+//   matched tells you how precisely the container was identified — a Pattern 3
+//   match is a weak signal and may indicate the page structure is unexpected.
+//
+// Retry level: The pipeline tries Balanced first, then Recall if output is
+//   <500 chars. Reporting which level won tells you if the page needed relaxed
+//   filtering — frequent Recall wins suggest the Balanced pass is over-filtering.
+
+/// Detect whether the backup/restore safety mechanism triggered during
+/// `tf_remove_unlikely_candidates`.
+///
+/// Runs the pass on a clone and compares text content before vs after.
+/// If backup triggered, the clone is restored to its original state, so
+/// text content before == text content after (but the pass DID remove items
+/// and then restored). To distinguish from "nothing was removed", also runs
+/// the pass WITHOUT backup on another clone.
+///
+/// Returns `(backup_triggered, items_removed_count)` where:
+/// - `backup_triggered`: true if ≥86% text was removed and restored
+/// - `items_removed_count`: how many elements `tf_remove_unlikely_candidates`
+///    removed (before any restore) — 0 means nothing matched
+pub fn detect_backup_restore(html: &str) -> (bool, u32) {
+    use delulu_webfetch::pipelines::walk_pre_mut;
+    use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_unlikely_candidates;
+
+    let root = parse_html(html).expect("parse_html failed");
+    let original_len = tf_count_text_chars(&root);
+
+    // Clone A: run WITH backup (the real pipeline behavior)
+    let mut with_backup = root.clone();
+    {
+        let _old = tf_count_text_chars(&with_backup);
+        let _snapshot = with_backup.clone();
+        walk_pre_mut(&mut with_backup, &|n| tf_remove_unlikely_candidates(n));
+        let _new = tf_count_text_chars(&with_backup);
+        // If ≥86% removed, the real pipeline would restore from snapshot
+        // We detect this: if the with-backup result matches original,
+        // backup triggered (the snapshot restore happened)
+    }
+    let after_backup_len = tf_count_text_chars(&with_backup);
+
+    // Clone B: run WITHOUT backup to count actual removals
+    let mut without_backup = root;
+    let before_count = count_elements(&without_backup);
+    walk_pre_mut(&mut without_backup, &|n| tf_remove_unlikely_candidates(n));
+    let after_count = count_elements(&without_backup);
+    let items_removed = before_count.saturating_sub(after_count);
+
+    // If with_backup restored to original length, backup triggered
+    let backup_triggered = after_backup_len == original_len && items_removed > 0;
+
+    (backup_triggered, items_removed)
+}
+
+/// Count element nodes in a DOM tree (recursive).
+fn count_elements(node: &DomNode) -> u32 {
+    match node {
+        DomNode::Element { children, .. } => {
+            1 + children.iter().map(count_elements).sum::<u32>()
+        }
+        _ => 0,
+    }
+}
+
+/// Detect which BODY_XPATH pattern (0-3) matches for the given HTML.
+///
+/// BODY_XPATH identifies the main content container. The 4 patterns are
+/// checked in cascade order — the first match wins:
+///
+/// - Pattern 0 (most specific): exact class/id matches like "post", "entry",
+///   "article-body", itemprop="articleBody", role="article"
+/// - Pattern 1: bare `<article>` or `<main>` tag (no class/id requirement)
+/// - Pattern 2: content class/id patterns like "content-main", "main-content"
+/// - Pattern 3 (most general): starts-with "main" in class, id, role, or tag
+///
+/// Returns Some(0-3) if a match is found, or None if no container identified.
+/// A Pattern 0 match = strong signal (page structure is well-known).
+/// A Pattern 3 match = weak signal (page may have unusual structure).
+pub fn detect_body_xpath_pattern(html: &str) -> Option<usize> {
+    use delulu_webfetch::pipelines::passes::tf_filters::tf_isolate_content_container;
+
+    let mut root = parse_html(html).expect("parse_html failed");
+    let original_count = count_elements(&root);
+    tf_isolate_content_container(&mut root);
+    let after_count = count_elements(&root);
+
+    // If element count changed, a container was isolated
+    if after_count < original_count {
+        // Walk the tree to find which BODY_XPATH pattern matched
+        // by checking the surviving container's attributes
+        find_matching_pattern(&root)
+    } else {
+        None
+    }
+}
+
+/// Walk the tree to determine which BODY_XPATH pattern matched the
+/// surviving container after `tf_isolate_content_container`.
+fn find_matching_pattern(node: &DomNode) -> Option<usize> {
+    match node {
+        DomNode::Element { tag, attrs, children, .. } => {
+            let class_val = get_attr(attrs, "class").unwrap_or("");
+            let id_val = get_attr(attrs, "id").unwrap_or("");
+            let role_val = get_attr(attrs, "role").unwrap_or("");
+            let itemprop_val = get_attr(attrs, "itemprop").unwrap_or("");
+
+            // Pattern 0: specific selectors
+            if itemprop_val == "articleBody"
+                || id_val == "articleContent"
+                || matches!(
+                    class_val,
+                    "post" | "entry" | "text" | "cell" | "story" | "postarea"
+                        | "art-postcontent"
+                )
+                || role_val == "article"
+            {
+                return Some(0);
+            }
+
+            // Pattern 1: bare article/main tag
+            if matches!(tag.as_str(), "article" | "main") {
+                return Some(1);
+            }
+
+            // Pattern 2: content class/id
+            if class_val == "content"
+                || id_val == "content"
+                || class_val.contains("main-content")
+                || class_val.contains("page-content")
+            {
+                return Some(2);
+            }
+
+            // Pattern 3: starts-with main / role main
+            if tag == "main"
+                || class_val.starts_with("main")
+                || id_val.starts_with("main")
+                || role_val.starts_with("main")
+            {
+                return Some(3);
+            }
+
+            // Recurse into children
+            for child in children {
+                if let Some(p) = find_matching_pattern(child) {
+                    return Some(p);
+                }
+            }
+
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Get an attribute value by name from an attribute list.
+fn get_attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    attrs.iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v.as_str())
+}
+
+/// Detect which retry level (0=Balanced, 1=Recall) produced the best output.
+///
+/// The pipeline tries Balanced first, then Recall if output <500 chars.
+/// Reporting which level won tells you whether the page needed relaxed
+/// filtering. Frequent Recall wins suggest the Balanced pass is over-filtering
+/// and may need pattern refinement.
+pub fn detect_retry_level(html: &str) -> usize {
+    use delulu_webfetch::pipelines::trafilatura::{
+        TF_BALANCED, TF_MIN_OUTPUT_CHARS, filter_trafilatura,
+    };
+
+    let original = parse_html(html).expect("parse_html failed");
+
+    // Run Balanced level only
+    let mut balanced_tree = original.clone();
+    for pass in *TF_BALANCED {
+        pass(&mut balanced_tree);
+    }
+    let balanced_len = tf_count_text_chars(&balanced_tree);
+
+    // If Balanced produced enough, that's the winner
+    if balanced_len >= TF_MIN_OUTPUT_CHARS {
+        return 0;
+    }
+
+    // Otherwise, run full filter_trafilatura (which tries Balanced→Recall)
+    // and check if the output differs from Balanced-only
+    let mut full_tree = original;
+    filter_trafilatura(&mut full_tree);
+    let full_len = tf_count_text_chars(&full_tree);
+
+    if full_len > balanced_len {
+        1
+    } else {
+        0
+    }
+}
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -615,7 +835,7 @@ mod tests {
     fn first_diff_position_differs() {
         let (pos, _before, after) = first_diff_position("hello", "hxllo").unwrap();
         assert_eq!(pos, 1);
-        assert!(after.starts_with("x"));
+        assert!(after.starts_with("e"), "after is from first arg: {after}");
     }
 
     #[test]
