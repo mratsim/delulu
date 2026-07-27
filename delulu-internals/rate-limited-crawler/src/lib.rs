@@ -67,8 +67,8 @@ impl RateLimitedCrawler {
         let queue = self.domain_queue(&parsed)?;
         queue.acquire().await;
         // Build a HeaderMap with insert (not append) so later headers
-        // override earlier ones. This makes with_headers() override
-        // with_default_masquerade_headers() for overlapping header names.
+        // override earlier ones. This makes merge_with_headers() override
+        // any overlapping headers set by the client-level emulation.
         let mut map = http::HeaderMap::new();
         for (name, value) in headers {
             map.insert(
@@ -304,26 +304,7 @@ impl GetBuilder<'_> {
         self
     }
 
-    /// Set default browser masquerade headers to avoid bot detection.
-    /// These headers mimic a real browser navigation request.
-    /// Engine-specific headers (User-Agent, Cookie, etc.) can be added via `with_headers()`.
-    /// Duplicate header names are resolved by the HTTP client (last value wins for single-value headers).
-    pub fn with_default_masquerade_headers(mut self) -> Self {
-        self.headers = vec![
-            ("Accept".into(), "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8".into()),
-            ("Accept-Language".into(), "en-US,en;q=0.5".into()),
-            ("Accept-Encoding".into(), "gzip, deflate".into()),
-            ("DNT".into(), "1".into()),
-            ("Sec-GPC".into(), "1".into()),
-            ("Connection".into(), "keep-alive".into()),
-            ("Upgrade-Insecure-Requests".into(), "1".into()),
-            ("Sec-Fetch-Dest".into(), "document".into()),
-            ("Sec-Fetch-Mode".into(), "navigate".into()),
-            ("Sec-Fetch-Site".into(), "none".into()),
-            ("Sec-Fetch-User".into(), "?1".into()),
-        ];
-        self
-    }
+
 
     pub async fn send(self) -> Result<wreq::Response, CrawlerError> {
         let retry_base = self.exponential_retry_base;

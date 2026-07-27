@@ -107,7 +107,7 @@ pub fn sanitize_error_for_client(err: &crate::error::WebsearchError) -> String {
             format!("Search engine error: {engine}")
         }
         crate::error::WebsearchError::AccessDenied => "Search engine error".to_string(),
-        crate::error::WebsearchError::InvalidQuery { .. } => "Search engine error".to_string(),
+        crate::error::WebsearchError::InvalidQuery { reason } => format!("Invalid query: {reason}"),
         crate::error::WebsearchError::EngineNotFound { name } => {
             format!("Session engine not available: {name}")
         }

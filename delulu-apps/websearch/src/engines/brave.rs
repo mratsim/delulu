@@ -31,7 +31,7 @@ use std::time::Instant;
 use tracing::{debug, warn};
 
 use crate::engine::{
-    Continuation, DEFAULT_USER_AGENT, Engine, SearchParams, SearchResponse, SearchResult,
+    Continuation, Engine, SearchParams, SearchResponse, SearchResult,
 };
 use crate::error::WebsearchError;
 
@@ -53,11 +53,7 @@ pub struct BraveEngine {
     crawler: RateLimitedCrawler,
 }
 
-/// Brave User-Agent constant.
-const BRAVE_USER_AGENT: &str = DEFAULT_USER_AGENT;
-
 /// Continuation token for Brave pagination.
-///
 /// Brave uses a simple page-number-based pagination scheme.
 /// The page number is 1-indexed and capped at 999.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,9 +159,7 @@ impl Engine for BraveEngine {
         let response = self
             .crawler
             .get(&search_url)
-            .with_default_masquerade_headers()
             .merge_with_headers(vec![
-                ("User-Agent".into(), BRAVE_USER_AGENT.into()),
                 ("Cookie".into(), cookie),
             ])
             .with_exponential_retry(1)

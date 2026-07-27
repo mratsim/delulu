@@ -279,7 +279,7 @@ mod tests {
             reason: "bad chars",
         };
         let msg = sanitize_error_for_client(&err);
-        assert_eq!(msg, "Search engine error");
+        assert_eq!(msg, "Invalid query: bad chars");
 
         // ParseFailed
         let err = WebsearchError::ParseFailed {
