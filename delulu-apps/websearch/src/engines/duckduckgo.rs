@@ -143,11 +143,10 @@ impl DuckDuckGoEngine {
     /// Returns `WebsearchError::ContinuationInvalidValue` if `href` is not an
     /// absolute HTTP(S) URL, preventing SSRF and malformed URL injection.
     pub fn build_djs_url_from_preload(href: &str) -> Result<String, WebsearchError> {
-        let parsed = url::Url::parse(href).map_err(|_| {
-            WebsearchError::ContinuationInvalidValue {
+        let parsed =
+            url::Url::parse(href).map_err(|_| WebsearchError::ContinuationInvalidValue {
                 reason: "deep_preload_link is not a valid URL",
-            }
-        })?;
+            })?;
         if parsed.scheme() != "https" {
             return Err(WebsearchError::ContinuationInvalidValue {
                 reason: "deep_preload_link must use HTTPS",

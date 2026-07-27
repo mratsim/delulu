@@ -376,10 +376,9 @@ fn parse_naive_iso_malformed() {
 
 #[test]
 fn build_djs_url_from_preload_rejects_http() {
-    let err = DuckDuckGoEngine::build_djs_url_from_preload(
-        "http://links.duckduckgo.com/d.js?q=test",
-    )
-    .unwrap_err();
+    let err =
+        DuckDuckGoEngine::build_djs_url_from_preload("http://links.duckduckgo.com/d.js?q=test")
+            .unwrap_err();
     assert!(matches!(
         err,
         WebsearchError::ContinuationInvalidValue { .. }
@@ -388,10 +387,8 @@ fn build_djs_url_from_preload_rejects_http() {
 
 #[test]
 fn build_djs_url_from_preload_rejects_wrong_host() {
-    let err = DuckDuckGoEngine::build_djs_url_from_preload(
-        "https://evil.example.com/d.js?q=test",
-    )
-    .unwrap_err();
+    let err = DuckDuckGoEngine::build_djs_url_from_preload("https://evil.example.com/d.js?q=test")
+        .unwrap_err();
     assert!(matches!(
         err,
         WebsearchError::ContinuationInvalidValue { .. }

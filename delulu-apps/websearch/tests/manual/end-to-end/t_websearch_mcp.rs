@@ -63,7 +63,12 @@ fn find_python(manifest: &std::path::Path) -> (String, Vec<String>) {
         let dir_str = dir.to_string_lossy().to_string();
         (
             "uv".to_string(),
-            vec!["run".to_string(), "--directory".to_string(), dir_str, "python3".to_string()],
+            vec![
+                "run".to_string(),
+                "--directory".to_string(),
+                dir_str,
+                "python3".to_string(),
+            ],
         )
     } else if std::process::Command::new("python3")
         .arg("--version")
