@@ -578,6 +578,85 @@ pub fn detect_retry_level(html: &str) -> usize {
         0
     }
 }
+
+// ---------------------------------------------------------------------------
+// Per-Pass Timing (diagnostic feature)
+// ---------------------------------------------------------------------------
+//
+// Runs each pipeline pass individually with Instant::now() timing.
+// Feature-gated with #[cfg(feature = "diagnostic")] — zero overhead in production.
+//
+// Note: passes mutate the tree in place, so each pass operates on the output
+// of the previous one, matching real pipeline behavior.
+
+/// Run each pass in the TF_BALANCED pipeline with timing, returning
+/// `(pass_name, duration)` pairs. Only available with the `diagnostic` feature.
+#[cfg(feature = "diagnostic")]
+pub fn time_passes(html: &str) -> Vec<(String, std::time::Duration)> {
+    use std::time::Instant;
+    use delulu_webfetch::pipelines::trafilatura::TF_BALANCED;
+
+    let mut tree = parse_html(html).expect("parse_html failed");
+    let mut timings = Vec::new();
+
+    let names = [
+        "tf_remove_cleaned",
+        "tf_remove_teaser",
+        "tf_remove_unlikely_candidates (with backup)",
+        "tf_strip_unwrapped",
+        "tf_remove_empty_cut",
+        "tf_convert_headings",
+        "tf_convert_lists",
+        "tf_convert_quotes",
+        "tf_convert_formatting",
+        "tf_convert_breaks",
+        "tf_convert_refs_and_details",
+        "tf_canonicalize_strip_non_content",
+        "tf_isolate_content_container",
+        "tf_canonicalize_unwrap_containers",
+    ];
+
+    for (pass, name) in (*TF_BALANCED).iter().zip(names.iter()) {
+        let start = Instant::now();
+        pass(&mut tree);
+        timings.push((name.to_string(), start.elapsed()));
+    }
+
+    timings
+}
+
+/// Run a slice of passes with retry logic, returning output + metadata.
+/// Mimics `filter_trafilatura`'s retry cascade but allows passing arbitrary passes.
+pub fn run_passes_with_retry(
+    html: &str,
+    levels: &[&[&dyn Fn(&mut DomNode)]],
+    min_output_chars: usize,
+) -> (DomNode, usize, usize) {
+    use delulu_webfetch::pipelines::DomNode;
+
+    let original = parse_html(html).expect("parse_html failed");
+    let mut best_tree = original.clone();
+    let mut best_len = 0usize;
+    let mut best_level = 0usize;
+
+    for (i, level) in levels.iter().enumerate() {
+        let mut attempt = original.clone();
+        for pass_fn in *level {
+            pass_fn(&mut attempt);
+        }
+        let len = tf_count_text_chars(&attempt);
+        if len > best_len {
+            best_len = len;
+            best_tree = attempt;
+            best_level = i;
+        }
+        if len >= min_output_chars {
+            break;
+        }
+    }
+
+    (best_tree, best_len, best_level)
+}
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

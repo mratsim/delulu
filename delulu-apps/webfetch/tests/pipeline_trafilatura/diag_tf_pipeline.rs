@@ -40,6 +40,7 @@ use test_utils::{
     classify_output, compute_confusion_matrix, detect_backup_restore,
     detect_body_xpath_pattern, detect_retry_level, first_diff_position, fixture_dir,
     normalize_output, tf_count_text_chars, Classification,
+    time_passes,
 };
 
 // ---------------------------------------------------------------------------
@@ -375,6 +376,23 @@ fn run_deep_dive(case_name: &str, fixtures_arg: &Option<PathBuf>) {
         }
     }
     eprintln!();
+
+    // ── Section 8: Per-Pass Timing (diagnostic feature only) ─────────
+    // Requires: cargo test --features diagnostic
+    #[cfg(feature = "diagnostic")]
+    {
+        eprintln!("---");
+        eprintln!("  Per-Pass Timing:");
+        eprintln!("    Why: Shows time spent in each pipeline pass. Useful for");
+        eprintln!("         identifying performance bottlenecks or unexpected");
+        eprintln!("         behavior (e.g., backup/restore clone overhead).");
+        let timings = time_passes(&source_html);
+        let total: std::time::Duration = timings.iter().map(|(_, d)| *d).sum();
+        for (name, dur) in &timings {
+            eprintln!("    {:50}  {:?}", format!("  {name}:"), dur);
+        }
+        eprintln!("    {:50}  {:?}", "  TOTAL:", total);
+    }
 
     // ── Annotations Summary ───────────────────────────────────────────
     eprintln!("================================================================");
