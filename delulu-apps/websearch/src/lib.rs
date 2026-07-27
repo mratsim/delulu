@@ -44,10 +44,10 @@ pub use session_key::SessionKey;
 /// This is shared across all engine backends to ensure consistent log output.
 /// Truncation is at the UTF-8 character boundary (not byte-slicing) to avoid panics.
 pub fn sanitize_for_log(s: &str) -> String {
-    // First filter out control characters, then truncate to 2048 bytes at char boundary
+    // Strip control characters (except newline and tab), then truncate to 2048 bytes at char boundary
     let cleaned: String = s
         .chars()
-        .filter(|&c| c.is_ascii_graphic() || c == ' ' || c == '\n' || c == '\t')
+        .filter(|&c| !c.is_control() || c == '\n' || c == '\t')
         .collect();
 
     // Truncate to 2048 bytes at a UTF-8 boundary

@@ -53,9 +53,11 @@ fn sanitize_for_log_cjk_at_boundary() {
     let long: String = "中".repeat(1000); // 3000 bytes
     let result = sanitize_for_log(&long);
     // Should be at most 2048 bytes, at a char boundary (so 682 * 3 = 2046)
-    assert!(result.len() <= 2048);
-    assert_eq!(result.len() % 3, 0); // must be at char boundary
+    assert!(result.len() <= 2048, "len={} > 2048", result.len());
+    assert_eq!(result.len() % 3, 0, "len={} not at char boundary", result.len());
     assert!(result.chars().all(|c| c == '中'));
+    assert_eq!(result.len(), 2046, "expected 2046 bytes (682 CJK), got {}", result.len());
+    assert_eq!(result.chars().count(), 682, "expected 682 CJK chars, got {}", result.chars().count());
 }
 
 #[test]
@@ -63,7 +65,9 @@ fn sanitize_for_log_emoji_at_boundary() {
     // Emoji are 4 bytes each. 2048 / 4 = 512
     let long: String = "😀".repeat(600); // 2400 bytes
     let result = sanitize_for_log(&long);
-    assert!(result.len() <= 2048);
-    assert_eq!(result.len() % 4, 0); // must be at char boundary
+    assert!(result.len() <= 2048, "len={} > 2048", result.len());
+    assert_eq!(result.len() % 4, 0, "len={} not at char boundary", result.len());
     assert!(result.chars().all(|c| c == '😀'));
+    assert_eq!(result.len(), 2048, "expected 2048 bytes (512 emoji), got {}", result.len());
+    assert_eq!(result.chars().count(), 512, "expected 512 emoji, got {}", result.chars().count());
 }

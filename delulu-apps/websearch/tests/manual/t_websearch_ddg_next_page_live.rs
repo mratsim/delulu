@@ -135,7 +135,7 @@ async fn duckduckgo_next_page_expired_session() {
         random_id,
     );
 
-    sleep(Duration::from_secs(2));
+    sleep(Duration::from_secs(2)).await;
 
     let later = Instant::now();
     let entry = cache.get(&key, later);

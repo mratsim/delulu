@@ -37,9 +37,20 @@ fn search_result_serialize_roundtrip() {
 
 #[test]
 fn search_result_no_panic_fields() {
-    // Verify no `position` or `engine` fields exist by round-tripping
-    let json = r#"{"title":"X","url":"https://x.com","snippet":null,"date":null}"#;
-    let result: SearchResult = serde_json::from_str(json).unwrap();
-    assert_eq!(result.title, "X");
-    assert_eq!(result.url, "https://x.com");
+    // Verify no `position` or `engine` fields exist in serialized output
+    let result = SearchResult {
+        title: "X".into(),
+        url: "https://x.com".into(),
+        snippet: None,
+        date: None,
+    };
+    let json = serde_json::to_string(&result).unwrap();
+    assert!(!json.contains("\"position\""), "serialized output should not contain 'position'");
+    assert!(!json.contains("\"engine\""), "serialized output should not contain 'engine'");
+    assert!(json.contains("\"title\""), "serialized output should contain 'title'");
+    assert!(json.contains("\"url\""), "serialized output should contain 'url'");
+    // Round-trip should still work
+    let back: SearchResult = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.title, "X");
+    assert_eq!(back.url, "https://x.com");
 }

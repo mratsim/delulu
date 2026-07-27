@@ -154,7 +154,7 @@ async fn brave_next_page_expired_session() {
     );
 
     // Wait for TTL to expire
-    sleep(Duration::from_secs(2));
+    sleep(Duration::from_secs(2)).await;
 
     let later = Instant::now();
     let entry = cache.get(&key, later);
@@ -204,7 +204,7 @@ async fn duckduckgo_next_page_basic() {
     );
 
     // Delay
-    sleep(Duration::from_secs(3));
+    sleep(Duration::from_secs(3)).await;
 
     // Page 2 via cache
     let now2 = Instant::now();
@@ -251,7 +251,7 @@ async fn duckduckgo_next_page_expired_session() {
     );
 
     // Wait for TTL to expire
-    sleep(Duration::from_secs(2));
+    sleep(Duration::from_secs(2)).await;
 
     let later = Instant::now();
     let entry = cache.get(&key, later);
