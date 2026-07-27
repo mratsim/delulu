@@ -3,7 +3,7 @@ name = "delulu-websearch"
 version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0"
-description = "Multi-engine web search MCP server and CLI tool supporting DuckDuckGo, Brave, Baidu, Yahoo Japan, and Startpage"
+description = "Multi-engine web search MCP server and CLI tool supporting DuckDuckGo and Brave"
 
 [features]
 default = ["cli", "mcp"]
@@ -18,7 +18,7 @@ mcp = [
 delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
 chrono = "0.4"
 wreq-util = "3.0.0-rc.9"
-scraper = "0.17"
+scraper = "0.27"
 url = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

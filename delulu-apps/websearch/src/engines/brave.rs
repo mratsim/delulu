@@ -211,9 +211,9 @@ impl Engine for BraveEngine {
         // Parse HTML for search results
         let results = parse_search_results(&body, max_results)?;
 
-        // Determine next continuation
+        // Only return continuation if there are results (no point paginating empty sets)
         let next_page = page + 1;
-        let continuation = if next_page >= 1000 {
+        let continuation = if results.is_empty() || next_page >= 1000 {
             None
         } else {
             Some(Box::new(BraveContinuation { page: next_page }) as Box<dyn Continuation>)

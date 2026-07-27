@@ -287,8 +287,8 @@ pub struct GetBuilder<'a> {
 
 impl GetBuilder<'_> {
     /// Extend the request headers with the given pairs.
-    /// Existing headers with the same name are NOT replaced —
-    /// the underlying HTTP client may send multiple values for the same header.
+    /// Later headers with the same name override earlier ones (insert semantics, not append).
+    /// This allows callers to override any headers set by the client-level emulation profile.
     pub fn merge_with_headers(mut self, headers: Vec<(String, String)>) -> Self {
         self.headers.extend(headers);
         self

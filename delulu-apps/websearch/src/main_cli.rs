@@ -27,9 +27,12 @@
 //! # Panic-if
 //! This function MUST NOT panic. All error paths return Err.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use delulu_websearch::engines::create_default_registry;
+use delulu_websearch::parsers::{
+    parse_country, parse_max_results, parse_safesearch, parse_time_range,
+};
 use delulu_websearch::{SearchParams, validate_query};
 
 /// Default engine when `--engine` is not provided.
@@ -76,13 +79,22 @@ async fn main() -> Result<()> {
     let query = &args.query;
     let trimmed = validate_query(query)?;
 
-    // Parse search parameters
+    // Validate and parse search parameters
+    let max_results = parse_max_results(args.max_results)
+        .context("Invalid max_results")? as u32;
+    let safesearch = parse_safesearch(args.safesearch.as_deref())
+        .context("Invalid safesearch")?.to_string();
+    let country = parse_country(args.country.as_deref())
+        .context("Invalid country")?.to_string();
+    let time_range = parse_time_range(args.time_range.as_deref())
+        .context("Invalid time_range")?.map(|s| s.to_string());
+
     let params = SearchParams {
         page: None,
-        country: args.country,
-        safesearch: args.safesearch,
-        time_range: args.time_range,
-        max_results: args.max_results,
+        country: Some(country),
+        safesearch: Some(safesearch),
+        time_range,
+        max_results: Some(max_results),
     };
 
     // Determine engine
