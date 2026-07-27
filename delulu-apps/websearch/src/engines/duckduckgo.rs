@@ -143,13 +143,23 @@ impl DuckDuckGoEngine {
     /// Returns `WebsearchError::ContinuationInvalidValue` if `href` is not an
     /// absolute HTTP(S) URL, preventing SSRF and malformed URL injection.
     pub fn build_djs_url_from_preload(href: &str) -> Result<String, WebsearchError> {
-        if href.starts_with("https://") || href.starts_with("http://") {
-            Ok(href.to_string())
-        } else {
-            Err(WebsearchError::ContinuationInvalidValue {
-                reason: "deep_preload_link must be an absolute URL",
-            })
+        let parsed = url::Url::parse(href).map_err(|_| {
+            WebsearchError::ContinuationInvalidValue {
+                reason: "deep_preload_link is not a valid URL",
+            }
+        })?;
+        if parsed.scheme() != "https" {
+            return Err(WebsearchError::ContinuationInvalidValue {
+                reason: "deep_preload_link must use HTTPS",
+            });
         }
+        let host = parsed.host_str().unwrap_or("");
+        if host != "links.duckduckgo.com" && !host.ends_with(".duckduckgo.com") {
+            return Err(WebsearchError::ContinuationInvalidValue {
+                reason: "deep_preload_link must be from links.duckduckgo.com",
+            });
+        }
+        Ok(href.to_string())
     }
 
     /// Build the d.js URL from a continuation n_token.

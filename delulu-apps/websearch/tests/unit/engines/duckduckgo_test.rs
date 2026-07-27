@@ -373,3 +373,36 @@ fn parse_naive_iso_invalid_too_short() {
 fn parse_naive_iso_malformed() {
     assert!(parse_naive_iso("abcdefghijklmnopqrs").is_none());
 }
+
+#[test]
+fn build_djs_url_from_preload_rejects_http() {
+    let err = DuckDuckGoEngine::build_djs_url_from_preload(
+        "http://links.duckduckgo.com/d.js?q=test",
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        WebsearchError::ContinuationInvalidValue { .. }
+    ));
+}
+
+#[test]
+fn build_djs_url_from_preload_rejects_wrong_host() {
+    let err = DuckDuckGoEngine::build_djs_url_from_preload(
+        "https://evil.example.com/d.js?q=test",
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        WebsearchError::ContinuationInvalidValue { .. }
+    ));
+}
+
+#[test]
+fn build_djs_url_from_preload_rejects_malformed() {
+    let err = DuckDuckGoEngine::build_djs_url_from_preload("not-a-url").unwrap_err();
+    assert!(matches!(
+        err,
+        WebsearchError::ContinuationInvalidValue { .. }
+    ));
+}
