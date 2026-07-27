@@ -25,7 +25,7 @@ serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["time", "chrono", "env-filter"] }
 thiserror = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util", "process"] }
 anyhow = "1.0"
 futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 async-trait = "0.1"
@@ -92,3 +92,7 @@ name = "t_mcp_session"
 path = "tests/integration/t_mcp_session.rs"
 required-features = ["mcp"]
 
+[[test]]
+name = "t_websearch_mcp"
+path = "tests/manual/end-to-end/t_websearch_mcp.rs"
+required-features = ["mcp"]

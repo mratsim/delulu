@@ -1,0 +1,6 @@
+[project]
+name = "delulu-websearch-tests"
+version = "0.1.0"
+description = "MCP integration tests for delulu-websearch"
+requires-python = ">=3.12"
+dependencies = ["mcp>=1.0"]
