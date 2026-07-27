@@ -8,4 +8,5 @@ dependencies = ["mcp>=1.0"]
 [dependency-groups]
 dev = [
     "codespell>=2.4.3",
+    "typos>=1.48.0",
 ]

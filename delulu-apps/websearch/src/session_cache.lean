@@ -845,10 +845,10 @@ by
   intro key entry hfind
   have h_in_c : mapFind key c.entries = some entry :=
     evictExpiredLoop_no_add now c.entries c.expiryHeap key entry hfind
-  by_cases hge : entry.expiresAt ≥ now
-  · exact hge
+  by_cases h_ge : entry.expiresAt ≥ now
+  · exact h_ge
   · exfalso
-    have h_lt : entry.expiresAt < now := Nat.lt_of_not_ge hge
+    have h_lt : entry.expiresAt < now := Nat.lt_of_not_ge h_ge
     rcases h_ehe key entry h_in_c with ⟨t, ht⟩
     -- ht: (t, key) ∈ c.expiryHeap
     have h_t_le_exp : t ≤ entry.expiresAt := h_heap_le key entry t h_in_c ht

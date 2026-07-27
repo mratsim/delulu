@@ -27,12 +27,14 @@ tracing-subscriber = { version = "0.3", features = ["time", "chrono", "env-filte
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util", "process"] }
 anyhow = "1.0"
-futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 async-trait = "0.1"
 urlencoding = "2"
 zstd = "0.13"
 getrandom = "0.2"
 parking_lot = "0.12"
+
+[package.metadata.cargo-machete]
+ignored = ["rmcp"]
 
 [dependencies.clap]
 version = "4"
