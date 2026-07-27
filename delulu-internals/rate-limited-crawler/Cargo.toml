@@ -7,6 +7,7 @@ description = "Per-domain rate-limited HTTP client with GCRA gating, exponential
 
 [dependencies]
 wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing", "stream"] }
+http = "1"
 futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 wreq-util = "3.0.0-rc.9"
 quick_cache = "0.7"

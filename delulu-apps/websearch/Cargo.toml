@@ -1,0 +1,100 @@
+[package]
+name = "delulu-websearch"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0"
+description = "Multi-engine web search MCP server and CLI tool supporting DuckDuckGo and Brave"
+
+[features]
+default = ["cli", "mcp"]
+cli = ["dep:clap"]
+mcp = [
+    "dep:schemars",
+    "dep:rmcp",
+    "dep:delulu-mcp-server-helper",
+  ]
+
+[dependencies]
+delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
+chrono = "0.4"
+wreq-util = "3.0.0-rc.9"
+scraper = "0.27"
+url = "2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["time", "chrono", "env-filter"] }
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util", "process"] }
+anyhow = "1.0"
+async-trait = "0.1"
+urlencoding = "2"
+zstd = "0.13"
+getrandom = "0.2"
+parking_lot = "0.12"
+
+[package.metadata.cargo-machete]
+ignored = ["rmcp"]
+
+[dependencies.clap]
+version = "4"
+features = ["derive"]
+optional = true
+
+[dependencies.schemars]
+version = "1.0"
+features = ["derive"]
+optional = true
+
+[dependencies.rmcp]
+version = "0.13"
+features = ["server", "macros"]
+optional = true
+
+[dependencies.delulu-mcp-server-helper]
+path = "../../delulu-internals/mcp-server-helper"
+optional = true
+
+[[bin]]
+name = "delulu-websearch"
+path = "src/main_cli.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "delulu-websearch-mcp"
+path = "src/main_mcp.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "t_websearch_ddg_live"
+path = "tests/manual/t_websearch_ddg_live.rs"
+
+[[test]]
+name = "t_websearch_ddg_next_page_live"
+path = "tests/manual/t_websearch_ddg_next_page_live.rs"
+
+[[test]]
+name = "t_websearch_brv_live"
+path = "tests/manual/t_websearch_brv_live.rs"
+
+[[test]]
+name = "t_websearch_brv_next_page_live"
+path = "tests/manual/t_websearch_brv_next_page_live.rs"
+
+[[test]]
+name = "t_brave_fixtures"
+path = "tests/integration/t_brave_fixtures.rs"
+
+[[test]]
+name = "t_duckduckgo_fixtures"
+path = "tests/integration/t_duckduckgo_fixtures.rs"
+
+[[test]]
+name = "t_mcp_session"
+path = "tests/integration/t_mcp_session.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "t_websearch_mcp"
+path = "tests/manual/end-to-end/t_websearch_mcp.rs"
+required-features = ["mcp"]

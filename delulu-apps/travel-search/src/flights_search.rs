@@ -68,7 +68,7 @@ impl GoogleFlightsClient {
         let response = self
             .crawler
             .get(url)
-            .with_headers(vec![("Cookie".to_string(), cookie_header)])
+            .merge_with_headers(vec![("Cookie".to_string(), cookie_header)])
             .with_exponential_retry(1)
             .send()
             .await;

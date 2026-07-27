@@ -20,6 +20,7 @@ fn test_builder_chained_settings_preserved() {
         .with_qps(50)
         .with_burst(5)
         .with_max_domains(256)
+        .with_http2()
         .build()
         .expect("CrawlerBuilder::build() should succeed");
     assert_eq!(crawler.qps, 50);

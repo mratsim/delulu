@@ -1,0 +1,323 @@
+//!  Delulu Web Search
+//!
+//!  Copyright (C) 2026  Mamy Ratsimbazafy
+//!
+//!  This program is free software: you can redistribute it and/or modify
+//!  it under the terms of the GNU Affero General Public License as published by
+//!  the Free Software Foundation, either version 3 of the License, or
+//!  (at your option) any later version.
+//!
+//!  This program is distributed in the hope that it will be useful,
+//!  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//!  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//!  GNU Affero General Public License for more details.
+//!
+//!  You should have received a copy of the GNU Affero General Public License
+//!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Thread-safe session cache for pagination state.
+//!
+//! Stores pagination state keyed by `SessionKey`, with TTL-based lazy
+//! eviction, capacity limits enforced via a `BinaryHeap` for O(log n)
+//! eviction, and continuation updates.
+//!
+//! # Pure Domain Type
+//! `SessionCache` is a **pure domain type** (inner hexagon). It does NOT
+//! call `Utc::now()`, `Instant::now()`, or `getrandom` internally.
+//! All time values and random IDs are **injected by the caller** (CLI
+//! or MCP boundary), making the cache fully deterministic and testable.
+//!
+//! # Eviction Strategy
+//! A `BinaryHeap<Reverse<(Instant, SessionKey)>>` (min-heap) keeps the
+//! oldest-expiring entry at the top for O(log n) eviction. Expired
+//! entries are eagerly removed via `evict_expired()` at the start of
+//! every write operation — no stale entries accumulate.
+//!
+//! # Precondition
+//! - `capacity` MUST be > 0 (otherwise every store self-evicts).
+//!
+//! # Postcondition
+//! - All public methods are thread-safe (use `std::sync::RwLock` internally).
+//! - `SessionEntry` is NOT `Serialize` — `Box<dyn Continuation>` is not serializable.
+//!
+//! # Continuation Storage
+//! Continuations are stored internally as `Arc<dyn Continuation>` to allow
+//! `get()` to return a cloned `Arc` without ownership issues. The public
+//! methods `store()` and `update_continuation()` accept `Box<dyn Continuation>`,
+//! which is converted to `Arc` internally. Callers of `get()` receive an
+//! `Arc<dyn Continuation>` that shares ownership with the cache entry.
+//! - No poisoning: `parking_lot::RwLock` does not poison on panic.
+//!
+//! # Eviction Flow
+//!
+//! ```text
+//! store() or update_continuation() called
+//!          |
+//!          v
+//!   evict_expired(now)
+//!          |
+//!          v
+//!   +-----------------+
+//!   | Pop min-heap top |<------ while expires_at < now
+//!   +--------+--------+
+//!            |
+//!            v
+//!   +----------------------+
+//!   | Check map entry      |
+//!   | expires_at vs now    |
+//!   +--------+-------------+
+//!            |
+//!       +----+----+
+//!       |         |
+//!       v         v
+//!  map > now  map <= now
+//!       |         |
+//!       v         v
+//!  Re-push    Remove from
+//!  to heap    map + heap
+//! ```
+//!
+
+use parking_lot::RwLock;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use crate::SessionKey;
+use crate::engine::{Continuation, EngineId, SearchParams};
+use crate::error::WebsearchError;
+
+/// A single session entry in the cache.
+///
+/// This struct does NOT derive `Serialize` because `Box<dyn Continuation>`
+/// is not serializable. Serialization happens at the MCP boundary via
+/// per-concrete-type serde derives.
+///
+/// The `continuation` field uses `Arc<dyn Continuation>` so that `get()` can
+/// return a cloned `Arc` sharing ownership with the cached entry.
+pub struct SessionEntry {
+    /// The engine used for this search session.
+    pub engine: EngineId,
+    /// The search query.
+    pub query: String,
+    /// The search parameters.
+    pub params: SearchParams,
+    /// The continuation token for pagination.
+    pub continuation: Option<Arc<dyn Continuation>>,
+    /// The time at which this entry expires and should be evicted.
+    pub(crate) expires_at: Instant,
+}
+
+/// Internal data behind the single RwLock.
+struct CacheInner {
+    entries: HashMap<SessionKey, SessionEntry>,
+    /// Min-heap of `(expires_at, SessionKey)` for O(log n) eviction.
+    /// Always consistent with `entries` -- every key in the heap has a
+    /// corresponding entry in the map.
+    expiry_heap: BinaryHeap<Reverse<(Instant, SessionKey)>>,
+}
+
+/// Thread-safe session cache for pagination state.
+///
+/// Entries are keyed directly by `SessionKey` (which hashes by its 8-byte
+/// random ID). Expired entries are eagerly evicted at the start of `store()`
+/// and `update_continuation()` via `evict_expired_inner()`, and also checked
+/// lazily on `get()`.
+///
+/// Capacity enforcement uses a `BinaryHeap` (min-heap) of `(Instant, SessionKey)`
+/// keyed by expiry time, providing O(log n) eviction cost.
+///
+/// # Thread Safety
+/// - Uses a single `parking_lot::RwLock` wrapping both `entries` and `expiry_heap`.
+///   This eliminates the dual-lock deadlock risk (both fields are always
+///   accessed together).
+/// - All public methods take `&self` (not `&mut self`).
+/// - `parking_lot::RwLock`: no poisoning on panic.
+pub struct SessionCache {
+    inner: RwLock<CacheInner>,
+    capacity: usize,
+    ttl: Duration,
+}
+
+impl SessionCache {
+    /// Create a new session cache with the given capacity and TTL.
+    ///
+    /// # Panics
+    /// - Panics if `capacity` is 0.
+    pub fn new(capacity: usize, ttl: Duration) -> Self {
+        assert!(capacity > 0, "SessionCache capacity must be > 0");
+        Self {
+            inner: RwLock::new(CacheInner {
+                entries: HashMap::new(),
+                expiry_heap: BinaryHeap::new(),
+            }),
+            capacity,
+            ttl,
+        }
+    }
+
+    /// Internal eviction helper — operates on the unlocked inner data.
+    /// Must be called while holding the write lock on `self.inner`.
+    fn evict_expired_inner(inner: &mut CacheInner, now: Instant) {
+        // Pop expired entries from the min-heap.
+        // Min-heap guarantee: if the top is not expired, nothing below is.
+        while let Some(Reverse((expires_at, _))) = inner.expiry_heap.peek() {
+            if *expires_at >= now {
+                break;
+            }
+            let Reverse((_, key)) = inner.expiry_heap.pop().unwrap();
+            match inner.entries.get(&key) {
+                Some(entry) if entry.expires_at > now => {
+                    // Entry was refreshed and is still valid.
+                    // Re-push with correct expiry so it remains evictable.
+                    inner.expiry_heap.push(Reverse((entry.expires_at, key)));
+                }
+                _ => {
+                    // Entry genuinely expired (or was already removed).
+                    inner.entries.remove(&key);
+                }
+            }
+        }
+    }
+
+    /// Eagerly evict all expired entries from the cache.
+    ///
+    /// Acquires the write lock and delegates to `evict_expired_inner`.
+    pub fn evict_expired(&self, now: Instant) {
+        let mut inner = self.inner.write();
+        Self::evict_expired_inner(&mut inner, now);
+    }
+
+    /// Store a new session entry in the cache.
+    ///
+    /// Takes `now` and `random_id` as parameters (pure function — no IO).
+    /// The caller (CLI or MCP boundary) is responsible for providing the
+    /// current time and cryptographically random bytes.
+    ///
+    /// Sets `expires_at = now + ttl`.
+    ///
+    /// Calls `evict_expired(now)` at the start to remove any zombie entries.
+    ///
+    /// If the cache is at capacity, evicts the entry with the earliest
+    /// `expires_at` before inserting (O(log n) via min-heap).
+    ///
+    /// Returns the generated `SessionKey`.
+    pub fn store(
+        &self,
+        engine: EngineId,
+        query: &str,
+        params: SearchParams,
+        continuation: Option<Box<dyn Continuation>>,
+        now: Instant,
+        random_id: [u8; 8],
+    ) -> SessionKey {
+        let mut inner = self.inner.write();
+        Self::evict_expired_inner(&mut inner, now);
+
+        let key = SessionKey::new(engine, random_id);
+        let expires_at = now + self.ttl;
+
+        // Evict oldest-expiring entry if at capacity.
+        // Discard stale heap entries (keys no longer in the map or with stale
+        // expiries from update_continuation) until we find a valid entry.
+        while inner.entries.len() >= self.capacity
+            && let Some(Reverse((heap_expires_at, oldest_key))) = inner.expiry_heap.pop()
+        {
+            // Check if the entry is still in the map and has a matching expiry.
+            // Use .map() to extract the Instant (Copy) and avoid borrow conflicts.
+            match inner.entries.get(&oldest_key).map(|e| e.expires_at) {
+                Some(map_expires_at) if map_expires_at != heap_expires_at => {
+                    // Stale heap expiry — entry was refreshed via update_continuation.
+                    // Re-push with the map's current expiry.
+                    inner
+                        .expiry_heap
+                        .push(Reverse((map_expires_at, oldest_key)));
+                }
+                Some(_) => {
+                    // Valid entry — evict it.
+                    inner.entries.remove(&oldest_key);
+                    break;
+                }
+                None => {
+                    // Stale heap entry (key already removed from map) — skip.
+                }
+            }
+        }
+
+        inner.expiry_heap.push(Reverse((expires_at, key.clone())));
+        inner.entries.insert(
+            key.clone(),
+            SessionEntry {
+                engine,
+                query: query.to_string(),
+                params,
+                continuation: continuation.map(Arc::from),
+                expires_at,
+            },
+        );
+
+        key
+    }
+    /// Retrieve a session entry by key.
+    ///
+    /// Returns `None` if the key is not found or the entry has expired
+    /// (lazy eviction — expired entries are NOT removed here. They are cleaned
+    /// up on the next `store()` or `update_continuation()` via `evict_expired_inner()`.
+    ///
+    /// The returned entry contains a cloned `Arc<dyn Continuation>` that
+    /// shares ownership with the cached entry. The continuation can be
+    /// downcast via `as_any()` on the `Arc`.
+    pub fn get(&self, key: &SessionKey, now: Instant) -> Option<SessionEntry> {
+        let inner = self.inner.read();
+        let entry = inner.entries.get(key)?;
+
+        if entry.expires_at < now {
+            return None;
+        }
+
+        Some(SessionEntry {
+            engine: entry.engine,
+            query: entry.query.clone(),
+            params: entry.params.clone(),
+            continuation: entry.continuation.clone(),
+            expires_at: entry.expires_at,
+        })
+    }
+
+    /// Update the continuation for an existing session.
+    ///
+    /// Calls `evict_expired(now)` at the start to remove any zombie entries.
+    ///
+    /// Refreshes `expires_at` to `now + ttl`.
+    ///
+    /// Returns `Err(WebsearchError::SessionNotFound)` if the key doesn't
+    /// exist or the entry has expired.
+    pub fn update_continuation(
+        &self,
+        key: &SessionKey,
+        continuation: Option<Box<dyn Continuation>>,
+        now: Instant,
+    ) -> Result<(), WebsearchError> {
+        let mut inner = self.inner.write();
+        Self::evict_expired_inner(&mut inner, now);
+
+        let entry = inner
+            .entries
+            .get_mut(key)
+            .ok_or(WebsearchError::SessionNotFound)?;
+
+        entry.continuation = continuation.map(Arc::from);
+        entry.expires_at = now + self.ttl;
+
+        // No heap push needed -- the original heap entry from store() is
+        // sufficient. evict_expired_inner will re-push with the correct expiry
+        // when it pops the stale entry and finds the map entry still valid.
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/session_cache_test.rs"]
+mod session_cache_test;

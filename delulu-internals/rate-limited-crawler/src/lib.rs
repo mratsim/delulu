@@ -66,10 +66,17 @@ impl RateLimitedCrawler {
         let parsed = Url::parse(url).map_err(CrawlerError::UrlParse)?;
         let queue = self.domain_queue(&parsed)?;
         queue.acquire().await;
-        let mut req = self.client.get(url);
+        // Build a HeaderMap with insert (not append) so later headers
+        // override earlier ones. This makes merge_with_headers() override
+        // any overlapping headers set by the client-level emulation.
+        let mut map = http::HeaderMap::new();
         for (name, value) in headers {
-            req = req.header(name.as_str(), value.as_str());
+            map.insert(
+                http::HeaderName::from_bytes(name.as_bytes()).expect("valid header name"),
+                value.parse().expect("valid header value"),
+            );
         }
+        let req = self.client.get(url).headers(map);
         let resp = req.send().await.map_err(CrawlerError::Http)?;
 
         // Check Content-Length against max_resp_size for early rejection
@@ -212,6 +219,13 @@ impl CrawlerBuilder {
         self
     }
 
+    /// Enable HTTP/2 for the underlying wreq client.
+    pub fn with_http2(mut self) -> Self {
+        let builder = self.client_builder.unwrap_or_else(wreq::Client::builder);
+        let opts = wreq::http2::Http2Options::builder().build();
+        self.client_builder = Some(builder.http2_options(opts));
+        self
+    }
     pub fn with_qps(mut self, qps: u64) -> Self {
         self.qps = qps;
         self
@@ -272,8 +286,11 @@ pub struct GetBuilder<'a> {
 }
 
 impl GetBuilder<'_> {
-    pub fn with_headers(mut self, headers: Vec<(String, String)>) -> Self {
-        self.headers = headers;
+    /// Extend the request headers with the given pairs.
+    /// Later headers with the same name override earlier ones (insert semantics, not append).
+    /// This allows callers to override any headers set by the client-level emulation profile.
+    pub fn merge_with_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.headers.extend(headers);
         self
     }
 
