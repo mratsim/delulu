@@ -207,15 +207,36 @@ fn is_leap_year_400() {
 // ---- build_djs_url tests ----
 
 #[test]
-fn build_djs_url_path_only() {
-    let url = DuckDuckGoEngine::build_djs_url("/d.js?q=test&vqd=abc");
+fn build_djs_url_from_token_relative_path() {
+    // n_token is always a relative path from the d.js response "n" field.
+    let url = DuckDuckGoEngine::build_djs_url_from_token("/d.js?q=test&vqd=abc");
     assert_eq!(url, "https://links.duckduckgo.com/d.js?q=test&vqd=abc");
 }
 
 #[test]
-fn build_djs_url_full_url() {
-    let url = DuckDuckGoEngine::build_djs_url("https://links.duckduckgo.com/d.js?q=test&vqd=abc");
+fn build_djs_url_from_preload_absolute_url() {
+    // deep_preload_link from HTML is always an absolute URL.
+    let url = DuckDuckGoEngine::build_djs_url_from_preload(
+        "https://links.duckduckgo.com/d.js?q=test&vqd=abc",
+    ).expect("absolute URL should be accepted");
     assert_eq!(url, "https://links.duckduckgo.com/d.js?q=test&vqd=abc");
+}
+
+#[test]
+fn build_djs_url_from_preload_rejects_relative() {
+    let err = DuckDuckGoEngine::build_djs_url_from_preload("/d.js?q=test")
+        .unwrap_err();
+    assert!(matches!(err, WebsearchError::ContinuationInvalidValue { .. }));
+}
+
+
+#[test]
+#[should_panic(expected = "n_token should be a relative path")]
+fn build_djs_url_from_token_rejects_absolute() {
+    // n_token must be a relative path; absolute URLs should be rejected.
+    DuckDuckGoEngine::build_djs_url_from_token(
+        "https://links.duckduckgo.com/d.js?q=test&vqd=abc",
+    );
 }
 
 // ---- NEW TESTS for extract_djs_url ----

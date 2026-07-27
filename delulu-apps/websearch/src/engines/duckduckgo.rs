@@ -134,16 +134,37 @@ impl DuckDuckGoEngine {
         url
     }
 
-    /// Build the d.js URL with offset for pagination.
-    /// Use the d.js URL from the preload link AS-IS.
-    /// The preload link is a fully signed URL with a `dp` token.
-    /// Modifying it (adding params, changing query) breaks the signature.
-    pub fn build_djs_url(djs_path: &str) -> String {
-        if djs_path.starts_with("https://") {
-            djs_path.to_string()
+    /// Build the d.js URL from the `deep_preload_link` href extracted from the
+    /// initial HTML page.
+    ///
+    /// The preload link from DDG is always an absolute URL like
+    /// `https://links.duckduckgo.com/d.js?q=...&dp=...`. It is a fully signed URL
+    /// with a `dp` token — modifying it breaks the signature.
+    /// # Errors
+    /// Returns `WebsearchError::ContinuationInvalidValue` if `href` is not an
+    /// absolute HTTP(S) URL, preventing SSRF and malformed URL injection.
+    pub fn build_djs_url_from_preload(href: &str) -> Result<String, WebsearchError> {
+        if href.starts_with("https://") || href.starts_with("http://") {
+            Ok(href.to_string())
         } else {
-            format!("https://links.duckduckgo.com{}", djs_path)
+            Err(WebsearchError::ContinuationInvalidValue {
+                reason: "deep_preload_link must be an absolute URL"
+            })
         }
+    }
+
+    /// Build the d.js URL from a continuation n_token.
+    ///
+    /// The n_token from DDG's d.js response is always a relative path like
+    /// `/d.js?q=...&s=20`. The n_token has already been validated by
+    /// `validate_n_token()` before reaching this function (no `:` allowed),
+    /// so the assert below only fires on programming errors.
+    pub fn build_djs_url_from_token(n_token: &str) -> String {
+        debug_assert!(
+            !n_token.starts_with("https://") && !n_token.starts_with("http://"),
+            "n_token should be a relative path, got: {n_token}"
+        );
+        format!("https://links.duckduckgo.com{n_token}")
     }
 
     /// Extract the deep_preload_link (d.js URL) from the initial HTML page.
@@ -441,7 +462,7 @@ impl Engine for DuckDuckGoEngine {
                 };
 
                 // Step 2: Fetch the d.js URL (use the signed URL as-is, don't modify)
-                djs_url = Self::build_djs_url(&djs_path);
+                djs_url = Self::build_djs_url_from_preload(&djs_path)?;
                 djs_start = Instant::now();
 
                 debug!("DuckDuckGo: fetching d.js (query hidden, status=?, duration=?)");
@@ -461,7 +482,7 @@ impl Engine for DuckDuckGoEngine {
                     });
                 }
                 // Use the n_token as a direct URL path
-                djs_url = Self::build_djs_url(&ddg_cont.n_token);
+                djs_url = Self::build_djs_url_from_token(&ddg_cont.n_token);
                 djs_start = Instant::now();
 
                 debug!(
