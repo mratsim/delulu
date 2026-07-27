@@ -218,11 +218,29 @@ impl SessionCache {
         let key = SessionKey::new(engine, random_id);
         let expires_at = now + self.ttl;
 
-        // Evict oldest-expiring entry if at capacity
-        if inner.entries.len() >= self.capacity
-            && let Some(Reverse((_, oldest_key))) = inner.expiry_heap.pop()
+        // Evict oldest-expiring entry if at capacity.
+        // Discard stale heap entries (keys no longer in the map or with stale
+        // expiries from update_continuation) until we find a valid entry.
+        while inner.entries.len() >= self.capacity
+            && let Some(Reverse((heap_expires_at, oldest_key))) = inner.expiry_heap.pop()
         {
-            inner.entries.remove(&oldest_key);
+            // Check if the entry is still in the map and has a matching expiry.
+            // Use .map() to extract the Instant (Copy) and avoid borrow conflicts.
+            match inner.entries.get(&oldest_key).map(|e| e.expires_at) {
+                Some(map_expires_at) if map_expires_at != heap_expires_at => {
+                    // Stale heap expiry — entry was refreshed via update_continuation.
+                    // Re-push with the map's current expiry.
+                    inner.expiry_heap.push(Reverse((map_expires_at, oldest_key)));
+                }
+                Some(_) => {
+                    // Valid entry — evict it.
+                    inner.entries.remove(&oldest_key);
+                    break;
+                }
+                None => {
+                    // Stale heap entry (key already removed from map) — skip.
+                }
+            }
         }
 
         inner.expiry_heap.push(Reverse((expires_at, key.clone())));

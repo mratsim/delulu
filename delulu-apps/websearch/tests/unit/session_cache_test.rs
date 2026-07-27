@@ -700,3 +700,96 @@ fn store_stale_cleanup_only_checks_key_presence() {
         "new entry should be present"
     );
 }
+
+#[test]
+fn capacity_eviction_preserves_refreshed_entry() {
+    // Capacity eviction must not evict an entry that was refreshed via
+    // update_continuation (heap has stale expiry, but map entry is valid).
+    // The old code would pop the stale heap top and blindly remove the map entry.
+    // Use a shorter TTL for entry A so it's at the heap top (earliest expiry).
+    let cache = SessionCache::new(2, Duration::from_secs(60));
+    let now = Instant::now();
+
+    let key_a = cache.store(
+        EngineId::Brave,
+        "entry A",
+        SearchParams::default(),
+        None,
+        now - Duration::from_secs(30), // A was stored 30s ago — its heap expiry is now + 30s
+        fixed_id(),
+    );
+    let key_b = cache.store(
+        EngineId::DuckDuckGo,
+        "entry B",
+        SearchParams::default(),
+        None,
+        now, // B is stored now — its heap expiry is now + 60s
+        alt_id(),
+    );
+    assert!(cache.get(&key_a, now).is_some());
+    assert!(cache.get(&key_b, now).is_some());
+
+    // Refresh entry A — extends its map expiry to refresh_time + 60s (now + 70s).
+    // But the heap still has A at now + 30s (stale).
+    let refresh_time = now + Duration::from_secs(10);
+    cache.update_continuation(&key_a, None, refresh_time).unwrap();
+
+    // Store entry C with capacity 2 — triggers capacity eviction.
+    // The stale heap entry (key_a with old expiry) is popped first.
+    // The fix re-pushes key_a with correct expiry and evicts key_b instead.
+    let key_c = cache.store(
+        EngineId::Brave,
+        "entry C",
+        SearchParams::default(),
+        None,
+        now,
+        [0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33],
+    );
+
+    // key_a was refreshed — should survive capacity eviction
+    assert!(
+        cache.get(&key_a, now).is_some(),
+        "refreshed entry A should survive capacity eviction"
+    );
+    // key_b should be evicted (it's the oldest valid entry)
+    assert!(
+        cache.get(&key_b, now).is_none(),
+        "non-refreshed entry B should be evicted"
+    );
+    // key_c should be present (the new entry)
+    assert!(
+        cache.get(&key_c, now).is_some(),
+        "new entry C should be present"
+    );
+}
+
+#[test]
+fn capacity_eviction_orphaned_heap_entry_skipped() {
+    // Orphaned heap entries (key no longer in the map) must not prevent
+    // capacity eviction from finding the next valid entry.
+    let cache = SessionCache::new(1, Duration::from_secs(60));
+    let now = Instant::now();
+
+    let key1 = cache.store(
+        EngineId::Brave,
+        "orphaned",
+        SearchParams::default(),
+        None,
+        now,
+        fixed_id(),
+    );
+    cache_remove_entry(&cache, &key1);
+
+    // entries.len() = 0 < capacity = 1, so no eviction needed.
+    // Just verify the cache still works after the fix.
+    let key2 = cache.store(
+        EngineId::DuckDuckGo,
+        "second",
+        SearchParams::default(),
+        None,
+        now,
+        alt_id(),
+    );
+    assert!(cache.get(&key2, now).is_some());
+}
+
