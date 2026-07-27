@@ -9,7 +9,7 @@
 //! # Batch with custom fixture directory
 //! DIAG_ARGS="batch --fixtures-dir /path/to/fixtures" cargo test --release --test diag_tf_pipeline -- --nocapture --ignored
 //!
-//! # Deep-dive into a single test case (skeleton — not yet implemented)
+//! # Deep-dive into a single test case
 //! DIAG_ARGS="deep-dive <fixture-name>" cargo test --release --test diag_tf_pipeline -- --nocapture --ignored
 //! ```
 //!
@@ -37,7 +37,7 @@ use delulu_webfetch::pipelines::trafilatura::filter_trafilatura;
 mod test_utils;
 
 use test_utils::{
-    classify_output, compute_confusion_matrix, fixture_dir,
+    classify_output, compute_confusion_matrix, first_diff_position, fixture_dir,
     normalize_output, tf_count_text_chars, Classification,
 };
 
@@ -229,14 +229,104 @@ fn run_batch(fixtures_arg: &Option<PathBuf>) {
     eprintln!("================================================================");
 }
 
-// ---------------------------------------------------------------------------
-// Deep-dive mode (skeleton)
-// ---------------------------------------------------------------------------
+fn run_deep_dive(case_name: &str, fixtures_arg: &Option<PathBuf>) {
+    let dir = if let Some(d) = fixtures_arg {
+        d.clone()
+    } else {
+        fixture_dir()
+    };
 
-fn run_deep_dive(case_name: &str, _fixtures_arg: &Option<PathBuf>) {
-    eprintln!("Deep-dive mode for '{case_name}' is not yet implemented.");
-    eprintln!("This will be implemented in a future phase to provide detailed");
-    eprintln!("per-pass breakdown, intermediate DOM states, and diff output.");
+    let case_dir = dir.join(case_name);
+    if !case_dir.exists() {
+        eprintln!("Fixture '{}' not found in {:?}", case_name, dir);
+        eprintln!("Available fixtures:");
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    eprintln!("  - {}", entry.file_name().to_string_lossy());
+                }
+            }
+        }
+        return;
+    }
+
+    eprintln!("================================================================");
+    eprintln!("  DEEP-DIVE: {case_name}");
+    eprintln!("================================================================");
+    eprintln!();
+
+    // Load fixture
+    let (root, expected_md, annotations) = test_utils::load_test_case_tf(case_name);
+    let mut nodes = root;
+    filter_trafilatura(&mut nodes);
+
+    // Convert to markdown and normalize
+    let output_md = MarkdownLowerer::lower(&nodes, None);
+    let norm_output = normalize_output(&output_md);
+    let norm_expected = normalize_output(&expected_md);
+
+    let out_len = norm_output.len();
+    let exp_len = norm_expected.len();
+    let ratio = if exp_len > 0 {
+        out_len as f64 / exp_len as f64
+    } else {
+        0.0
+    };
+    let classification = classify_output(out_len, exp_len);
+
+    // ── Section 1: Output vs Expected Length ───────────────────────────
+    eprintln!("---");
+    eprintln!("  Output length:   {out_len}");
+    eprintln!("  Expected length: {exp_len}");
+    eprintln!("  Ratio:           {ratio:.4}");
+    eprintln!();
+
+    // ── Section 2: Classification ──────────────────────────────────────
+    eprintln!("---");
+    eprintln!("  Classification:  {classification}");
+    eprintln!();
+
+    // ── Section 3: Confusion Matrix ────────────────────────────────────
+    eprintln!("---");
+    if let Some(ref ann) = annotations {
+        let cm = compute_confusion_matrix(&norm_output, &norm_expected, ann);
+        eprintln!("  Confusion Matrix:");
+        eprintln!("    True Positives:     {:>4}", cm.tp);
+        eprintln!("    False Positives:    {:>4}", cm.fp);
+        eprintln!("    True Negatives:     {:>4}", cm.tn);
+        eprintln!("    False Negatives:    {:>4}", cm.fn_);
+        eprintln!("    Precision:          {:.4}", cm.precision());
+        eprintln!("    Recall:             {:.4}", cm.recall());
+        eprintln!("    Accuracy:           {:.4}", cm.accuracy());
+        eprintln!("    F1 Score:           {:.4}", cm.f1());
+    } else {
+        eprintln!("  No annotations available for confusion matrix.");
+    }
+    eprintln!();
+
+    // ── Section 4: First Difference ────────────────────────────────────
+    eprintln!("---");
+    eprintln!("  First Difference:");
+    if let Some((pos, before, after)) = first_diff_position(&norm_output, &norm_expected) {
+        eprintln!("    Position: {pos}");
+        eprintln!("    Context before: ...{before}");
+        eprintln!("    Context after:  {after}...");
+    } else {
+        eprintln!("    None — outputs are identical.");
+    }
+    eprintln!();
+
+    // ── Annotations Summary ───────────────────────────────────────────
+    eprintln!("---");
+    if let Some(ref ann) = annotations {
+        eprintln!("  Annotations:");
+        eprintln!("    with[]:    {} patterns", ann.with.len());
+        eprintln!("    without[]: {} patterns", ann.without.len());
+    } else {
+        eprintln!("  No annotations file found.");
+    }
+    eprintln!();
+    eprintln!("================================================================");
 }
 
 // ---------------------------------------------------------------------------

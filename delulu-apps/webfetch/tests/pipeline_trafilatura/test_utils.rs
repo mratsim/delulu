@@ -325,6 +325,39 @@ pub fn normalize_output(text: &str) -> String {
     result.trim().to_string()
 }
 
+
+/// Find the first character position where two strings differ,
+/// with surrounding context window.
+/// Returns `(pos, context_before, context_after)` where pos is the
+/// character index of the first difference, or None if strings are identical.
+pub fn first_diff_position(a: &str, b: &str) -> Option<(usize, String, String)> {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+
+    let min_len = a_chars.len().min(b_chars.len());
+    for i in 0..min_len {
+        if a_chars[i] != b_chars[i] {
+            let ctx_start = i.saturating_sub(40);
+            let ctx_end = (i + 40).min(a_chars.len());
+            let before: String = a_chars[ctx_start..i].iter().collect();
+            let after: String = a_chars[i..ctx_end].iter().collect();
+            return Some((i, before, after));
+        }
+    }
+
+    // One string is a prefix of the other
+    if a_chars.len() != b_chars.len() {
+        let pos = min_len;
+        let ctx_start = pos.saturating_sub(40);
+        let ctx_end = (pos + 40).min(a_chars.len().max(b_chars.len()));
+        let longer = if a_chars.len() > b_chars.len() { &a_chars } else { &b_chars };
+        let before: String = longer[ctx_start..pos].iter().collect();
+        let after: String = longer[pos..ctx_end].iter().collect();
+        return Some((pos, before, after));
+    }
+
+    None
+}
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -569,5 +602,32 @@ mod tests {
         let composed = "\u{00e9}"; // é in NFC
         let decomposed = "e\u{0301}"; // é in NFD
         assert_eq!(normalize_output(composed), normalize_output(decomposed));
+    }
+
+    // ── first_diff_position ───────────────────────────────────────────────
+
+    #[test]
+    fn first_diff_position_identical() {
+        assert_eq!(first_diff_position("hello", "hello"), None);
+    }
+
+    #[test]
+    fn first_diff_position_differs() {
+        let (pos, _before, after) = first_diff_position("hello", "hxllo").unwrap();
+        assert_eq!(pos, 1);
+        assert!(after.starts_with("x"));
+    }
+
+    #[test]
+    fn first_diff_position_prefix() {
+        let (pos, ..) = first_diff_position("hello", "hello world").unwrap();
+        assert_eq!(pos, 5);
+    }
+
+    #[test]
+    fn first_diff_position_empty() {
+        assert!(first_diff_position("", "a").is_some());
+        assert!(first_diff_position("a", "").is_some());
+        assert_eq!(first_diff_position("", ""), None);
     }
 }
