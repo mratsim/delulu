@@ -1,0 +1,10 @@
+{
+  "with": [
+    "Given a set of high-dimensional objects",
+    "Herein a heavy-tailed Student t-distribution"
+  ],
+  "without": [
+    "Categories:",
+    "Conditional random field"
+  ]
+}

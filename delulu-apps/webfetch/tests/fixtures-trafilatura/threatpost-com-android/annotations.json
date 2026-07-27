@@ -1,0 +1,12 @@
+{
+  "with": [
+    "These messages include links to the ransomware",
+    "using novel techniques to exfiltrate data."
+  ],
+  "without": [
+    "Share this article:",
+    "Write a comment",
+    "Notify me when new comments are added.",
+    "uses Akismet to reduce spam."
+  ]
+}

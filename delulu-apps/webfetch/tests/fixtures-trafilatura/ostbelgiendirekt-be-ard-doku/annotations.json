@@ -1,0 +1,12 @@
+{
+  "with": [
+    "Die ARD hat für ihre Mediathek",
+    "eine umfangreiche Schau mit Loriots bekanntesten Werken",
+    "Das Widget mit den ikonischen Sketch- und Cartoon-Klassikern von SWR"
+  ],
+  "without": [
+    "Populäre Artikel der letzten 7 Tage",
+    "Aktuelle Kommentare",
+    "Alles nur Satire"
+  ]
+}

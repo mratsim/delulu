@@ -40,8 +40,10 @@ use test_utils::{
     classify_output, compute_confusion_matrix, detect_backup_restore,
     detect_body_xpath_pattern, detect_retry_level, first_diff_position, fixture_dir,
     normalize_output, tf_count_text_chars, Classification,
-    time_passes,
 };
+
+#[cfg(feature = "diagnostic")]
+use test_utils::time_passes;
 
 // ---------------------------------------------------------------------------
 // Batch result

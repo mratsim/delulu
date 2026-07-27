@@ -1,0 +1,12 @@
+{
+  "with": [
+    "Der nächste Stammtisch",
+    "Mittwoch des Monats",
+    "Die Protokolle der Stammtische"
+  ],
+  "without": [
+    "Diese Seite wurde zuletzt",
+    "Werkzeuge",
+    "Benutzerkonto erstellen"
+  ]
+}

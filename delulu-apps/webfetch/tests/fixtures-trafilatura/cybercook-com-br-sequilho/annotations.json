@@ -1,0 +1,12 @@
+{
+  "with": [
+    "Todos os ingredientes",
+    "Composição nutricional da receita",
+    "Deixe secar em uma folha de papel"
+  ],
+  "without": [
+    "Geladinho de Leite em Pó e",
+    "Siga o CyberCook",
+    "Conheça os iogurtes proteicos e inclua-os na sua alimentação!"
+  ]
+}

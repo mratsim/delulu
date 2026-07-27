@@ -1,0 +1,12 @@
+{
+  "with": [
+    "Dies ist vielleicht ein Food Blog, ",
+    "Meine Gründergeschichte",
+    "Wir bei MYMARINI gehen von daher aus einer"
+  ],
+  "without": [
+    "Kategorie:",
+    "Folge mir",
+    "Hallo!"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "with": [
+    "Le chlorothalonil sera interdit",
+    "Le chlorothalonil est une substance active utilisée",
+    "Les Suisses pourraient également se prononcer sur"
+  ],
+  "without": [
+    "Avez-vous apprécié cet article?",
+    "Plus de sujets",
+    "Le canton de Berne veut interdire le chlorothalonil "
+  ]
+}

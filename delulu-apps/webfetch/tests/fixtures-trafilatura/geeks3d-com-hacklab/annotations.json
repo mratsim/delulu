@@ -1,0 +1,12 @@
+{
+  "with": [
+    "This module provides access to the BSD socket interface",
+    "Host:www.google.com",
+    "http_response_len = len(http_response)"
+  ],
+  "without": [
+    "(Demo) APP Launcher",
+    "Demos: geexlab-demopack-python3/socket/01-socket-http-request/main.xml",
+    "Your email address will not be published"
+  ]
+}

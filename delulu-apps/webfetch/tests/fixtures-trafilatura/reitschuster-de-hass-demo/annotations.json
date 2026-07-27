@@ -1,0 +1,12 @@
+{
+  "with": [
+    "Auch die Tagesschau-Verantwortlichen drehten bei",
+    "In der 20 Uhr-Ausgabe vom Sonntagabend präsentierte man",
+    "doch einen Bericht über die Großdemonstration in Essen vom Vorabend"
+  ],
+  "without": [
+    "Mein Tweet des Tages",
+    "Meine aktuellen Videos",
+    "Besuchen Sie unseren Fan-Shop!"
+  ]
+}

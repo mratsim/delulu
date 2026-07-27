@@ -1,0 +1,12 @@
+{
+  "with": [
+    "Grok sei als künstliche Intelligenz dem Buch",
+    "Per Anhalter durch die Galaxis",
+    "also dazu gedacht, fast jegliche Fragen zu beantworten und sogar selbst Fragen vorzuschlagen"
+  ],
+  "without": [
+    "NEUESTE BEITRÄGE",
+    "Widersprüchliche Daten: Tesla-Fahrer haben",
+    "laut Auswertung in USA die meisten Unfälle"
+  ]
+}

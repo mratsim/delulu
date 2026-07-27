@@ -1,0 +1,10 @@
+{
+  "with": [
+    "documentation examples rely heavily on tcp-wrappers and Stunnel",
+    "cd to the directory containing the tarball",
+    "cert = /etc/stunnel/langly_stunnel_cert.pem"
+  ],
+  "without": [
+    "Last Modified:"
+  ]
+}

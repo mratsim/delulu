@@ -1,0 +1,12 @@
+{
+  "with": [
+    "There are many ways to improve Python",
+    "complicated, there are a number of ways ",
+    "Map and filter are sometimes faster"
+  ],
+  "without": [
+    "Challenges",
+    "hello@strangemachines.io",
+    "06 December 2019"
+  ]
+}

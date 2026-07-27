@@ -1,0 +1,12 @@
+{
+  "with": [
+    "Ingo hat ja gesagt",
+    "Oder damit Petra",
+    "Äußert Vermutungen"
+  ],
+  "without": [
+    "Deine E-Mail-Adresse",
+    "Der geheimnisvolle Button",
+    "This entry was posted "
+  ]
+}

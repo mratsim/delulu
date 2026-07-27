@@ -1,0 +1,11 @@
+{
+  "with": [
+    "Es gibt verschiedene Möglichkeiten",
+    "Die Hardware für den XUM1541",
+    "Das Innenleben des Gehäuses"
+  ],
+  "without": [
+    "If not explicitly specified otherwise",
+    "cat /dev/brain/ideas >> blog"
+  ]
+}

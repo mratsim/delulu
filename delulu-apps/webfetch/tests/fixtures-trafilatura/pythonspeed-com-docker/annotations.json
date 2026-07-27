@@ -1,0 +1,12 @@
+{
+  "with": [
+    "CMD flask run exampleapp:app",
+    "The takeaway",
+    "Install dependencies separately and earlier in your Dockerfile to ensure faster builds."
+  ],
+  "without": [
+    "Learn how to build fast, production-ready Docker images—read the rest of ",
+    "You need to stay competitive in the job market—but there",
+    "Next: Elegantly activating a virtualenv in a Dockerfile"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "with": [
+    "self-contained = deployable",
+    "<config files>"
+  ],
+  "without": [
+    "21 minutes",
+    "Tags:"
+  ]
+}
