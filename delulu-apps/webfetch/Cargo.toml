@@ -43,6 +43,7 @@ rayon = "1.12"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util", "fs", "process"] }
 axum = "0.7"
 wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing", "stream"] }
+unicode-normalization = "0.1"
 
 [package.metadata.mcp]
 name = "delulu-webfetch"
@@ -62,6 +63,10 @@ required-features = ["mcp"]
 [[test]]
 name = "diag_rd_pipeline"
 path = "tests/pipeline_readability/diag_rd_pipeline.rs"
+
+[[test]]
+name = "diag_tf_pipeline"
+path = "tests/pipeline_trafilatura/diag_tf_pipeline.rs"
 
 [[test]]
 name = "t_webfetch_mcp"
