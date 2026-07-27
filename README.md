@@ -3,12 +3,19 @@
 > [!TIP]
 > _More knowing. Less guessing._
 
-Delulu will provide a suite of tools to help your LLM search and crawl the Web and API
-to give you high-quality information.
+Delulu provides a suite of **CLI tools** and **MCP (Model Context Protocol) servers** to help your LLM search, crawl, and extract high-quality information from the web and academic sources.
 
-The first tool released is a travel agent that can search on:
-- Google Flights
-- Google Hotels
+## Available Tools
+
+| App | CLI Binary | MCP Server | Description |
+|-----|-----------|------------|-------------|
+| **webfetch** | `delulu-fetch` | `delulu-webfetch-mcp` | Web content fetching, HTML→Markdown, PDF/DOCX extraction |
+| **websearch** | `delulu-websearch` | `delulu-websearch-mcp` | Multi-engine web search (DuckDuckGo, Brave) |
+| **paper-search-arxiv** | `delulu-arxiv` | `delulu-arxiv-mcp` | arXiv paper search & full-text retrieval |
+| **paper-search-iacr** | `delulu-iacr` | `delulu-iacr-mcp` | IACR ePrint (cryptography) paper search & PDF retrieval |
+| **paper-search-pubmed** | `delulu-pubmed` | `delulu-pubmed-mcp` | PubMed biomedical paper search |
+| **travel-search** | `delulu-flights`, `delulu-hotels` | `delulu-travel-mcp` | Google Flights & Hotels search |
+| **mcpify** | `delulu-mcpify` | — | Convert OpenAPI specs into MCP servers |
 
 ## Motivation
 
@@ -33,6 +40,8 @@ The first tool released is a travel agent that can search on:
 - 🐳 **Container Ready:** Docker, Podman and Docker-Compose support with prebuilt image
 - 🚀 **High Performance:** Built with Rust, Axum, and Tokio
 - ☁️ **Lightweight:** No browser, Selenium, or Playwright - direct queries via reverse-engineered Protobuf
+
+> *Currently only the travel agent (flights & hotels) has prebuilt releases. The other apps — webfetch, websearch, arXiv, IACR, PubMed, and mcpify — are available in the repository and can be built from source (see [Building from source](#-option-2-cargo-rust-users)).*
 
 ## Installation
 
