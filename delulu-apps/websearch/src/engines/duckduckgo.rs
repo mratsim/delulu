@@ -229,10 +229,6 @@ impl DuckDuckGoEngine {
                     "DuckDuckGo: rate limited on d.js (429) - retry after {:?}",
                     djs_response.headers().get("retry-after")
                 );
-                return Err(WebsearchError::HttpStatus {
-                    code: djs_status,
-                    engine: "duckduckgo",
-                });
             }
             return Err(WebsearchError::HttpStatus {
                 code: djs_status,
@@ -427,10 +423,6 @@ impl Engine for DuckDuckGoEngine {
                             "DuckDuckGo: rate limited (429) - retry after {:?}",
                             response.headers().get("retry-after")
                         );
-                        return Err(WebsearchError::HttpStatus {
-                            code: status,
-                            engine: "duckduckgo",
-                        });
                     }
                     return Err(WebsearchError::HttpStatus {
                         code: status,

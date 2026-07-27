@@ -129,33 +129,34 @@ pub async fn read_json_response(
     expected_id: Option<u64>,
 ) -> Result<Value> {
     let mut buf = [0u8; 4096];
-    let mut line_buf = String::new();
+    let mut byte_buf: Vec<u8> = Vec::new();
 
     loop {
-        line_buf.clear();
+        byte_buf.clear();
         // Read one byte at a time to build a line (newline-delimited JSON)
         loop {
             let read_result = tokio::time::timeout(timeout, stdout.read(&mut buf[..1])).await;
             match read_result {
                 Ok(Ok(0)) => break, // EOF
-                Ok(Ok(n)) if n == 0 => break,
                 Ok(Ok(_)) => {
-                    let ch = buf[0] as char;
-                    if ch == '\n' {
+                    if buf[0] == b'\n' {
                         break; // end of line
                     }
-                    line_buf.push(ch);
+                    byte_buf.push(buf[0]);
                 }
                 Ok(Err(e)) => anyhow::bail!("read error: {e}"),
                 Err(_) => anyhow::bail!("timeout reading response after {}s", timeout.as_secs()),
             }
         }
 
-        if line_buf.is_empty() {
+        if byte_buf.is_empty() {
             anyhow::bail!("Stdout closed without receiving a valid JSON-RPC response");
         }
 
-        if let Ok(response) = serde_json::from_str::<Value>(&line_buf)
+        let line = String::from_utf8(std::mem::take(&mut byte_buf))
+            .map_err(|e| anyhow::anyhow!("invalid UTF-8 in response: {e}"))?;
+
+        if let Ok(response) = serde_json::from_str::<Value>(&line)
             && let Some(obj) = response.as_object()
         {
             // Skip notifications (no "id" field)

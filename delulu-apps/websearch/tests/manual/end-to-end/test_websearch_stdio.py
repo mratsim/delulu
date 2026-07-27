@@ -63,27 +63,30 @@ async def main():
     print("Results:")
     print("=" * 60)
     tests_passed = 0
+    tests_skipped = 0
+    tests_failed = 0
     tests_total = len(results)
     for name, result in results.items():
         status = result["message"]
-        if result["passed"]:
+        print(f"  {name}: {status}")
+        if result.get("skipped", "SKIPPED" in status):
+            tests_skipped += 1
+        elif result["passed"]:
             tests_passed += 1
-            print(f"  {name}: {status}")
         else:
-            print(f"  {name}: {status}")
+            tests_failed += 1
 
     print()
-    print(f"  Passed: {tests_passed}/{tests_total}")
+    print(f"  Passed: {tests_passed}/{tests_total}, Skipped: {tests_skipped}, Failed: {tests_failed}")
     print("=" * 60)
 
     # Compute exit code
-    if tests_passed == tests_total:
-        return 0
+    if tests_failed > 0:
+        return 1
     elif tests_passed > 0:
-        # At least one test passed — some may be skipped
         return 0
     else:
-        # All tests failed or all skipped
+        # All tests skipped — eligible for retry
         print("ERROR: All tests failed or were skipped — no assertions exercised")
         return 1
 

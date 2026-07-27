@@ -52,16 +52,18 @@ fn init_tracing() {
 /// Prefers `uv` when available (handles pyproject.toml in tests/),
 /// then `python3`, then `python`.
 /// Returns the command name and any prefix args needed before the script path.
-fn find_python() -> (&'static str, Vec<&'static str>) {
+fn find_python(manifest: &std::path::Path) -> (String, Vec<String>) {
     if std::process::Command::new("uv")
         .arg("--version")
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
     {
+        let dir = manifest.join("tests/manual/end-to-end");
+        let dir_str = dir.to_string_lossy().to_string();
         (
-            "uv",
-            vec!["run", "--directory", "tests/manual/end-to-end", "python3"],
+            "uv".to_string(),
+            vec!["run".to_string(), "--directory".to_string(), dir_str, "python3".to_string()],
         )
     } else if std::process::Command::new("python3")
         .arg("--version")
@@ -69,9 +71,9 @@ fn find_python() -> (&'static str, Vec<&'static str>) {
         .map(|o| o.status.success())
         .unwrap_or(false)
     {
-        ("python3", vec![])
+        ("python3".to_string(), vec![])
     } else {
-        ("python", vec![])
+        ("python".to_string(), vec![])
     }
 }
 
@@ -255,14 +257,10 @@ async fn test_mcp_e2e_stdio() -> Result<()> {
 
     // Defensive file-exists check
     if !script.exists() {
-        eprintln!(
-            "Python test file not found — run Phase 2/3 first: {}",
-            script_str
-        );
-        return Ok(());
+        anyhow::bail!("Python test file not found — run Phase 2/3 first: {script_str}");
     }
 
-    let (python, prefix_args) = find_python();
+    let (python, prefix_args) = find_python(&manifest);
     let py_handle = tokio::task::spawn_blocking(move || {
         let mut cmd = std::process::Command::new(python);
         cmd.args(&prefix_args)
@@ -316,14 +314,10 @@ async fn test_mcp_e2e_http() -> Result<()> {
 
     // Defensive file-exists check
     if !script.exists() {
-        eprintln!(
-            "Python test file not found — run Phase 3 first: {}",
-            script_str
-        );
-        return Ok(());
+        anyhow::bail!("Python test file not found — run Phase 3 first: {script_str}");
     }
 
-    let (python, prefix_args) = find_python();
+    let (python, prefix_args) = find_python(&manifest);
     let py_handle = tokio::task::spawn_blocking(move || {
         let mut cmd = std::process::Command::new(python);
         cmd.args(&prefix_args)

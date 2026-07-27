@@ -216,7 +216,7 @@ def is_access_denied_error(result) -> bool:
 async def test_mcp_initialize(session):
     """Assert protocolVersion == PROTOCOL_VERSION."""
     try:
-        print(f"  >>> initialize()")
+        print("  >>> initialize()")
         result = await asyncio.wait_for(session.initialize(), timeout=20.0)
         actual = result.protocolVersion
         print(f"  <<< protocolVersion={actual}")
@@ -224,7 +224,7 @@ async def test_mcp_initialize(session):
             f"Expected protocolVersion={PROTOCOL_VERSION}, got {actual}"
         )
         # Step 3: Log session TTL diagnostic
-        print(f"  Session TTL: 600s (default) — test duration within limits")
+        print("  Session TTL: 600s (default) — test duration within limits")
 
         return (True, "PASSED")
     except AssertionError as e:
@@ -236,7 +236,7 @@ async def test_mcp_initialize(session):
 async def test_list_tools(session):
     """Assert tool names contain 'web_search' and 'web_search_next_page'."""
     try:
-        print(f"  >>> tools/list")
+        print("  >>> tools/list")
         tools = await asyncio.wait_for(session.list_tools(), timeout=20.0)
         tool_names = [t.name for t in tools.tools]
         print(f"  <<< tools: {tool_names}")
@@ -394,8 +394,8 @@ async def test_continuation(session):
         print(f"  <<< session_key={session_key[:20]}... has_next_page={has_next_page}")
 
         if not has_next_page:
-            print(f"  >>> web_search_next_page — SKIPPED (no next page)")
-            print(f"  WARNING: has_next_page was false — continuation test SKIPPED. ",
+            print("  >>> web_search_next_page — SKIPPED (no next page)")
+            print("  WARNING: has_next_page was false — continuation test SKIPPED. "
                   "This may indicate a session issue if this was unexpected.")
             return (True, "SKIPPED (no next page)")
 
@@ -447,12 +447,13 @@ async def test_continuation(session):
 async def run_mcp_tests(session) -> dict:
     """Run the standard MCP test suite against an initialized session.
 
-    Expects an already-initialized session (does NOT call session.initialize()).
+    The MCP ClientSession must already be connected before calling this function.
+    The suite includes test_mcp_initialize which calls session.initialize().
 
     Runs: initialize, list_tools, search_duckduckgo, search_brave, continuation.
     Each test function is wrapped with asyncio.wait_for() with 20s per-call timeout.
     Each test catches expected skips gracefully and returns a (passed, message) tuple.
-    Returns dict: {test_name: {"passed": bool, "message": str}}
+    Returns dict: {test_name: {"passed": bool, "skipped": bool, "message": str}}
 
     Minimum coverage check: if all 5 test functions report skipped (none passed),
     prints a loud warning and caller should exit with code 1.
@@ -472,13 +473,14 @@ async def run_mcp_tests(session) -> dict:
     for name, func in test_functions:
         try:
             passed, message = await func(session)
-            results[name] = {"passed": passed, "message": message}
-            if passed:
+            is_skipped = "SKIPPED" in message
+            results[name] = {"passed": passed, "skipped": is_skipped, "message": message}
+            if passed and not is_skipped:
                 any_passed = True
-            if "SKIPPED" not in message:
+            if not is_skipped:
                 all_skipped = False
         except Exception as e:
-            results[name] = {"passed": False, "message": f"FAILED: unexpected error — {e}"}
+            results[name] = {"passed": False, "skipped": False, "message": f"FAILED: unexpected error — {e}"}
 
     # Minimum coverage check
     if all_skipped and not any_passed:
