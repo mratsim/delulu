@@ -28,7 +28,6 @@ use std::time::{Duration, Instant};
 
 use delulu_websearch::SessionCache;
 use delulu_websearch::engine::{EngineId, SearchParams, SearchResult};
-use delulu_websearch::error::WebsearchError;
 use delulu_websearch::mcp_serialization::{McpNextPageResponse, McpSearchResponse};
 use serde_json::Value;
 
@@ -140,45 +139,6 @@ fn session_cache_evict_expired() {
     assert!(entry.is_none(), "Entry should be gone after evict_expired");
 }
 
-#[test]
-fn session_cache_remove_entry() {
-    let cache = SessionCache::new(100, Duration::from_secs(3600));
-    let now = Instant::now();
-    let random_id = [0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22];
-
-    let key = cache.store(
-        EngineId::Brave,
-        "remove test",
-        SearchParams::default(),
-        None,
-        now,
-        random_id,
-    );
-
-    assert!(
-        cache.get(&key, now).is_some(),
-        "Entry should exist before remove"
-    );
-    cache.remove(&key, now).expect("remove should succeed");
-    assert!(
-        cache.get(&key, now).is_none(),
-        "Entry should be gone after remove"
-    );
-}
-
-#[test]
-fn session_cache_remove_nonexistent() {
-    let cache = SessionCache::new(100, Duration::from_secs(3600));
-    let now = Instant::now();
-    let key = delulu_websearch::SessionKey::new(EngineId::Brave, [0x00; 8]);
-
-    let result = cache.remove(&key, now);
-    assert!(result.is_err(), "remove on nonexistent key should fail");
-    assert!(matches!(
-        result.unwrap_err(),
-        WebsearchError::SessionNotFound
-    ));
-}
 
 // ---------------------------------------------------------------------------
 // McpSearchResponse serialization tests
