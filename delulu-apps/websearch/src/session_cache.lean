@@ -135,7 +135,7 @@ instance : EmptyCollection SearchParams where
 -- | A session key, consisting of an engine ID and a random 8-byte numeric ID.
 -- Hash/Eq/Ord are based on `id` only (not `engine`), matching the Rust
 -- implementation where `SessionKey` derives `Hash` and `Eq` on the 8-byte random ID.
--- The Rust string format is `\"{engine}-{base58(id)}\"`.
+-- The Rust string format is `"{engine}-{base58(id)}"`.
 structure SessionKey where
   engine : EngineId
   id : Nat
@@ -200,11 +200,96 @@ def mapRemove (key : SessionKey) (l : List (SessionKey × SessionEntry))
 def mapSize (l : List (SessionKey × SessionEntry)) : Nat := l.length
 -- | Returns `true` if the key is present in the map (via `mapFind`).
 def mapContains (key : SessionKey) (l : List (SessionKey × SessionEntry)) : Bool := (mapFind key l).isSome
--- | Push an `(Instant, SessionKey)` pair onto the heap (list prepend).
--- Models `BinaryHeap.push()`.
-def heapPush (elem : Instant × SessionKey) (h : List (Instant × SessionKey)) : List (Instant × SessionKey) := elem :: h
+
+-- | Push an `(Instant, SessionKey)` pair onto the heap (sorted insert ascending by `t`).
+-- Models `BinaryHeap.push()` (min-heap).
+-- Inserts `elem` in sorted order so that the list remains non-decreasing by `t`.
+def heapPush (elem : Instant × SessionKey) (h : List (Instant × SessionKey)) : List (Instant × SessionKey) :=
+  match h with
+  | [] => [elem]
+  | (t, key) :: rest =>
+    if elem.1 ≤ t then elem :: (t, key) :: rest
+    else (t, key) :: heapPush elem rest
+
 -- | The number of elements in the heap (list length).
 def heapSize (h : List (Instant × SessionKey)) : Nat := h.length
+
+-- | Predicate: the heap is sorted in non-decreasing order by the `Instant` component.
+-- Used to justify the early-stop optimization in `evictExpiredLoop`.
+def sortedByT : List (Instant × SessionKey) → Prop
+  | [] => True
+  | [_] => True
+  | (t1, _k1) :: ((t2, _k2) :: rest) => t1 ≤ t2 ∧ sortedByT ((t2, _k2) :: rest)
+
+-- | `heapPush` adds exactly one element to the heap.
+theorem heapPush_size (e : Instant × SessionKey) (h : List (Instant × SessionKey)) :
+    heapSize (heapPush e h) = heapSize h + 1 := by
+  induction h generalizing e with
+  | nil => simp [heapPush, heapSize]
+  | cons hd tl ih =>
+    rcases hd with ⟨t, key⟩
+    unfold heapPush heapSize
+    by_cases hle : e.1 ≤ t
+    · simp [hle]
+    · have h_ih := ih e
+      unfold heapSize at h_ih
+      simp [hle, h_ih]
+
+-- | The pushed element is always in the resulting heap.
+theorem heapPush_mem (e : Instant × SessionKey) (h : List (Instant × SessionKey)) :
+    e ∈ heapPush e h := by
+  induction h generalizing e with
+  | nil => simp [heapPush]
+  | cons hd tl ih =>
+    rcases hd with ⟨t, key⟩
+    unfold heapPush
+    by_cases hle : e.1 ≤ t
+    · simp [hle]
+    · simp [hle, ih]
+
+-- | Elements already in the heap remain in the heap after `heapPush`.
+theorem heapPush_mem_of_mem (e e' : Instant × SessionKey) (h : List (Instant × SessionKey)) :
+    e' ∈ h → e' ∈ heapPush e h := by
+  intro hmem
+  induction h generalizing e with
+  | nil => simp at hmem
+  | cons hd tl ih =>
+    rcases hd with ⟨t, key⟩
+    unfold heapPush
+    by_cases hle : e.1 ≤ t
+    · simp [hle, hmem]
+    · simp [hle]
+      cases hmem with
+      | head => simp
+      | tail _ hmem_tl => simp [ih e hmem_tl]
+
+-- | If a sorted list has `(t_hd, k_hd)` as head and `(t, key)` somewhere in the tail,
+-- then `t_hd ≤ t`. Used to justify the early-stop in `evictExpiredLoop`.
+theorem sortedByT_head_le_all {t_hd : Instant} {k_hd : SessionKey} {tl : List (Instant × SessionKey)}
+    (h_sorted : sortedByT ((t_hd, k_hd) :: tl)) (h_mem : (t, key) ∈ tl) : t_hd ≤ t := by
+  induction tl generalizing t_hd k_hd t key with
+  | nil => simp at h_mem
+  | cons hd tl2 ih =>
+    rcases hd with ⟨t2, k2⟩
+    have h_sorted' : sortedByT ((t_hd, k_hd) :: (t2, k2) :: tl2) := h_sorted
+    simp [sortedByT] at h_sorted'
+    rcases h_sorted' with ⟨h_le, h_sorted_tl⟩
+    have h_cases : (t, key) = (t2, k2) ∨ (t, key) ∈ tl2 := by
+      simpa using h_mem
+    rcases h_cases with (h_eq | h_tl2)
+    · injection h_eq with h_teq _; subst h_teq; exact h_le
+    · exact Nat.le_trans h_le (ih h_sorted_tl h_tl2)
+
+-- | If `sortedByT ((t, k) :: tl)` then `sortedByT tl`.
+-- Needed to thread the sortedness invariant through inductive proofs.
+theorem sortedByT_tail {t : Instant} {k : SessionKey} {tl : List (Instant × SessionKey)}
+    (h_sorted : sortedByT ((t, k) :: tl)) : sortedByT tl := by
+  cases tl with
+  | nil => simp [sortedByT]
+  | cons hd' tl' =>
+    rcases hd' with ⟨t2, k2⟩
+    simp [sortedByT] at h_sorted ⊢
+    exact h_sorted.2
 
 -- | Invariant 1: The number of entries never exceeds the configured capacity.
 -- Formally: `mapSize c.entries <= c.capacity`.
@@ -231,13 +316,14 @@ def heapMapConsistent (c : SessionCache) : Prop :=
 
   The core eviction loop. Walks the heap list and removes expired entries.
   For each `(t, key)` in the heap:
-  - If `t >= now`, the entry is not expired; stop processing (rest of heap is preserved).
+  - If `t >= now`, the entry is not expired; stop processing (min-heap guarantee:
+    all remaining entries have `t' >= t >= now`, so no further entries are expired).
   - If `t < now`, check the map:
     * If the key is not in the map (stale heap entry), skip it.
     * If the key's map entry has `expiresAt <= now`, it is genuinely expired:
       remove it from the map and continue.
     * If the key's map entry has `expiresAt > now`, the entry was refreshed:
-      re-push the updated expiry to the heap.
+      re-push the updated expiry to the heap via `heapPush` (sorted insert).
 
   Returns `(entries', heap')` where `entries'` has no entries with `expiresAt < now`.
 
@@ -245,6 +331,7 @@ def heapMapConsistent (c : SessionCache) : Prop :=
   Here, O(k) since the heap is modeled as a list.
 
   Maintains invariant 3 (no expired entries after eviction).
+  Relies on the heap being sorted (per `sortedByT`) for the early-stop guarantee.
 -/
 def evictExpiredLoop (now : Instant)
     (entries : List (SessionKey × SessionEntry))
@@ -254,16 +341,17 @@ def evictExpiredLoop (now : Instant)
   | [] => (entries, [])
   | (t, key) :: rest =>
     if t ≥ now then
-      let (entries', heap') := evictExpiredLoop now entries rest
-      (entries', (t, key) :: heap')
+      -- Min-heap guarantee: all remaining entries have t' >= t >= now.
+      (entries, (t, key) :: rest)
     else
       match mapFind key entries with
       | none => evictExpiredLoop now entries rest
       | some entry =>
         if entry.expiresAt ≤ now then evictExpiredLoop now (mapRemove key entries) rest
         else
+          -- Re-push the refreshed expiry via heapPush (sorted insert).
           let (entries', heap') := evictExpiredLoop now entries rest
-          (entries', (entry.expiresAt, key) :: heap')
+          (entries', heapPush (entry.expiresAt, key) heap')
 
 /-
   evictExpired c now
@@ -468,7 +556,9 @@ theorem mapFind_mapRemove_same_key_none (k : SessionKey) (m : List (SessionKey �
   | nil => rfl
   | cons hd tl ih =>
     rcases hd with ⟨k', v'⟩; unfold mapRemove
-    by_cases h_eq : k'.id = k.id; simp [h_eq, mapFind, ih]; simp [h_eq, mapFind, ih]
+    by_cases h_eq : k'.id = k.id
+    · simp [h_eq, ih]
+    · simp [mapFind, h_eq, ih]
 
 -- | Removing a different key `k` does not affect `mapFind k'` when `k'.id ≠ k.id`.
 -- Proof: By induction. The removal skips entries with non-matching IDs.
@@ -483,11 +573,14 @@ theorem mapFind_mapRemove_ne_id (k k' : SessionKey) (m : List (SessionKey × Ses
     unfold mapRemove
     simp [mapFind]
     by_cases h₁ : k₁.id = k.id
-    · simp [h₁, mapFind]
+    · simp [h₁]
       by_cases h_eq' : k.id = k'.id
       · exfalso; apply h; exact h_eq'.symm
       · rw [if_neg h_eq']; exact ih
-    · simp [h₁, mapFind, ih]
+    · simp [h₁]
+      by_cases h_eq' : k₁.id = k'.id
+      · simp [mapFind, h_eq']
+      · simp [mapFind, h_eq', ih]
 
 -- | If two keys have the same `id`, removing one is equivalent to removing the other.
 -- Proof: By induction. Since `mapRemove` compares by `id`, equal IDs produce equal results.
@@ -545,19 +638,20 @@ theorem evictExpiredLoop_size_noninc (now : Instant) (entries : List (SessionKey
   | cons hd tl ih =>
     rcases hd with ⟨t, key⟩; unfold evictExpiredLoop
     by_cases ht : t ≥ now
-    · simp [ht]; exact ih entries
-    · simp [ht]; cases hfind' : mapFind key entries
-      · simp [hfind']; exact ih entries
+    · simp [ht]
+    · simp [ht]; cases hfind : mapFind key entries
+      · simp; exact ih entries
       · rename_i entry; by_cases hexp : entry.expiresAt ≤ now
-        · simp [hfind', hexp]
+        · simp [hexp]
           have h_rm : mapSize (mapRemove key entries) ≤ mapSize entries := mapRemove_size_noninc key entries
           have h_rec : mapSize (evictExpiredLoop now (mapRemove key entries) tl).1 ≤ mapSize (mapRemove key entries) := ih (mapRemove key entries)
           exact Nat.le_trans h_rec h_rm
-        · simp [hfind', hexp]; exact ih entries
+        · simp [hexp]; exact ih entries
 
 -- | `evictExpiredLoop` never increases the heap size.
 -- Proof: By induction on the heap. The heap either shrinks (expired entries popped)
--- or stays the same size (non-expired entries re-pushed, refreshed entries re-pushed).
+-- or stays the same size (non-expired entries preserved via early stop,
+-- refreshed entries re-pushed via `heapPush` which adds exactly one element).
 -- Real-world meaning: the expiry heap does not grow unboundedly during eviction.
 -- Used in `update_continuation_no_heap_growth` to show no heap growth on update.
 theorem evictExpiredLoop_heap_size_noninc (now : Instant) (entries : List (SessionKey × SessionEntry))
@@ -567,16 +661,21 @@ theorem evictExpiredLoop_heap_size_noninc (now : Instant) (entries : List (Sessi
   | cons hd tl ih =>
     rcases hd with ⟨t, key⟩; unfold evictExpiredLoop
     by_cases ht : t ≥ now
-    · simp [ht]; have h_rec : heapSize (evictExpiredLoop now entries tl).2 ≤ heapSize tl := ih entries
-      simpa [heapSize] using Nat.le_trans h_rec (by simp [heapSize])
-    · simp [ht]; cases hfind' : mapFind key entries
-      · simp [hfind']; have h_rec : heapSize (evictExpiredLoop now entries tl).2 ≤ heapSize tl := ih entries
+    · simp [ht, heapSize]
+    · simp [ht]; cases hfind : mapFind key entries
+      · simp; have h_rec : heapSize (evictExpiredLoop now entries tl).2 ≤ heapSize tl := ih entries
         simpa [heapSize] using Nat.le_trans h_rec (by simp [heapSize])
       · rename_i entry; by_cases hexp : entry.expiresAt ≤ now
-        · simp [hfind', hexp]; have h_rec : heapSize (evictExpiredLoop now (mapRemove key entries) tl).2 ≤ heapSize tl := ih (mapRemove key entries)
+        · simp [hexp]; have h_rec : heapSize (evictExpiredLoop now (mapRemove key entries) tl).2 ≤ heapSize tl := ih (mapRemove key entries)
           simpa [heapSize] using Nat.le_trans h_rec (by simp [heapSize])
-        · simp [hfind', hexp]; have h_rec : heapSize (evictExpiredLoop now entries tl).2 ≤ heapSize tl := ih entries
-          simpa [heapSize] using Nat.le_trans h_rec (by simp [heapSize])
+        · simp [hexp]
+          -- Re-push via heapPush: heapSize increases by 1 vs the recursive result,
+          -- but the original heap included (t, key), so net ≤ original.
+          have h_rec : heapSize (evictExpiredLoop now entries tl).2 ≤ heapSize tl := ih entries
+          have h_push_size : heapSize (heapPush (entry.expiresAt, key) (evictExpiredLoop now entries tl).2) =
+            heapSize (evictExpiredLoop now entries tl).2 + 1 := heapPush_size (entry.expiresAt, key) _
+          have h_heap_orig : heapSize ((t, key) :: tl) = heapSize tl + 1 := by simp [heapSize]
+          omega
 
 -- | `evictExpired` preserves the capacity invariant.
 -- Proof: `evictExpired` delegates to `evictExpiredLoop`, which never increases
@@ -608,7 +707,7 @@ theorem evictExpiredLoop_no_add (now : Instant) (entries : List (SessionKey × S
   | cons hd tl ih =>
     rcases hd with ⟨t, key'⟩; unfold evictExpiredLoop at hfind
     by_cases ht : t ≥ now
-    · simp [ht] at hfind; exact ih entries key entry hfind
+    · simp [ht] at hfind; exact hfind
     · simp [ht] at hfind
       cases hfind' : mapFind key' entries
       · simp [hfind'] at hfind; exact ih entries key entry hfind
@@ -644,6 +743,8 @@ theorem heap_keys_subset_map_keys (c : SessionCache) (h_hmc : heapMapConsistent 
   are not stale, as long as `evictExpired` is called before lookups.
 
   Preconditions:
+  - `h_sorted`: the expiry heap is sorted by expiry time.
+    This is needed to justify the early-stop optimization.
   - `h_ehe`: every entry in the map has a corresponding heap entry.
     This holds if the implementation always pushes to the heap on `store()`.
   - `h_heap_le`: for every heap entry `(t, k)`, the map entry's `expiresAt`
@@ -663,6 +764,7 @@ theorem heap_keys_subset_map_keys (c : SessionCache) (h_hmc : heapMapConsistent 
 -- `evictExpiredLoop` removes that key from the result entries.
 theorem evictExpiredLoop_removes_expired_entry (now : Instant) (entries : List (SessionKey × SessionEntry))
     (heap : List (Instant × SessionKey)) (key : SessionKey) (entry : SessionEntry) (t : Instant)
+    (h_sorted : sortedByT heap)
     (h_find : mapFind key entries = some entry) (h_mem : (t, key) ∈ heap) (h_t_lt_now : t < now)
     (h_expired : entry.expiresAt < now) :
     mapFind key (evictExpiredLoop now entries heap).1 = none :=
@@ -695,15 +797,20 @@ by
     · -- (t, key) is in the tail
       unfold evictExpiredLoop
       by_cases ht_hd_ge : t_hd ≥ now
-      · simp [ht_hd_ge]
-        exact ih entries key entry t h_find h_tl h_t_lt_now h_expired
+      · -- Short-circuit: impossible because sortedByT guarantees all elements
+        -- in tl have t >= t_hd >= now, contradicting h_t_lt_now.
+        have h_sorted_head : sortedByT ((t_hd, k_hd) :: tl) := h_sorted
+        have h_t_hd_le_t : t_hd ≤ t := sortedByT_head_le_all h_sorted_head h_tl
+        have h_t_ge_now : t ≥ now := Nat.le_trans ht_hd_ge h_t_hd_le_t
+        exact absurd h_t_ge_now (Nat.not_le_of_lt h_t_lt_now)
       · simp [ht_hd_ge]
         cases hfind' : mapFind k_hd entries
-        · simp [hfind']
-          exact ih entries key entry t h_find h_tl h_t_lt_now h_expired
+        · simp
+          have h_sorted_tl : sortedByT tl := sortedByT_tail h_sorted
+          exact ih entries key entry t h_sorted_tl h_find h_tl h_t_lt_now h_expired
         · rename_i entry_hd
           by_cases hle_hd : entry_hd.expiresAt ≤ now
-          · simp [hfind', hle_hd]
+          · simp [hle_hd]
             by_cases hkey_eq : k_hd.id = key.id
             · -- key is removed by mapRemove, so it can't survive
               have h_rm_none : mapFind key (mapRemove k_hd entries) = none := by
@@ -720,12 +827,15 @@ by
               exact h_result_none
             · have h_find_rm : mapFind key (mapRemove k_hd entries) = some entry := by
                 rw [mapFind_mapRemove_ne_id k_hd key entries (Ne.symm hkey_eq), h_find]
-              exact ih (mapRemove k_hd entries) key entry t h_find_rm h_tl h_t_lt_now h_expired
-          · simp [hfind', hle_hd]
-            exact ih entries key entry t h_find h_tl h_t_lt_now h_expired
+              have h_sorted_tl : sortedByT tl := sortedByT_tail h_sorted
+              exact ih (mapRemove k_hd entries) key entry t h_sorted_tl h_find_rm h_tl h_t_lt_now h_expired
+          · simp [hle_hd]
+            have h_sorted_tl : sortedByT tl := sortedByT_tail h_sorted
+            exact ih entries key entry t h_sorted_tl h_find h_tl h_t_lt_now h_expired
 
 -- Theorem 2
 theorem evict_expired_removes_all_expired (c : SessionCache) (now : Instant)
+    (h_sorted : sortedByT c.expiryHeap)
     (h_ehe : ∀ (k : SessionKey) (v : SessionEntry), mapFind k c.entries = some v → (∃ (t : Instant), (t, k) ∈ c.expiryHeap))
     (h_heap_le : ∀ (k : SessionKey) (v : SessionEntry) (t : Instant),
       mapFind k c.entries = some v → (t, k) ∈ c.expiryHeap → t ≤ v.expiresAt) :
@@ -746,7 +856,7 @@ by
     have h_removed : mapFind key (evictExpired c now).entries = none := by
       unfold evictExpired
       exact evictExpiredLoop_removes_expired_entry now c.entries c.expiryHeap key entry t
-        h_in_c ht h_t_lt_now h_lt
+        h_sorted h_in_c ht h_t_lt_now h_lt
     rw [h_removed] at hfind
     simp at hfind
 
@@ -774,22 +884,22 @@ theorem evict_expired_preserves_refreshed (c : SessionCache) (now : Instant)
   | cons hd tl ih =>
     rcases hd with ⟨t, key'⟩; unfold evictExpiredLoop
     by_cases ht : t ≥ now
-    · simp [ht]; let c' : SessionCache := { entries := c.entries, expiryHeap := tl, capacity := c.capacity, ttl := c.ttl }
-      have h_ih := ih c' hfind; simpa [c'] using h_ih
+    · simp [ht]; exact hfind
     · simp [ht]; by_cases hkey_eq : key'.id = key.id
       · have hfind' : mapFind key' c.entries = some entry := by rw [mapFind_eq_of_id_eq key' key hkey_eq c.entries, hfind]
-        simp [hfind', hkey_eq]; have h_not_le : ¬ entry.expiresAt ≤ now := by intro hle; exact Nat.lt_irrefl _ (Nat.lt_of_lt_of_le hfresh hle)
+        simp [hfind']
+        have h_not_le : ¬ entry.expiresAt ≤ now := by intro hle; exact Nat.lt_irrefl _ (Nat.lt_of_lt_of_le hfresh hle)
         simp [h_not_le]; let c' : SessionCache := { entries := c.entries, expiryHeap := tl, capacity := c.capacity, ttl := c.ttl }
         have h_ih := ih c' hfind; simpa [c'] using h_ih
       · cases hfind' : mapFind key' c.entries
-        · simp [hfind']; let c' : SessionCache := { entries := c.entries, expiryHeap := tl, capacity := c.capacity, ttl := c.ttl }
+        · simp; let c' : SessionCache := { entries := c.entries, expiryHeap := tl, capacity := c.capacity, ttl := c.ttl }
           have h_ih := ih c' hfind; simpa [c'] using h_ih
         · rename_i entry'; by_cases hle' : entry'.expiresAt ≤ now
-          · simp [hfind', hle']; have h_find_rm : mapFind key (mapRemove key' c.entries) = some entry := by
+          · simp [hle']; have h_find_rm : mapFind key (mapRemove key' c.entries) = some entry := by
               rw [mapFind_mapRemove_ne_id key' key c.entries (Ne.symm hkey_eq), hfind]
             let c' : SessionCache := { entries := mapRemove key' c.entries, expiryHeap := tl, capacity := c.capacity, ttl := c.ttl }
             have h_ih := ih c' h_find_rm; simpa [c'] using h_ih
-          · simp [hfind', hle']; let c' : SessionCache := { entries := c.entries, expiryHeap := tl, capacity := c.capacity, ttl := c.ttl }
+          · simp [hle']; let c' : SessionCache := { entries := c.entries, expiryHeap := tl, capacity := c.capacity, ttl := c.ttl }
             have h_ih := ih c' hfind; simpa [c'] using h_ih
 
 /-
@@ -914,39 +1024,42 @@ by
             mapFind_mapRemove_same_key_none key entries
           have h_contra := evictExpiredLoop_no_add now (mapRemove key entries) tl key entry h_survives_rm
           rw [h_rm_none] at h_contra; simp at h_contra
-        · simp [hle]
+        · -- Re-push case: key is re-inserted into heap via heapPush
+          simp [hle]
+          apply Exists.intro (entry.expiresAt)
+          apply heapPush_mem
     · -- (t, key) ∈ tl
       unfold evictExpiredLoop
       by_cases ht_ge : t_hd ≥ now
       · simp [ht_ge]
-        have h_survives_tl : mapFind key (evictExpiredLoop now entries tl).1 = some entry :=
-          by
-          unfold evictExpiredLoop at h_survives; simp [ht_ge] at h_survives; exact h_survives
-        rcases ih entries key entry t h_tl h_survives_tl with ⟨t', ht'⟩
-        exact ⟨t', by simp [ht']⟩
+        -- Short-circuit: heap unchanged, so (t, key) is still in the result heap
+        exact ⟨t, Or.inr h_tl⟩
       · simp [ht_ge]
         cases hfind' : mapFind k_hd entries
-        · simp [hfind']
+        · simp
           have h_survives_tl : mapFind key (evictExpiredLoop now entries tl).1 = some entry :=
             by
             unfold evictExpiredLoop at h_survives; simp [ht_ge, hfind'] at h_survives; exact h_survives
           rcases ih entries key entry t h_tl h_survives_tl with ⟨t', ht'⟩
-          exact ⟨t', by simp [ht']⟩
+          exact ⟨t', ht'⟩
         · rename_i entry_hd
-          simp [hfind']
+          simp
           by_cases hle : entry_hd.expiresAt ≤ now
           · simp [hle]
             have h_survives_rm : mapFind key (evictExpiredLoop now (mapRemove k_hd entries) tl).1 = some entry :=
               by
               unfold evictExpiredLoop at h_survives; simp [ht_ge, hfind', hle] at h_survives; exact h_survives
             rcases ih (mapRemove k_hd entries) key entry t h_tl h_survives_rm with ⟨t', ht'⟩
-            exact ⟨t', by simp [ht']⟩
+            exact ⟨t', ht'⟩
           · simp [hle]
             have h_survives_tl : mapFind key (evictExpiredLoop now entries tl).1 = some entry :=
               by
               unfold evictExpiredLoop at h_survives; simp [ht_ge, hfind', hle] at h_survives; exact h_survives
             rcases ih entries key entry t h_tl h_survives_tl with ⟨t', ht'⟩
-            exact ⟨t', by simp [ht']⟩
+            have h_mem' : (t', key) ∈ heapPush (entry_hd.expiresAt, k_hd) (evictExpiredLoop now entries tl).2 :=
+              heapPush_mem_of_mem (entry_hd.expiresAt, k_hd) (t', key) (evictExpiredLoop now entries tl).2 ht'
+            exact ⟨t', h_mem'⟩
+
 /-
   Theorem (main): store_preserves_capacity
   `store` preserves the capacity invariant.
