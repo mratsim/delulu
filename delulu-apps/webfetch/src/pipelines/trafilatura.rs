@@ -130,9 +130,19 @@ where
     }
 }
 
-// ---------------------------------------------------------------------------
-// Legacy backup/restore wrappers (gated behind not(use-xpath))
-// ---------------------------------------------------------------------------
+/// Macro: generate a backup/restore wrapper for a destructive pass.
+/// Recovery does full restore + re-applies tf_remove_cleaned.
+macro_rules! with_backup_wrapper {
+    ($name:ident, $pass:expr, $threshold:expr) => {
+        pub fn $name(node: &mut DomNode) {
+            with_backup(node, $pass, $threshold, |node, backup| {
+                *node = backup.clone();
+                walk_pre_mut(node, &|n| tf_remove_cleaned(n));
+            });
+        }
+    };
+}
+
 
 /// Remove unlikely candidates with backup/restore safety net.
 ///
@@ -148,17 +158,11 @@ where
 /// Reference: Trafilatura `main_extractor.py` line 710:
 ///   `tree = prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH, with_backup=True)`
 #[cfg(not(feature = "use-xpath"))]
-pub fn apply_tf_remove_unlikely_candidates_with_backup(node: &mut DomNode) {
-    with_backup(
-        node,
-        |n| walk_pre_mut(n, &|n| tf_remove_unlikely_candidates(n)),
-        5,
-        |node, backup| {
-            *node = backup.clone();
-            walk_pre_mut(node, &|n| tf_remove_cleaned(n));
-        },
-    );
-}
+with_backup_wrapper!(
+    apply_tf_remove_unlikely_candidates_with_backup,
+    |n| walk_pre_mut(n, &|n| tf_remove_unlikely_candidates(n)),
+    5
+);
 
 /// Filter by link density with backup/restore safety net.
 ///
@@ -167,17 +171,11 @@ pub fn apply_tf_remove_unlikely_candidates_with_backup(node: &mut DomNode) {
 ///
 /// Reference: Trafilatura `main_extractor.py` line 710 pattern.
 #[cfg(not(feature = "use-xpath"))]
-pub fn apply_tf_filter_by_link_density_with_backup(node: &mut DomNode) {
-    with_backup(
-        node,
-        |n| walk_pre_mut(n, &|n| tf_filter_by_link_density(n)),
-        19,
-        |node, backup| {
-            *node = backup.clone();
-            walk_pre_mut(node, &|n| tf_remove_cleaned(n));
-        },
-    );
-}
+with_backup_wrapper!(
+    apply_tf_filter_by_link_density_with_backup,
+    |n| walk_pre_mut(n, &|n| tf_filter_by_link_density(n)),
+    19
+);
 
 /// Isolate content container with backup/recovery safety net.
 ///
@@ -206,34 +204,22 @@ pub fn apply_tf_isolate_container_with_backup(node: &mut DomNode) {
 /// Pre: `node` is a valid DOM tree. The tree has been parsed and basic cleaning applied.
 /// Post: Elements matching OVERALL_DISCARD_XPATH patterns are removed. If >=80% of text is removed (threshold: 5×), the node is restored to the backup state.
 #[cfg(feature = "use-xpath")]
-pub fn apply_tf_remove_unlikely_candidates_xpath_with_backup(node: &mut DomNode) {
-    with_backup(
-        node,
-        |n| walk_pre_mut(n, &|n| tf_remove_unlikely_candidates_xpath(n)),
-        5,
-        |node, backup| {
-            *node = backup.clone();
-            walk_pre_mut(node, &|n| tf_remove_cleaned(n));
-        },
-    );
-}
+with_backup_wrapper!(
+    apply_tf_remove_unlikely_candidates_xpath_with_backup,
+    |n| walk_pre_mut(n, &|n| tf_remove_unlikely_candidates_xpath(n)),
+    5
+);
 
 /// Filter by link density with backup/restore safety net (XPath version).
 ///
 /// Pre: `node` is a valid DOM tree. Unlikely candidates have been removed.
 /// Post: Elements with link density >50% are removed. If >=95% of text is removed (threshold: 19×), the node is restored to the backup state.
 #[cfg(feature = "use-xpath")]
-pub fn apply_tf_filter_by_link_density_xpath_with_backup(node: &mut DomNode) {
-    with_backup(
-        node,
-        |n| walk_pre_mut(n, &|n| tf_filter_by_link_density(n)),
-        19,
-        |node, backup| {
-            *node = backup.clone();
-            walk_pre_mut(node, &|n| tf_remove_cleaned(n));
-        },
-    );
-}
+with_backup_wrapper!(
+    apply_tf_filter_by_link_density_xpath_with_backup,
+    |n| walk_pre_mut(n, &|n| tf_filter_by_link_density(n)),
+    19
+);
 
 /// Isolate content container with backup/recovery safety net (XPath version).
 ///
