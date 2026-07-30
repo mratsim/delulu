@@ -70,8 +70,8 @@ struct Args {
     #[arg(long)]
     raw: bool,
 
-    /// Pipeline to use: "rd" (default, Mozilla Readability) or "tf" (Trafilatura).
-    #[arg(long, default_value = "rd")]
+    /// Pipeline to use: "tf" (default, Trafilatura) or "rd" (Mozilla Readability).
+    #[arg(long, default_value = "tf")]
     pipeline: String,
 }
 
@@ -171,11 +171,11 @@ fn format_reddit_comment(out: &mut String, comment: &RedditComment, depth: u32) 
 /// Select pipeline based on CLI argument.
 fn select_pipeline(name: &str) -> &'static [delulu_webfetch::pipelines::PassFn] {
     match name {
-        "rd" | "" => &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
-        "tf" => &[delulu_webfetch::pipelines::trafilatura::filter_trafilatura],
+        "tf" | "" => &[delulu_webfetch::pipelines::trafilatura::filter_trafilatura],
+        "rd" => &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
         _ => {
             tracing::warn!("unknown pipeline '{}', falling back to default", name);
-            &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability]
+            &[delulu_webfetch::pipelines::trafilatura::filter_trafilatura]
         }
     }
 }

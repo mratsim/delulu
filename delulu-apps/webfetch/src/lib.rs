@@ -223,7 +223,7 @@ pub async fn extract(
     fetch_and_extract(
         url,
         crawler,
-        &[crate::pipelines::mozilla_readability::filter_mozilla_readability],
+        &[crate::pipelines::trafilatura::filter_trafilatura],
     )
     .await
 }
