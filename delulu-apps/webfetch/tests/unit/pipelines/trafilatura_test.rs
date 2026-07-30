@@ -118,3 +118,163 @@ fn test_backup_restore_does_not_reintroduce_cleaned_tags() {
     assert!(!doc.text_content().contains("alert"), "script must not reappear after restore");
     assert!(doc.text_content().contains("main content here"), "content should be preserved");
 }
+
+// ── Anti-regression: JSON-LD error logging ─────────────────────
+
+#[test]
+fn test_extract_jsonld_malformed_json_returns_none() {
+    // Issue 1 regression: malformed JSON-LD should not panic,
+    // should return None gracefully, and should log a warning.
+    // Build a DOM tree with a malformed JSON-LD script element.
+    let malformed_json = r#"{invalid json here"#;
+    let html = format!(
+        r#"<html><body><script type="application/ld+json">{}</script></body></html>"#,
+        malformed_json
+    );
+    let root = parse_html(&html).unwrap();
+    let result = crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
+    assert!(
+        result.is_none(),
+        "malformed JSON-LD should return None (not panic)"
+    );
+}
+
+// ── Anti-regression: recovery dedup with HashSet ────────────────
+
+#[test]
+fn test_recover_wild_paragraphs_substring_not_dedupped() {
+    // Issue 3 regression: paragraph 'A' exists, 'A B' is recovered.
+    // Both should be kept (substring match must not cause false dedup).
+    // Build best_tree with only <p>A</p>
+    let mut best_tree = DomNode::Element {
+        tag: "html".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Element {
+                tag: "body".to_string(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "p".to_string(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("A".to_string())],
+                        scores: std::collections::HashMap::new(),
+                        metadata: std::collections::HashMap::new(),
+                    },
+                ],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+        ],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+
+    // Build original with <p>A</p> and <p>A B</p>
+    let original = DomNode::Element {
+        tag: "html".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Element {
+                tag: "body".to_string(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "p".to_string(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("A".to_string())],
+                        scores: std::collections::HashMap::new(),
+                        metadata: std::collections::HashMap::new(),
+                    },
+                    DomNode::Element {
+                        tag: "p".to_string(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("A B".to_string())],
+                        scores: std::collections::HashMap::new(),
+                        metadata: std::collections::HashMap::new(),
+                    },
+                ],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+        ],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+
+    let appended = super::recover_wild_paragraphs(&mut best_tree, &original, 0);
+    let text = best_tree.text_content();
+    assert!(
+        text.contains("A B"),
+        "'A B' should be recovered (not falsely dedupped by substring match)"
+    );
+    // A B was appended
+    assert!(appended >= 1, "at least one paragraph should be appended");
+}
+
+#[test]
+fn test_recover_wild_paragraphs_exact_duplicates_dedupped() {
+    // Issue 3 regression: exact same paragraph appears twice.
+    // Should only be added once.
+    let mut best_tree = DomNode::Element {
+        tag: "html".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Element {
+                tag: "body".to_string(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "p".to_string(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("hello".to_string())],
+                        scores: std::collections::HashMap::new(),
+                        metadata: std::collections::HashMap::new(),
+                    },
+                ],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+        ],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+
+    // Original has the same paragraph twice
+    let original = DomNode::Element {
+        tag: "html".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Element {
+                tag: "body".to_string(),
+                attrs: vec![],
+                children: vec![
+                    DomNode::Element {
+                        tag: "p".to_string(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("hello".to_string())],
+                        scores: std::collections::HashMap::new(),
+                        metadata: std::collections::HashMap::new(),
+                    },
+                    DomNode::Element {
+                        tag: "p".to_string(),
+                        attrs: vec![],
+                        children: vec![DomNode::Text("hello".to_string())],
+                        scores: std::collections::HashMap::new(),
+                        metadata: std::collections::HashMap::new(),
+                    },
+                ],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+        ],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+
+    let appended = super::recover_wild_paragraphs(&mut best_tree, &original, 0);
+    // The duplicate 'hello' paragraph should NOT be appended (already in best_tree)
+    // The second 'hello' paragraph is still in original but its text matches best_tree
+    // So appended should be 0 (no new unique text)
+    assert_eq!(appended, 0, "exact duplicate should not be appended");
+}

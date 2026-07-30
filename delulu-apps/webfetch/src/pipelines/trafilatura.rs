@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::pipelines::walkers::PassFn;
 use crate::pipelines::{DomNode, WalkerAction, walk_post_mut, walk_pre_mut};
@@ -423,15 +424,22 @@ fn recover_wild_paragraphs(best_tree: &mut DomNode, original: &DomNode, min_p_le
     // Collect <p> elements from the cleaned tree (boilerplate already removed)
     let mut recovered_ps: Vec<DomNode> = Vec::new();
     collect_p_elements(&recovery_tree, &mut recovered_ps);
-    // Get existing text in best_tree for dedup
-    let existing_text = best_tree.text_content();
+    // Build a HashSet of existing paragraph texts for exact-match dedup
+    let mut paragraph_set: HashSet<String> = HashSet::new();
+    {
+        let mut existing_ps: Vec<DomNode> = Vec::new();
+        collect_p_elements(best_tree, &mut existing_ps);
+        for p in &existing_ps {
+            paragraph_set.insert(p.text_content());
+        }
+    }
     // Add recovered <p> elements that aren't already in best_tree
     let mut appended = 0usize;
     if let DomNode::Element { children, .. } = best_tree {
         for p_node in &recovered_ps {
             let p_text = p_node.text_content();
             let trimmed = p_text.trim();
-            if trimmed.len() >= min_p_len && !trimmed.is_empty() && !existing_text.contains(&p_text) {
+            if trimmed.len() >= min_p_len && !trimmed.is_empty() && paragraph_set.insert(p_text.clone()) {
                 children.push(p_node.clone());
                 appended += 1;
             }

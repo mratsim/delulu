@@ -255,15 +255,6 @@ static OVERALL_DISCARD_P2_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
         "(?i)^hide-|^reply-|comments-title|nocomments|-reply-|(?:^| )message(?:[^- ]|$)|akismet|suggest-links|-hide-|hide-print| hidden| hide|noprint|notloaded").expect("invalid OVERALL_DISCARD_P2_CLASS_RE")
 });
 
-/// Regex for matching standalone "link" in class/id values (word-boundary anchored).
-///
-/// Used by `tf_precision_discard` to avoid matching compound words like
-/// "related-links", "quick-links-nav", or "hyperlink" as boilerplate.
-/// Only matches "link" as a standalone word (e.g., "footer-links", "nav-links").
-static PRECISION_LINK_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new("(?i)\\blink\\b").expect("invalid PRECISION_LINK_RE")
-});
-
 /// Remove elements whose `class` or `id` attribute matches Trafilatura's
 /// `OVERALL_DISCARD_XPATH` patterns.
 ///
@@ -563,58 +554,6 @@ pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
     }
 }
 
-// ---------------------------------------------------------------------------
-// PRECISION_DISCARD_XPATH — remove header, bottom/link/border elements
-// ---------------------------------------------------------------------------
-
-/// Remove elements matching Trafilatura's `PRECISION_DISCARD_XPATH` patterns.
-///
-/// Maps to Trafilatura's `PRECISION_DISCARD_XPATH` (xpaths.py:166-175):
-///
-/// Pattern 1: Remove all `<header>` elements.
-/// ```xpath
-/// .//header
-/// ```
-///
-/// Pattern 2: Remove `div`/`p`/`section`/`span` elements whose `id` or `class`
-/// contains "bottom" or standalone "link" (word-boundary anchored), or whose `style`
-/// contains "border" (case-insensitive).
-///
-/// Note: Uses `PRECISION_LINK_RE` (word-boundary anchored `\blink\b`) instead of
-/// `contains("link")` to avoid matching compound words like "related-links",
-/// "quick-links-nav", or "hyperlink".
-///
-/// This is a precision-mode pass. Added to `TF_BALANCED` pipeline only.
-///
-/// Pre: DOM tree is fully parsed, cleaned tags already removed.
-/// Post: `<header>` elements and elements with bottom/link/border attributes are removed.
-/// Reference: Trafilatura `xpaths.py:166-175` `PRECISION_DISCARD_XPATH`
-#[cfg(not(feature = "use-xpath"))]
-pub fn tf_precision_discard(node: &mut DomNode) -> WalkerAction {
-    match node {
-        // Pattern 1: Remove all <header> elements
-        DomNode::Element { tag, .. } if tag == "header" => WalkerAction::Remove,
-        // Pattern 2: Remove div/p/section/span elements with bottom/link/border attributes
-        DomNode::Element { tag, attrs, .. }
-            if matches!(tag.as_str(), "div" | "p" | "section" | "span") =>
-        {
-            let has_bottom_or_link = attrs.iter().any(|(key, val)| {
-                matches!(key.as_str(), "class" | "id")
-                    && (val.to_ascii_lowercase().contains("bottom")
-                        || PRECISION_LINK_RE.is_match(val))
-            });
-            let has_border = attrs.iter().any(|(key, val)| {
-                key == "style" && val.to_ascii_lowercase().contains("border")
-            });
-            if has_bottom_or_link || has_border {
-                WalkerAction::Remove
-            } else {
-                WalkerAction::Continue
-            }
-        }
-        _ => WalkerAction::Continue,
-    }
-}
 
 // ---------------------------------------------------------------------------
 // FORM CONTENT PROTECTION -- guard against <form>-wrapped pages
@@ -1164,19 +1103,6 @@ use crate::pipelines::dom_xpath::XPath;
 
 
 
-/// XPath expression for PRECISION_DISCARD pattern 0 (header elements).
-/// Reference: Trafilatura `xpaths.py:166-175` `PRECISION_DISCARD_XPATH[0]`
-#[cfg(feature = "use-xpath")]
-static PRECISION_DISCARD_XPATH_0: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|| {
-    XPath::compile(".//header").expect("PRECISION_DISCARD_XPATH_0: hardcoded expression must compile")
-});
-
-/// XPath expression for PRECISION_DISCARD pattern 1 (bottom/link/border elements).
-/// Reference: Trafilatura `xpaths.py:166-175` `PRECISION_DISCARD_XPATH[1]`
-#[cfg(feature = "use-xpath")]
-static PRECISION_DISCARD_XPATH_1: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|| {
-    XPath::compile(".//*[self::div or self::item or self::list or self::p or self::section or self::span][contains(@id|@class, 'bottom') or contains(@id|@class, 'link') or contains(@style, 'border')]").expect("PRECISION_DISCARD_XPATH_1: hardcoded expression must compile")
-});
 
 
 
@@ -1313,35 +1239,6 @@ pub fn tf_remove_unlikely_candidates_xpath(node: &mut DomNode) -> WalkerAction {
     }
 }
 
-/// Precision discard using XPath (use-xpath feature).
-///
-/// Pre: DOM tree is fully parsed, cleaned tags already removed.
-/// Post: Elements matching PRECISION_DISCARD_XPATH patterns are removed.
-/// Reference: Trafilatura `xpaths.py:166-175` `PRECISION_DISCARD_XPATH`
-#[cfg(feature = "use-xpath")]
-pub fn tf_precision_discard_xpath(node: &mut DomNode) -> WalkerAction {
-    let matched_0 = match PRECISION_DISCARD_XPATH_0.eval(node) {
-        Ok(m) => m,
-        Err(e) => {
-            tracing::warn!("PRECISION_DISCARD_XPATH_0 eval error: {:?}", e);
-            return WalkerAction::Continue;
-        }
-    };
-    if !matched_0.is_empty() {
-        return WalkerAction::Remove;
-    }
-    let matched_1 = match PRECISION_DISCARD_XPATH_1.eval(node) {
-        Ok(m) => m,
-        Err(e) => {
-            tracing::warn!("PRECISION_DISCARD_XPATH_1 eval error: {:?}", e);
-            return WalkerAction::Continue;
-        }
-    };
-    if !matched_1.is_empty() {
-        return WalkerAction::Remove;
-    }
-    WalkerAction::Continue
-}
 
 /// Discard image elements using direct attribute checks (use-xpath feature).
 ///

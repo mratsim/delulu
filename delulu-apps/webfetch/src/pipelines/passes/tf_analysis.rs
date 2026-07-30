@@ -57,19 +57,25 @@ pub(crate) fn extract_jsonld_article_body(node: &DomNode) -> Option<String> {
             if is_jsonld {
                 let text = children.iter().map(DomNode::text_content).collect::<String>();
                 if text.contains("articleBody") {
-                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if let Some(body) = val.get("articleBody").and_then(|v| v.as_str()) {
-                            let trimmed = body.trim();
-                            // Minimum article body length threshold (pre-existing, matches Trafilatura behavior)
-                            if trimmed.len() >= 100 {
-                                let text = if HTML_TAG_RE.is_match(trimmed) {
-                                    let fragment = scraper::Html::parse_fragment(trimmed);
-                                    fragment.root_element().text().collect::<String>().trim().to_string()
-                                } else {
-                                    trimmed.to_string()
-                                };
-                                return Some(text);
+                    match serde_json::from_str::<serde_json::Value>(&text) {
+                        Ok(val) => {
+                            if let Some(body) = val.get("articleBody").and_then(|v| v.as_str()) {
+                                let trimmed = body.trim();
+                                // Minimum article body length threshold (pre-existing, matches Trafilatura behavior)
+                                if trimmed.len() >= 100 {
+                                    let text = if HTML_TAG_RE.is_match(trimmed) {
+                                        let fragment = scraper::Html::parse_fragment(trimmed);
+                                        fragment.root_element().text().collect::<String>().trim().to_string()
+                                    } else {
+                                        trimmed.to_string()
+                                    };
+                                    return Some(text);
+                                }
                             }
+                        }
+                        Err(e) => {
+                            let preview = &text[..text.len().min(200)];
+                            tracing::warn!("JSON-LD parse error: {} (preview: {:?})", e, preview);
                         }
                     }
                 }
@@ -114,4 +120,3 @@ pub(crate) fn count_non_ws_chars(node: &DomNode) -> usize {
         _ => 0,
     }
 }
-
