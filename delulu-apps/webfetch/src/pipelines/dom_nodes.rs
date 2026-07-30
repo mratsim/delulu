@@ -70,7 +70,7 @@ impl DomNode {
     }
 
     /// Total byte length of visible text content (skips <script>, <style>).
-    /// Zero allocation. Matches `get_visible_text(node).len()`.
+    /// Zero-allocation text length excluding non-visible tags (script, style, svg, canvas, template, noscript).
     /// Panic-if: Never panics (infallible).
     pub fn visible_text_len(&self) -> usize {
         self.visible_text_len_inner(MAX_DEPTH)
@@ -83,7 +83,9 @@ impl DomNode {
         match self {
             DomNode::Text(t) => t.len(),
             DomNode::Element { tag, children, .. }
-                if matches!(tag.as_str(), "script" | "style") => 0,
+                if matches!(tag.as_str(),
+                    "script" | "style" | "svg" | "canvas" | "template" | "noscript"
+                ) => 0,
             DomNode::Element { children, .. } => {
                 children.iter().map(|c| c.visible_text_len_inner(depth - 1)).sum()
             }

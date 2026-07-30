@@ -7,24 +7,6 @@ use crate::pipelines::DomNode;
 // Utility: text collection helpers
 // ---------------------------------------------------------------------------
 
-/// Get text content from visible elements only, excluding <script> and <style>.
-#[allow(dead_code)]
-pub(crate) fn get_visible_text(node: &DomNode) -> String {
-    match node {
-        DomNode::Text(t) => t.clone(),
-        DomNode::Element { tag, children, .. } if matches!(
-            tag.as_str(), "script" | "style"
-        ) => String::new(),
-        DomNode::Element { children, .. } => {
-            let mut result = String::new();
-            for child in children {
-                result.push_str(&get_visible_text(child));
-            }
-            result
-        }
-        _ => String::new(),
-    }
-}
 // ---------------------------------------------------------------------------
 // Pass-level helpers: paragraph recovery, JSON-LD extraction, text measurement
 // ---------------------------------------------------------------------------

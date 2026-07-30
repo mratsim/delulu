@@ -753,7 +753,7 @@ static BODY_XPATH_PATTERN_0_RE: once_cell::sync::Lazy<regex::Regex> = once_cell:
 
 /// Regex for Pattern 2: content class/id patterns.
 /// Maps to Trafilatura's BODY_XPATH Pattern 2 (content class/id).
-pub(crate) static BODY_XPATH_PATTERN_2_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+pub static BODY_XPATH_PATTERN_2_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
     regex::Regex::new(
         r#"(?i)^(?:content[-_]main|content(?:-|__)?body|contentBody|main-content|page-content)"#,
     )

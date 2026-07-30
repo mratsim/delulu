@@ -553,7 +553,18 @@ pub fn filter_trafilatura(node: &mut DomNode) {
         }
     }
 
-    *node = best_tree;
+    // Last-resort fallback: if all cascade levels (Balanced, Recall, recovery) produce
+    // little to no content, return the original tree rather than an empty result.
+    // This matches Python's behavior of returning whatever survived the pipeline.
+    if best_len < 500 {
+        tracing::warn!(
+            "filter_trafilatura: all cascade levels produced <500 chars ({}), falling back to original tree",
+            best_len,
+        );
+        *node = original;
+    } else {
+        *node = best_tree;
+    }
 }
 
 
