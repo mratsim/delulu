@@ -1,6 +1,16 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
+
+
+fn find_tag(node: &DomNode, tag: &str) -> bool {
+    match node {
+        DomNode::Element { tag: t, .. } if t == tag => true,
+        DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
+        _ => false,
+    }
+}
+
 /// Helper struct that captures tracing output into a shared buffer.
 struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
 
@@ -1294,13 +1304,6 @@ fn test_prune_data_table_skip() {
     pass_prune_no_candidate(&mut root);
 
     // The <td> with score 0.0 should survive inside the data table
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
     assert!(
         find_tag(&root, "td"),
         "<td> inside data table should survive pass_prune_no_candidate"

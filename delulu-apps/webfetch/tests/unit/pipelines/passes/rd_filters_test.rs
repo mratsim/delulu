@@ -1,6 +1,18 @@
 use super::*;
 use crate::pipelines::{parse_html, walk_pre_mut};
 
+
+
+fn find_tag(node: &DomNode, tag: &str) -> bool {
+    match node {
+        DomNode::Element {
+            tag: t, children, ..
+        } if t == tag => true,
+        DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
+        _ => false,
+    }
+}
+
 // ── 1. remove_style_elements ──────────────────────────────────────────
 
 #[test]
@@ -9,15 +21,6 @@ fn test_remove_style_elements() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_style_elements(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element {
-                tag: t, children, ..
-            } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
     assert!(find_tag(&nodes, "p"), "<p> should remain");
     assert!(!find_tag(&nodes, "style"), "<style> should be removed");
 }
@@ -30,15 +33,6 @@ fn test_remove_script_elements_removes_script_tags() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_script_elements(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element {
-                tag: t, children, ..
-            } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
     assert!(find_tag(&nodes, "p"), "<p> should remain");
     assert!(
         !find_tag(&nodes, "script"),
@@ -54,13 +48,6 @@ fn test_strip_unlikely_candidates() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(
         !find_tag(&nodes, "div"),
@@ -76,13 +63,6 @@ fn test_strip_unlikely_candidates_keeps_likely_nested() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(
         find_tag(&nodes, "div"),
@@ -101,13 +81,6 @@ fn test_strip_unlikely_anchor_guard() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(
         find_tag(&nodes, "a"),
@@ -126,13 +99,6 @@ fn test_strip_unlikely_role_removed() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(
         !find_tag(&nodes, "div"),
@@ -172,13 +138,6 @@ fn test_strip_unlikely_data_table_guard() {
     walk_pre_mut(&mut root, &|n| strip_unlikely_candidates(n));
 
     // The <td class="sidebar"> should survive inside the data table
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
     assert!(
         find_tag(&root, "td"),
         "<td> inside data table should survive strip_unlikely_candidates"
@@ -192,13 +151,6 @@ fn test_remove_empty_structural_elements() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_empty_structural_elements(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(!find_tag(&nodes, "div"), "empty <div> should be removed");
     assert!(find_tag(&nodes, "p"), "<p> with text should remain");
@@ -210,13 +162,6 @@ fn test_remove_empty_structural_protected_tags() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_empty_structural_elements(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(
         find_tag(&nodes, "td"),
@@ -234,13 +179,6 @@ fn test_remove_garbage_form() {
     let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_garbage_interactive_elements(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(
         find_tag(&nodes, "form"),
@@ -255,13 +193,6 @@ fn test_remove_garbage_embed() {
     let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_garbage_interactive_elements(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(!find_tag(&nodes, "embed"), "<embed> should be removed");
 }
@@ -273,13 +204,6 @@ fn test_remove_garbage_preserves_youtube() {
     let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_garbage_interactive_elements(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(
         find_tag(&nodes, "iframe"),
@@ -296,13 +220,6 @@ fn test_clean_negative_headers_removes_negative() {
     let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| clean_negative_headers(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(
         !find_tag(&nodes, "h1"),
@@ -351,13 +268,6 @@ fn test_strip_unlikely_with_content_class_kept() {
     let mut nodes = parse_html(&html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
     assert!(
         find_tag(&nodes, "div"),
         "outer div with content-child should survive unlikely check"
@@ -374,13 +284,6 @@ fn test_strip_unlikely_ok_maybe_its_a_candidate() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
 
     assert!(
         find_tag(&nodes, "div"),
@@ -396,13 +299,6 @@ fn test_clean_matched_nodes_removes_clearfix() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| clean_matched_nodes(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
     assert!(!find_tag(&nodes, "div"), "clearfix div should be removed");
     assert!(find_tag(&nodes, "p"), "content should remain");
 }
@@ -413,13 +309,6 @@ fn test_clean_matched_nodes_removes_print_button() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| clean_matched_nodes(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
     assert!(
         !find_tag(&nodes, "div"),
         "printfriendly div should be removed"
@@ -433,13 +322,6 @@ fn test_clean_matched_nodes_keeps_content() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| clean_matched_nodes(n));
 
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element { tag: t, .. } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
     assert!(find_tag(&nodes, "div"), "content div should be kept");
     assert!(find_tag(&nodes, "p"), "<p> should survive");
 }

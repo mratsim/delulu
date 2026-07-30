@@ -1,6 +1,16 @@
 use super::*;
 use crate::pipelines::dom_convert::convert_tree;
 
+
+
+fn find_tag(node: &DomNode, tag: &str) -> bool {
+    match node {
+        DomNode::Element { tag: t, .. } if t == tag => true,
+        DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
+        _ => false,
+    }
+}
+
 // ── walk_pre_mut ─────────────────────────────────────────────────────
 
 #[test]
@@ -100,15 +110,6 @@ fn test_walk_pre_mut_replace_with_children_panics() {
 #[test]
 fn test_parse_html_simple() {
     let root = parse_html("<p>Hello</p>").expect("parse should succeed");
-    fn find_tag(node: &DomNode, tag: &str) -> bool {
-        match node {
-            DomNode::Element {
-                tag: t, children, ..
-            } if t == tag => true,
-            DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
-            _ => false,
-        }
-    }
     assert!(find_tag(&root, "p"), "should contain a <p> element");
 }
 
