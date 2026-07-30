@@ -3,9 +3,12 @@ use std::collections::HashMap;
 
 use crate::pipelines::{DomNode, WalkerAction, walk_post_mut, walk_pre_mut};
 
+use super::passes::tf_analysis::{
+    count_non_ws_chars, count_p_text, count_text_chars,
+    extract_jsonld_article_body, get_inner_text,
+};
 use super::passes::tf_filters::{
-    collect_p_elements, count_non_ws_chars, count_p_text, count_text_chars,
-    extract_jsonld_article_body, get_inner_text, recover_wild_p_elements,
+    collect_p_elements, recover_wild_p_elements,
     tf_extract_script_templates, tf_fallback_content_container, tf_filter_by_link_density,
     tf_filter_tag_catalog, tf_isolate_content_container, tf_protect_content_forms,
     tf_remove_cleaned, tf_remove_empty_cut, tf_remove_teaser,
@@ -262,7 +265,7 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
 /// Uses the same constant as the readability pipeline for consistency.
 pub const TF_MIN_OUTPUT_CHARS: usize = 1000;
 
-/// Measure output length by delegating to `tf_filters::count_text_chars`.
+/// Measure output length by delegating to `tf_analysis::count_text_chars`.
 ///
 /// Pre: `node` is a valid DOM tree (may be empty).
 /// Post: Returns the total number of text characters in `node` (same as `count_text_chars`).
