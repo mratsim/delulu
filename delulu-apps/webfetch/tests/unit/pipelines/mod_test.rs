@@ -1,4 +1,5 @@
 use super::*;
+use crate::pipelines::dom_convert::convert_tree;
 
 // ── walk_pre_mut ─────────────────────────────────────────────────────
 

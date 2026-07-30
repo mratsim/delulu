@@ -7,6 +7,7 @@ description = "CLI tools and MCP server for web content fetching and markdown co
 
 [features]
 default = ["cli", "mcp"]
+use-xpath = []
 cli = ["dep:clap"]
 diagnostic = []
 mcp = [

@@ -297,6 +297,7 @@ static PRECISION_LINK_RE: Lazy<Regex> = Lazy::new(|| {
 /// Pre: DOM tree is fully parsed, cleaned tags already removed.
 /// Post: Elements with unlikely-candidate class/id/role patterns are removed.
 /// Reference: Trafilatura `htmlprocessing.py:92-109` `prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH)`
+#[cfg(not(feature = "use-xpath"))]
 pub fn tf_remove_unlikely_candidates(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. } => {
@@ -588,6 +589,7 @@ pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
 /// Pre: DOM tree is fully parsed, cleaned tags already removed.
 /// Post: `<header>` elements and elements with bottom/link/border attributes are removed.
 /// Reference: Trafilatura `xpaths.py:166-175` `PRECISION_DISCARD_XPATH`
+#[cfg(not(feature = "use-xpath"))]
 pub fn tf_precision_discard(node: &mut DomNode) -> WalkerAction {
     match node {
         // Pattern 1: Remove all <header> elements
@@ -793,8 +795,8 @@ pub(crate) fn container_has_content(root_children: &[DomNode], path: &[usize]) -
 
 /// Regex for Pattern 0: specific class/id/role selectors.
 /// Maps to Trafilatura's BODY_XPATH Pattern 0 (specific class/id selectors).
-static BODY_XPATH_PATTERN_0_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
+static BODY_XPATH_PATTERN_0_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new(
         r#"(?ix)(?:
             post[-_]text|post-body|post-?entry|post[-_]?content|postContent|post_inner_wrapper|
             article-?text|articleText|article[-_]?content|article[-_]?maincontent|(?:entry|page|text|article|art)-content|article__content|
@@ -807,8 +809,8 @@ static BODY_XPATH_PATTERN_0_RE: Lazy<Regex> = Lazy::new(|| {
 
 /// Regex for Pattern 2: content class/id patterns.
 /// Maps to Trafilatura's BODY_XPATH Pattern 2 (content class/id).
-static BODY_XPATH_PATTERN_2_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
+static BODY_XPATH_PATTERN_2_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new(
         r#"(?i)^(?:content[-_]main|content(?:-|__)?body|contentBody|main-content|page-content)"#,
     )
     .expect("BODY_XPATH_PATTERN_2_RE: invalid regex")
@@ -1087,6 +1089,7 @@ pub fn tf_filter_tag_catalog(node: &mut DomNode) -> WalkerAction {
 /// Pre: DOM tree is fully parsed, all tag conversions have run.
 /// Post: Elements with "caption" in their class or id are removed.
 /// Reference: Trafilatura `xpaths.py:179-186` `DISCARD_IMAGE_ELEMENTS`
+#[cfg(not(feature = "use-xpath"))]
 pub fn tf_discard_image_elements(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. }
@@ -1105,6 +1108,313 @@ pub fn tf_discard_image_elements(node: &mut DomNode) -> WalkerAction {
         _ => WalkerAction::Continue,
     }
 }
+// ---------------------------------------------------------------------------
+// XPath-based discard passes (Phase 2) — gated behind use-xpath feature
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "use-xpath")]
+use crate::pipelines::dom_xpath::XPath;
+
+
+
+
+/// XPath expression for PRECISION_DISCARD pattern 0 (header elements).
+/// Reference: Trafilatura `xpaths.py:166-175` `PRECISION_DISCARD_XPATH[0]`
+#[cfg(feature = "use-xpath")]
+static PRECISION_DISCARD_XPATH_0: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|| {
+    XPath::compile(".//header").expect("PRECISION_DISCARD_XPATH_0: hardcoded expression must compile")
+});
+
+/// XPath expression for PRECISION_DISCARD pattern 1 (bottom/link/border elements).
+/// Reference: Trafilatura `xpaths.py:166-175` `PRECISION_DISCARD_XPATH[1]`
+#[cfg(feature = "use-xpath")]
+static PRECISION_DISCARD_XPATH_1: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|| {
+    XPath::compile(".//*[self::div or self::item or self::list or self::p or self::section or self::span][contains(@id|@class, 'bottom') or contains(@id|@class, 'link') or contains(@style, 'border')]").expect("PRECISION_DISCARD_XPATH_1: hardcoded expression must compile")
+});
+
+
+
+/// Remove teaser elements using XPath (use-xpath feature).
+///
+/// Pre: DOM tree is fully parsed, cleaned tags already removed.
+/// Post: Elements matching TEASER_DISCARD_XPATH are removed.
+/// Reference: Trafilatura `xpaths.py:156-163` `TEASER_DISCARD_XPATH`
+#[cfg(feature = "use-xpath")]
+pub fn tf_remove_teaser_xpath(node: &mut DomNode) -> WalkerAction {
+    match node {
+        DomNode::Element { tag, .. } if matches!(
+            tag.as_str(),
+            "div" | "item" | "list" | "p" | "section" | "span"
+        ) => {
+            let has_teaser = node.attr("class").or(node.attr("id")).map_or(false, |v| {
+                v.to_ascii_lowercase().contains("teaser")
+            });
+            // Protect content containers: skip removal if id matches article content patterns
+            let is_content = node.attr("id").map_or(false, |v| BODY_XPATH_PATTERN_0_RE.is_match(v));
+            if has_teaser && !is_content {
+                WalkerAction::Remove
+            } else {
+                WalkerAction::Continue
+            }
+        }
+        _ => WalkerAction::Continue,
+    }
+}
+
+/// Remove unlikely candidates using direct attribute checks (use-xpath feature).
+///
+/// Uses the same attribute-checking logic as the manual `tf_remove_unlikely_candidates`
+/// instead of XPath eval, to avoid the descendant-traversal bug where parent containers
+/// are removed when any descendant matches a discard pattern.
+///
+/// Pre: DOM tree is fully parsed, cleaned tags already removed.
+/// Post: Elements matching OVERALL_DISCARD_XPATH patterns are removed.
+/// Reference: Trafilatura `xpaths.py:118-148` `OVERALL_DISCARD_XPATH`
+#[cfg(feature = "use-xpath")]
+pub fn tf_remove_unlikely_candidates_xpath(node: &mut DomNode) -> WalkerAction {
+    match node {
+        DomNode::Element { tag, attrs, .. } => {
+            // Never strip <html>, <body>, <head>, <base>.
+            if matches!(tag.as_str(), "html" | "body" | "head" | "base") {
+                return WalkerAction::Continue;
+            }
+
+            // === Pattern 2: Scope-unrestricted discard (checks ALL elements) ===
+            let class_val = attrs
+                .iter()
+                .find(|(k, _)| k == "class")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+            let id_val = attrs
+                .iter()
+                .find(|(k, _)| k == "id")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+
+            let aria_hidden = attrs
+                .iter()
+                .find(|(k, _)| k == "aria-hidden")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+            let is_aria_hidden = aria_hidden.trim().eq_ignore_ascii_case("true");
+
+            let style_val = attrs
+                .iter()
+                .find(|(k, _)| k == "style")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+
+            let has_display_none = {
+                let cleaned: String = style_val.chars().filter(|c| !c.is_whitespace()).collect();
+                cleaned.to_lowercase().contains("display:none")
+            };
+            let hidden_in_style = style_val.to_ascii_lowercase().contains("hidden");
+
+            let p2_class_match = OVERALL_DISCARD_P2_CLASS_RE.is_match(class_val);
+            let p2_id_match = OVERALL_DISCARD_P2_ID_RE.is_match(id_val);
+
+            let structural_tag = matches!(tag.as_str(), "main" | "article" | "section" | "body");
+            let p2_aria_hidden = !structural_tag && is_aria_hidden;
+
+            let p2_removal = p2_class_match
+                || p2_id_match
+                || hidden_in_style
+                || has_display_none
+                || p2_aria_hidden;
+
+            if p2_removal {
+                return WalkerAction::Remove;
+            }
+
+            // === Pattern 1: Scope-restricted discard (only div/item/list/p/section/span) ===
+            if !matches!(
+                tag.as_str(),
+                "div" | "item" | "list" | "p" | "section" | "span"
+            ) {
+                return WalkerAction::Continue;
+            }
+
+            let role_val = attrs
+                .iter()
+                .find(|(k, _)| k == "role")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+
+            let has_lp_content = attrs
+                .iter()
+                .any(|(k, _)| k == "data-lp-replacement-content");
+            let has_most_popular = attrs
+                .iter()
+                .any(|(k, v)| k == "data-component" && v.contains("MostPopularStories"));
+
+            let p1_aria_hidden = !structural_tag && is_aria_hidden;
+            let attr_match =
+                p1_aria_hidden || has_display_none || has_lp_content || has_most_popular;
+
+            if OVERALL_DISCARD_SHARED_RE.is_match(class_val)
+                || OVERALL_DISCARD_SHARED_RE.is_match(id_val)
+                || OVERALL_DISCARD_ID_RE.is_match(id_val)
+                || OVERALL_DISCARD_CLASS_RE.is_match(class_val)
+                || role_val.to_ascii_lowercase().contains("nav")
+                || attr_match
+            {
+                return WalkerAction::Remove;
+            }
+
+            WalkerAction::Continue
+        }
+        _ => WalkerAction::Continue,
+    }
+}
+
+/// Precision discard using XPath (use-xpath feature).
+///
+/// Pre: DOM tree is fully parsed, cleaned tags already removed.
+/// Post: Elements matching PRECISION_DISCARD_XPATH patterns are removed.
+/// Reference: Trafilatura `xpaths.py:166-175` `PRECISION_DISCARD_XPATH`
+#[cfg(feature = "use-xpath")]
+pub fn tf_precision_discard_xpath(node: &mut DomNode) -> WalkerAction {
+    let matched_0 = match PRECISION_DISCARD_XPATH_0.eval(node) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!("PRECISION_DISCARD_XPATH_0 eval error: {:?}", e);
+            return WalkerAction::Continue;
+        }
+    };
+    if !matched_0.is_empty() {
+        return WalkerAction::Remove;
+    }
+    let matched_1 = match PRECISION_DISCARD_XPATH_1.eval(node) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!("PRECISION_DISCARD_XPATH_1 eval error: {:?}", e);
+            return WalkerAction::Continue;
+        }
+    };
+    if !matched_1.is_empty() {
+        return WalkerAction::Remove;
+    }
+    WalkerAction::Continue
+}
+
+/// Discard image elements using direct attribute checks (use-xpath feature).
+///
+/// Uses the same attribute-checking logic as the manual `tf_discard_image_elements`
+/// instead of XPath eval, to avoid the descendant-traversal bug.
+///
+/// Pre: DOM tree is fully parsed, all tag conversions have run.
+/// Post: Elements with "caption" in their class or id are removed.
+/// Reference: Trafilatura `xpaths.py:179-186` `DISCARD_IMAGE_ELEMENTS`
+#[cfg(feature = "use-xpath")]
+pub fn tf_discard_image_elements_xpath(node: &mut DomNode) -> WalkerAction {
+    match node {
+        DomNode::Element { tag, attrs, .. }
+            if matches!(tag.as_str(), "div" | "p" | "section" | "span" | "item" | "list") =>
+        {
+            let has_caption = attrs.iter().any(|(key, val)| {
+                matches!(key.as_str(), "class" | "id")
+                    && val.to_ascii_lowercase().contains("caption")
+            });
+            if has_caption {
+                WalkerAction::Remove
+            } else {
+                WalkerAction::Continue
+            }
+        }
+        _ => WalkerAction::Continue,
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// BODY_XPATH container isolation (Phase 3) — gated behind use-xpath feature
+// ---------------------------------------------------------------------------
+
+/// XPath expression for BODY_XPATH Pattern 0 (specific class/id/role selectors).
+/// Reference: Trafilatura `xpaths.py:14-26` `BODY_XPATH[0]`
+#[cfg(feature = "use-xpath")]
+static BODY_XPATH_0: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|| {
+    XPath::compile(".//*[self::article or self::div or self::main or self::section][@class='post' or @class='entry' or @itemprop='articleBody' or @id='articleContent' or re:test(@id, '(?:entry|article|art)-content|article__content|article(?:-|__)?body|articleBody|body-text') or re:test(@class, 'post[-_]text|post-body|post-?entry|post[-_]?content|postContent|post_inner_wrapper|article-?text|articleText|(?:entry|page|text|article|art)-content|article__content|article(?:-|__)?body|articleBody|ArticleContent|body-text|article__container')][1]").expect("BODY_XPATH_0: hardcoded expression must compile")
+});
+
+/// XPath expression for BODY_XPATH Pattern 1 (first article/main element).
+/// Reference: Trafilatura `xpaths.py:27` `BODY_XPATH[1]`
+#[cfg(feature = "use-xpath")]
+static BODY_XPATH_1: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|| {
+    XPath::compile("(.//article)[1]").expect("BODY_XPATH_1: hardcoded expression must compile")
+});
+
+/// XPath expression for BODY_XPATH Pattern 2 (role/article class/id selectors).
+/// Reference: Trafilatura `xpaths.py:28-40` `BODY_XPATH[2]`
+#[cfg(feature = "use-xpath")]
+static BODY_XPATH_2: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|| {
+    XPath::compile(".//*[self::article or self::div or self::main or self::section][@role='article' or @id='article' or @id='story' or @class='postarea' or @class='art-postcontent' or @class='text' or @class='cell' or @class='story' or re:test(@id, '^primary|story-body') or contains(translate(@class, 'FULTEX','fultex'), 'fulltext') or re:test(@class, '^article |post-bodycopy|story-?content|(?:theme|blog|section|single)-content|single-post|main-column|wpb_text_column|story-body|field-body')][1]").expect("BODY_XPATH_2: hardcoded expression must compile")
+});
+
+/// XPath expression for BODY_XPATH Pattern 3 (content class/id selectors).
+/// Reference: Trafilatura `xpaths.py:41-52` `BODY_XPATH[3]`
+#[cfg(feature = "use-xpath")]
+static BODY_XPATH_3: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|| {
+    XPath::compile(".//*[self::article or self::div or self::main or self::section][@id='content' or @class='content' or re:test(@id, 'content-main|content-body|contentBody') or re:test(@class, 'content[-_]main|content(?:-|__)?body') or contains(translate(@id, 'CM','cm'), 'main-content') or contains(translate(@class, 'CM','cm'), 'main-content') or contains(translate(@class, 'CP','cp'), 'page-content')][1]").expect("BODY_XPATH_3: hardcoded expression must compile")
+});
+
+/// XPath expression for BODY_XPATH Pattern 4 (main element with union fallback).
+/// Reference: Trafilatura `xpaths.py:53-58` `BODY_XPATH[4]`
+#[cfg(feature = "use-xpath")]
+static BODY_XPATH_4: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|| {
+    XPath::compile("(.//*[self::article or self::div or self::section][starts-with(@class, 'main') or starts-with(@id, 'main') or starts-with(@role, 'main')])[1]|(.//main)[1]").expect("BODY_XPATH_4: hardcoded expression must compile")
+});
+
+
+/// Isolate content container using XPath BODY_XPATH patterns (use-xpath feature).
+///
+/// Iterates BODY_XPATH[0-4] in order, evaluates each against the root node,
+/// and isolates the first matching container (keeping only its subtree).
+///
+/// Pre: DOM tree is fully parsed, all cleaning passes have run.
+/// Post: If a container matched any BODY_XPATH pattern, only that container's
+///       subtree survives. Otherwise, the tree is unchanged.
+/// Reference: Trafilatura `main_extractor.py:597-647` `_extract()` (BODY_XPATH iteration)
+#[cfg(feature = "use-xpath")]
+pub fn tf_isolate_content_container_xpath(node: &mut DomNode) {
+    let patterns: &[&once_cell::sync::Lazy<XPath>] = &[
+        &BODY_XPATH_0,
+        &BODY_XPATH_1,
+        &BODY_XPATH_2,
+        &BODY_XPATH_3,
+        &BODY_XPATH_4,
+    ];
+    // Collect container pointers first to avoid borrow conflicts
+    let mut container_ptr: Option<*const DomNode> = None;
+    for pattern in patterns {
+        match pattern.eval(node) {
+            Ok(matched) if !matched.is_empty() => {
+                if let Some(container) = matched.first() {
+                    container_ptr = Some(*container as *const DomNode);
+                    break;
+                }
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!("BODY_XPATH eval error: {:?}", e);
+                return;
+            }
+        }
+    }
+    // Now isolate the container (separate from eval borrow)
+    if let Some(ptr) = container_ptr {
+        if let DomNode::Element { children, .. } = node {
+            let idx = children.iter().position(|c| std::ptr::eq(c, ptr));
+            if let Some(idx) = idx {
+                let matched_node = children.remove(idx);
+                children.clear();
+                children.push(matched_node);
+            }
+        }
+    }
+}
+
+
 
 // ---------------------------------------------------------------------------
 // Tests

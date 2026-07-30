@@ -904,6 +904,7 @@ fn test_isolate_container_integration_sidebar_vs_article() {
 // ── tf_remove_unlikely_candidates (has_likely_content guard removal) ──
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_remove_unlikely_candidates_removes_despite_likely_content() {
     // Core behavioral change: elements with likely-content children
     // (e.g., <p>) are now unconditionally removed when they match OVERALL_DISCARD patterns.
@@ -921,6 +922,7 @@ fn test_tf_remove_unlikely_candidates_removes_despite_likely_content() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_remove_unlikely_candidates_removes_display_none_with_content() {
     // attr_match path: display:none elements with <p> children should also be
     // unconditionally removed now.
@@ -933,6 +935,7 @@ fn test_tf_remove_unlikely_candidates_removes_display_none_with_content() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_remove_unlikely_candidates_keeps_non_matching() {
     // Elements that do NOT match UNLIKELY_CANDIDATES_RE should still be kept.
     let mut root =
@@ -948,6 +951,7 @@ fn test_tf_remove_unlikely_candidates_keeps_non_matching() {
 // ── Gap 1: Scope restriction tests ────────────────────────────────────
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_scope_restriction_keeps_a_tag() {
     // <a> is NOT in the allowed scope (div|item|list|p|section|span)
     let mut root = parse_html("<a class=\"sidebar\">link text</a>").unwrap();
@@ -959,6 +963,7 @@ fn test_scope_restriction_keeps_a_tag() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_scope_restriction_removes_div() {
     // <div> IS in the allowed scope
     let mut root = parse_html("<div class=\"sidebar\">side content</div>").unwrap();
@@ -970,6 +975,7 @@ fn test_scope_restriction_removes_div() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_scope_restriction_nested_parent_kept_child_removed() {
     // Parent <a> not in scope, child <div> in scope
     let mut root =
@@ -986,6 +992,7 @@ fn test_scope_restriction_nested_parent_kept_child_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_scope_restriction_keeps_li() {
     // <li> is NOT in the allowed scope
     let mut root = parse_html("<li class=\"sidebar\">list item</li>").unwrap();
@@ -999,6 +1006,7 @@ fn test_scope_restriction_keeps_li() {
 // ── Gap 2: Separate pattern tests ─────────────────────────────────────
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_separate_patterns_id_premium() {
     // ID-only pattern matches "premium"
     let mut root = parse_html("<div id=\"premium-content\">premium</div>").unwrap();
@@ -1010,6 +1018,7 @@ fn test_separate_patterns_id_premium() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_separate_patterns_class_footer() {
     // Class-only pattern matches "footer"
     let mut root = parse_html("<div class=\"footer\">footer</div>").unwrap();
@@ -1021,6 +1030,7 @@ fn test_separate_patterns_class_footer() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_separate_patterns_class_share_contains() {
     // Class-only pattern matches "share-" (substring match)
     let mut root = parse_html("<div class=\"share-icons\">share</div>").unwrap();
@@ -1032,6 +1042,7 @@ fn test_separate_patterns_class_share_contains() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_separate_patterns_id_share_only() {
     // ID-only pattern matches "share"
     let mut root = parse_html("<div id=\"share-buttons\">share</div>").unwrap();
@@ -1043,6 +1054,7 @@ fn test_separate_patterns_id_share_only() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_separate_patterns_shared_sidebar() {
     // Shared pattern matches "sidebar" (ACLU regression scenario)
     let mut root = parse_html(
@@ -1057,6 +1069,7 @@ fn test_separate_patterns_shared_sidebar() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_role_nav_check() {
     // Trafilatura's exact role check: contains "nav"
     let mut root = parse_html("<div role=\"navigation\">nav</div>").unwrap();
@@ -1068,6 +1081,7 @@ fn test_role_nav_check() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_role_nav_check_non_matching() {
     // Non-matching role should NOT trigger removal
     let mut root = parse_html("<div role=\"main\"><p>content</p></div>").unwrap();
@@ -1081,6 +1095,7 @@ fn test_role_nav_check_non_matching() {
 // ── Pattern 2: scope-unrestricted discard ──────────────────────
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_noprint_class_removed() {
     let mut root =
         parse_html("<section class=\"top-article noprint\">nav stuff</section><p>content</p>")
@@ -1093,6 +1108,7 @@ fn test_pattern2_noprint_class_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_scope_unrestricted_catches_any_tag() {
     // Pattern 2 catches <figure> (not in Pattern 1 scope) with noprint
     let mut root = parse_html("<figure class=\"noprint\">fig</figure><p>content</p>").unwrap();
@@ -1104,6 +1120,7 @@ fn test_pattern2_scope_unrestricted_catches_any_tag() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_hide_class_removed() {
     let mut root = parse_html("<div class=\"hide-ads\">ads</div><p>content</p>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates(n));
@@ -1114,6 +1131,7 @@ fn test_pattern2_hide_class_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_notloaded_removed() {
     let mut root = parse_html("<div class=\"notloaded\">lazy</div><p>content</p>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates(n));
@@ -1124,6 +1142,7 @@ fn test_pattern2_notloaded_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_akismet_id_removed() {
     let mut root = parse_html("<div id=\"akismet\">spam</div><p>content</p>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates(n));
@@ -1134,6 +1153,7 @@ fn test_pattern2_akismet_id_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_reply_prefix_removed() {
     let mut root =
         parse_html("<div class=\"reply-comment-123\">reply form</div><p>content</p>").unwrap();
@@ -1145,6 +1165,7 @@ fn test_pattern2_reply_prefix_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_class_pattern_does_not_match_id() {
     // REGRESSION: class-only patterns (noprint, hide-, reply-)
     // must NOT match against id values (only class values).
@@ -1157,6 +1178,7 @@ fn test_pattern2_class_pattern_does_not_match_id() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_hidden_id_removed() {
     let mut root = parse_html("<div id=\"hidden-content\">hidden div</div><p>content</p>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates(n));
@@ -1167,6 +1189,7 @@ fn test_pattern2_hidden_id_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_hidden_in_style_removed() {
     let mut root =
         parse_html("<div style=\"visibility:hidden\">hidden</div><p>content</p>").unwrap();
@@ -1178,6 +1201,7 @@ fn test_pattern2_hidden_in_style_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_comments_title_removed() {
     let mut root =
         parse_html("<div class=\"comments-title\">comments</div><p>content</p>").unwrap();
@@ -1189,6 +1213,7 @@ fn test_pattern2_comments_title_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_suggest_links_removed() {
     let mut root = parse_html("<div class=\"suggest-links\">suggest</div><p>content</p>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates(n));
@@ -1199,6 +1224,7 @@ fn test_pattern2_suggest_links_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_preserves_body_html() {
     let mut root = parse_html("<html lang=\"en\"><body><p>content</p></body></html>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates(n));
@@ -1207,6 +1233,7 @@ fn test_pattern2_preserves_body_html() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_aria_hidden_structural_preserved() {
     let mut root = parse_html("<main aria-hidden=\"true\"><p>main content</p></main>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates(n));
@@ -1217,6 +1244,7 @@ fn test_pattern2_aria_hidden_structural_preserved() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_aria_hidden_nonstructural_removed() {
     let mut root = parse_html("<div aria-hidden=\"true\">hidden div</div><p>content</p>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates(n));
@@ -1227,6 +1255,7 @@ fn test_pattern2_aria_hidden_nonstructural_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_pattern2_preserves_pattern1_sidebar() {
     // Pattern 1 still works: sidebar in class
     let mut root =
@@ -1554,6 +1583,7 @@ fn test_tf_filter_by_link_density_nested_links_counted() {
 // ── tf_precision_discard ────────────────────────────────────────
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_precision_discard_removes_header() {
     let mut root = parse_html(r#"<header>header content</header><p>keep</p>"#).unwrap();
     walk_pre_mut(&mut root, &|n| tf_precision_discard(n));
@@ -1562,6 +1592,7 @@ fn test_tf_precision_discard_removes_header() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_precision_discard_bottom_class_removed() {
     let mut root = parse_html(r#"<div class="footer-bottom">bottom</div><p>keep</p>"#).unwrap();
     walk_pre_mut(&mut root, &|n| tf_precision_discard(n));
@@ -1572,6 +1603,7 @@ fn test_tf_precision_discard_bottom_class_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_precision_discard_link_class_uses_word_boundary() {
     // "related-links" should NOT match because "link" is followed by "s"
     // PRECISION_LINK_RE uses word boundary anchored matching
@@ -1584,6 +1616,7 @@ fn test_tf_precision_discard_link_class_uses_word_boundary() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_precision_discard_link_class_exact_match_removed() {
     // "footer-links" contains "links" (with 's'), not standalone "link"
     // PRECISION_LINK_RE uses \blink\b which needs word boundary after "link"
@@ -1596,6 +1629,7 @@ fn test_tf_precision_discard_link_class_exact_match_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_precision_discard_border_style_removed() {
     let mut root = parse_html(r#"<div style="border: 1px solid red">bordered</div><p>keep</p>"#).unwrap();
     walk_pre_mut(&mut root, &|n| tf_precision_discard(n));
@@ -1606,6 +1640,7 @@ fn test_tf_precision_discard_border_style_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_precision_discard_keeps_non_matching() {
     let mut root = parse_html(r#"<div class="content">keep me</div>"#).unwrap();
     walk_pre_mut(&mut root, &|n| tf_precision_discard(n));
@@ -1712,6 +1747,7 @@ fn test_tf_filter_tag_catalog_text_nodes_survive() {
 // ── tf_discard_image_elements ───────────────────────────────────
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_discard_image_elements_caption_class_removed() {
     let mut root = parse_html(
         r#"<div class="caption">caption text</div><p>content</p>"#
@@ -1725,6 +1761,7 @@ fn test_tf_discard_image_elements_caption_class_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_discard_image_elements_caption_id_removed() {
     let mut root = parse_html(
         r#"<div id="caption-123">caption text</div><p>content</p>"#
@@ -1737,6 +1774,7 @@ fn test_tf_discard_image_elements_caption_id_removed() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_discard_image_elements_case_insensitive() {
     let mut root = parse_html(
         r#"<div class="CAPTION">caption text</div><p>content</p>"#
@@ -1749,6 +1787,7 @@ fn test_tf_discard_image_elements_case_insensitive() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_discard_image_elements_non_caption_kept() {
     let mut root = parse_html(
         r#"<div class="content">main content</div><p>paragraph</p>"#
@@ -1762,6 +1801,7 @@ fn test_tf_discard_image_elements_non_caption_kept() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_discard_image_elements_item_tag_with_caption() {
     // item tag (converted from <li>) should also be matched
     let mut root = DomNode::Element {
@@ -1787,6 +1827,7 @@ fn test_tf_discard_image_elements_item_tag_with_caption() {
 }
 
 #[test]
+#[cfg(not(feature = "use-xpath"))]
 fn test_tf_discard_image_elements_list_tag_with_caption() {
     // list tag (converted from <ul>/<ol>) should also be matched
     let mut root = DomNode::Element {

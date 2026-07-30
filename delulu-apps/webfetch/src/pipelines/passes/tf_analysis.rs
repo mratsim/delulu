@@ -115,13 +115,3 @@ pub(crate) fn count_non_ws_chars(node: &DomNode) -> usize {
     }
 }
 
-
-/// Minimum extracted content size in characters (in `<p>` text at any depth within a container).
-/// Matches Trafilatura's `min_extracted_size` default of 250 chars.
-/// A container that matches BODY_XPATH patterns must have at least this many
-/// characters of `<p>` text to be accepted.
-///
-/// Uses byte length (`String::len()`), consistent with ASCII-dominated web content.
-/// For CJK content, byte length may overestimate vs UTF-8 char count, making the
-/// threshold slightly more lenient — acceptable for precision mode.
-pub const MIN_EXTRACTED_SIZE: usize = 250;

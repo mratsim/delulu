@@ -286,13 +286,19 @@ fn test_collect_text() {
 }
 
 #[test]
-fn test_get_attr() {
-    let attrs = vec![
-        ("href".into(), "https://x.com".into()),
-        ("class".into(), "link".into()),
-    ];
-    assert_eq!(get_attr(&attrs, "href"), Some("https://x.com"));
-    assert_eq!(get_attr(&attrs, "id"), None);
+    fn test_get_attr() {
+    let node = DomNode::Element {
+        tag: "a".to_string(),
+        attrs: vec![
+            ("href".to_string(), "https://x.com".to_string()),
+            ("class".to_string(), "link".to_string()),
+        ],
+        children: vec![],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    assert_eq!(node.attr("href"), Some("https://x.com"));
+    assert_eq!(node.attr("id"), None);
 }
 
 #[test]

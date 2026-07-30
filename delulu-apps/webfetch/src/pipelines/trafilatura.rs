@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
+use crate::pipelines::walkers::PassFn;
 use crate::pipelines::{DomNode, WalkerAction, walk_post_mut, walk_pre_mut};
 
 use super::passes::tf_analysis::{
@@ -8,11 +9,23 @@ use super::passes::tf_analysis::{
     extract_jsonld_article_body,
 };
 use super::passes::tf_filters::{
-    collect_p_elements, recover_wild_p_elements,
+    collect_p_elements,
     tf_extract_script_templates, tf_fallback_content_container, tf_filter_by_link_density,
     tf_filter_tag_catalog, tf_isolate_content_container, tf_protect_content_forms,
     tf_remove_cleaned, tf_remove_empty_cut, tf_remove_teaser,
-    tf_remove_unlikely_candidates, tf_strip_unwrapped,
+    tf_strip_unwrapped,
+};
+#[cfg(not(feature = "use-xpath"))]
+use super::passes::tf_filters::{
+    tf_discard_image_elements,
+    tf_remove_unlikely_candidates,
+};
+#[cfg(feature = "use-xpath")]
+use super::passes::tf_filters::{
+    tf_discard_image_elements_xpath,
+    tf_isolate_content_container_xpath,
+    tf_remove_teaser_xpath,
+    tf_remove_unlikely_candidates_xpath,
 };
 use super::passes::tf_transforms::{
     tf_canonicalize_strip_non_content, tf_canonicalize_unwrap_containers,
@@ -22,12 +35,103 @@ use super::passes::tf_transforms::{
     tf_convert_quotes, tf_convert_refs_and_details,
 };
 
-/// Function pointer type for Trafilatura-equivalent pipeline passes.
+// ---------------------------------------------------------------------------
+// wrap_pass! and wrap_pass_void! macros — Phase 0a
+// ---------------------------------------------------------------------------
+
+/// Wrap a `WalkerAction`-returning pass for use in a pipeline array.
 ///
-/// Takes a `&mut DomNode` representing the root node
-/// and mutates the tree in-place. Passes should handle all DomNode
-/// variants and should not panic on well-formed input.
-pub type PassFn = fn(&mut DomNode);
+/// Expands to `(|node| walk_pre_mut(node, &|n| $f(n))) as fn(&mut DomNode)`.
+/// Eliminates boilerplate closure cast syntax.
+///
+/// Pre: `$f` is a function `fn(&mut DomNode) -> WalkerAction`.
+/// Post: Returns a `fn(&mut DomNode)` that walks the tree in pre-order applying `$f`.
+///
+/// Note: No direct trafilatura equivalent — Rust-specific macro.
+#[macro_export]
+macro_rules! wrap_pass {
+    ($f:expr) => {
+        (|node| walk_pre_mut(node, &|n| $f(n))) as fn(&mut DomNode)
+    };
+}
+
+/// Wrap a void-returning pass for use in a pipeline array.
+///
+/// Expands to `(|node| walk_pre_mut(node, &|n| { $f(n); WalkerAction::Continue })) as fn(&mut DomNode)`.
+///
+/// Pre: `$f` is a function `fn(&mut DomNode)` (no return value).
+/// Post: Returns a `fn(&mut DomNode)` that walks the tree in pre-order applying `$f`.
+#[macro_export]
+macro_rules! wrap_pass_void {
+    ($f:expr) => {
+        (|node| walk_pre_mut(node, &|n| { $f(n); WalkerAction::Continue })) as fn(&mut DomNode)
+    };
+}
+
+// ---------------------------------------------------------------------------
+// with_backup — generic backup/restore helper — Phase 0a
+// ---------------------------------------------------------------------------
+
+/// Generic backup/restore wrapper for destructive passes.
+///
+/// Clones the node before applying `pass`, then checks if `new_len * threshold <= old_len`.
+/// If true (too much text removed), applies `recovery` to restore from backup.
+///
+/// Uses `checked_mul()` to prevent integer overflow. On overflow, keeps the
+/// modified tree (conservative: "not enough removed").
+///
+/// Pre: `node` is a valid DOM tree. `pass` is a destructive pass that may remove content.
+///      `threshold` is the backup trigger multiplier (e.g., 5 for >=80% removal).
+///      `recovery` is a function that takes `(node, backup)` and restores content.
+/// Post: If too much text was removed, `node` is restored via `recovery`.
+///       Otherwise, `pass`'s effects remain.
+///
+/// Reference: Trafilatura `main_extractor.py` line 710: `tree = prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH, with_backup=True)`
+pub fn with_backup<F, R>(node: &mut DomNode, pass: F, threshold: usize, recovery: R)
+where
+    F: Fn(&mut DomNode),
+    R: Fn(&mut DomNode, &DomNode),
+{
+    let old_len = node.text_len();
+    let backup = node.clone();
+
+    pass(node);
+
+    let new_len = node.text_len();
+
+    // Use checked_mul to prevent integer overflow on large documents
+    match new_len.checked_mul(threshold) {
+        Some(product) if product <= old_len => {
+            tracing::warn!(
+                "backup triggered ({} -> {} chars, threshold={}), restoring",
+                old_len,
+                new_len,
+                threshold,
+            );
+            recovery(node, &backup);
+        }
+        Some(_) => {
+            tracing::debug!(
+                "pass safe: {} -> {} chars (threshold={})",
+                old_len,
+                new_len,
+                threshold,
+            );
+        }
+        None => {
+            // Overflow: keep modified tree (conservative)
+            tracing::warn!(
+                "checked_mul overflow in with_backup: {} * {} overflowed, keeping modified tree",
+                new_len,
+                threshold,
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy backup/restore wrappers (gated behind not(use-xpath))
+// ---------------------------------------------------------------------------
 
 /// Remove unlikely candidates with backup/restore safety net.
 ///
@@ -40,44 +144,16 @@ pub type PassFn = fn(&mut DomNode);
 /// Trafilatura logic: `return tree if new_len > old_len / 5 else backup`
 /// Our equivalent: `if new_len * 5 <= old_len { restore }`
 ///
-/// The backup only reverts the unlikely-candidates pass. Other passes
-/// (cleaned removal, teaser removal) are NOT reverted. Subsequent passes
-/// (canonicalization, link density) still apply to the (possibly restored) tree.
-///
-/// This is a safety mechanism, not a substitute for pattern refinement.
-///
 /// Reference: Trafilatura `main_extractor.py` line 710:
 ///   `tree = prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH, with_backup=True)`
+#[cfg(not(feature = "use-xpath"))]
 pub fn apply_tf_remove_unlikely_candidates_with_backup(node: &mut DomNode) {
-    let old_len = node.text_len();
-    let backup = node.clone();
-
-    // Apply tf_remove_unlikely_candidates
-    walk_pre_mut(node, &|n| tf_remove_unlikely_candidates(n));
-
-    let new_len = node.text_len();
-
-    // Adjusted threshold: restore if new_len * 5 <= old_len (>=80% removed)
-    // Uses multiplication to avoid integer division edge case
-    if new_len * 5 <= old_len {
-        tracing::warn!(
-            "tf_remove_unlikely_candidates removed >=80% of text ({} -> {} chars), restoring backup",
-            old_len,
-            new_len
-        );
-        *node = backup;
-    } else {
-        tracing::debug!(
-            "tf_remove_unlikely_candidates: {} -> {} chars (safe, {:.1}% removed)",
-            old_len,
-            new_len,
-            if old_len > 0 {
-                100.0 - (new_len as f64 / old_len as f64 * 100.0)
-            } else {
-                0.0
-            }
-        );
-    }
+    with_backup(
+        node,
+        |n| walk_pre_mut(n, &|n| tf_remove_unlikely_candidates(n)),
+        5,
+        |node, backup| *node = backup.clone(),
+    );
 }
 
 /// Filter by link density with backup/restore safety net.
@@ -85,38 +161,15 @@ pub fn apply_tf_remove_unlikely_candidates_with_backup(node: &mut DomNode) {
 /// Pre: `node` is a valid DOM tree. Unlikely candidates have been removed.
 /// Post: Elements with link density >50% are removed. If >=95% of text is removed (threshold: 19×), the node is restored to the backup state. Uses `*node = backup` (full restore).
 ///
-/// This prevents catastrophic content loss when the full-page link density
-/// filter removes the main content container (e.g., dailymail.co.uk where
-/// the top-level wrapper has high link density from navigation elements).
+/// Reference: Trafilatura `main_extractor.py` line 710 pattern.
+#[cfg(not(feature = "use-xpath"))]
 pub fn apply_tf_filter_by_link_density_with_backup(node: &mut DomNode) {
-    let old_len = node.text_len();
-    let backup = node.clone();
-
-    // Apply link density filter
-    walk_pre_mut(node, &|n| tf_filter_by_link_density(n));
-
-    let new_len = node.text_len();
-
-    // If >=95% of text was removed by link density filtering, restore from backup
-    if new_len * 19 <= old_len {
-        tracing::warn!(
-            "link density filter removed >=95% of text ({} -> {} chars), restoring backup",
-            old_len,
-            new_len
-        );
-        *node = backup;
-    } else {
-        tracing::debug!(
-            "link density filter: {} -> {} chars (safe, {:.1}% removed)",
-            old_len,
-            new_len,
-            if old_len > 0 {
-                100.0 - (new_len as f64 / old_len as f64 * 100.0)
-            } else {
-                0.0
-            }
-        );
-    }
+    with_backup(
+        node,
+        |n| walk_pre_mut(n, &|n| tf_filter_by_link_density(n)),
+        19,
+        |node, backup| *node = backup.clone(),
+    );
 }
 
 /// Isolate content container with backup/recovery safety net.
@@ -124,55 +177,71 @@ pub fn apply_tf_filter_by_link_density_with_backup(node: &mut DomNode) {
 /// Pre: `node` is a valid DOM tree. Link density filtering has been applied.
 /// Post: Content container is isolated via BODY_XPATH cascade. If >=90% of text is removed (threshold: 10×), wild `<p>` elements are recovered from the backup (not full restore).
 ///
-/// This is a simplified version of Python's `recover_wild_text()` which scans
-/// the backup tree for wild `<p>`, `<code>`, `<quote>`, `<table>` elements.
+/// Reference: Trafilatura `main_extractor.py` line 710 pattern.
 pub fn apply_tf_isolate_container_with_backup(node: &mut DomNode) {
-    let old_len = node.text_len();
-    let backup = node.clone();
-
-    // Apply container isolation passes
-    tf_isolate_content_container(node);
-    tf_fallback_content_container(node);
-
-    let new_len = node.text_len();
-
-    // If >=90% of text was removed by container isolation, recover content
-    if new_len * 10 <= old_len {
-        tracing::warn!(
-            "container isolation removed >=90% of text ({} -> {} chars), recovering wild p-elements",
-            old_len,
-            new_len
-        );
-        // Recover <p> elements from the backup tree that aren't already in node
-        // This is a simplified version of Python's recover_wild_text()
-        let existing_text = node.text_content();
-        recover_wild_p_elements(node, &backup, &existing_text);
-        let recovered_len = node.text_len();
-        tracing::info!(
-            "recovered wild p-elements: {} -> {} chars",
-            new_len,
-            recovered_len
-        );
-    } else {
-        tracing::debug!(
-            "container isolation: {} -> {} chars (safe, {:.1}% removed)",
-            old_len,
-            new_len,
-            if old_len > 0 {
-                100.0 - (new_len as f64 / old_len as f64 * 100.0)
-            } else {
-                0.0
-            }
-        );
-    }
+    use super::passes::tf_filters::recover_wild_p_elements;
+    with_backup(
+        node,
+        |n| {
+            tf_isolate_content_container(n);
+            tf_fallback_content_container(n);
+        },
+        10,
+        |node, backup| {
+            let existing_text = node.text_content();
+            recover_wild_p_elements(node, backup, &existing_text);
+        },
+    );
 }
 
+/// Remove unlikely candidates with backup/restore safety net (XPath version).
+///
+/// Pre: `node` is a valid DOM tree. The tree has been parsed and basic cleaning applied.
+/// Post: Elements matching OVERALL_DISCARD_XPATH patterns are removed. If >=80% of text is removed (threshold: 5×), the node is restored to the backup state.
+#[cfg(feature = "use-xpath")]
+pub fn apply_tf_remove_unlikely_candidates_xpath_with_backup(node: &mut DomNode) {
+    with_backup(
+        node,
+        |n| walk_pre_mut(n, &|n| tf_remove_unlikely_candidates_xpath(n)),
+        5,
+        |node, backup| *node = backup.clone(),
+    );
+}
 
+/// Filter by link density with backup/restore safety net (XPath version).
+///
+/// Pre: `node` is a valid DOM tree. Unlikely candidates have been removed.
+/// Post: Elements with link density >50% are removed. If >=95% of text is removed (threshold: 19×), the node is restored to the backup state.
+#[cfg(feature = "use-xpath")]
+pub fn apply_tf_filter_by_link_density_xpath_with_backup(node: &mut DomNode) {
+    with_backup(
+        node,
+        |n| walk_pre_mut(n, &|n| tf_filter_by_link_density(n)),
+        19,
+        |node, backup| *node = backup.clone(),
+    );
+}
 
-
-
-
-
+/// Isolate content container with backup/recovery safety net (XPath version).
+///
+/// Pre: `node` is a valid DOM tree. Link density filtering has been applied.
+/// Post: Content container is isolated via XPath BODY_XPATH cascade. If >=90% of text is removed (threshold: 10×), wild `<p>` elements are recovered from the backup.
+#[cfg(feature = "use-xpath")]
+pub fn apply_tf_isolate_container_xpath_with_backup(node: &mut DomNode) {
+    use super::passes::tf_filters::recover_wild_p_elements;
+    with_backup(
+        node,
+        |n| {
+            tf_isolate_content_container_xpath(n);
+            tf_fallback_content_container(n);
+        },
+        10,
+        |node, backup| {
+            let existing_text = node.text_content();
+            recover_wild_p_elements(node, backup, &existing_text);
+        },
+    );
+}
 
 // ---------------------------------------------------------------------------
 // Retry Level Constants
@@ -209,20 +278,40 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
     &[
         tf_protect_content_forms,
         tf_extract_script_templates,
-        (|node| walk_pre_mut(node, &|n| tf_remove_cleaned(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_remove_teaser(n))) as fn(&mut DomNode),
+        wrap_pass!(tf_remove_cleaned),
+        #[cfg(not(feature = "use-xpath"))]
+        wrap_pass!(tf_remove_teaser),
+        #[cfg(feature = "use-xpath")]
+        wrap_pass!(tf_remove_teaser_xpath),
+        #[cfg(not(feature = "use-xpath"))]
         apply_tf_remove_unlikely_candidates_with_backup,
+        #[cfg(feature = "use-xpath")]
+        apply_tf_remove_unlikely_candidates_xpath_with_backup,
         tf_strip_unwrapped,
-        (|node| walk_pre_mut(node, &|n| tf_remove_empty_cut(n))) as fn(&mut DomNode),
+        wrap_pass!(tf_remove_empty_cut),
+        #[cfg(not(feature = "use-xpath"))]
         apply_tf_filter_by_link_density_with_backup,
-        (|node| walk_pre_mut(node, &|n| tf_convert_headings(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_convert_lists(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_convert_quotes(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_convert_formatting(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_convert_breaks(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_convert_refs_and_details(n))) as fn(&mut DomNode),
+        #[cfg(feature = "use-xpath")]
+        apply_tf_filter_by_link_density_xpath_with_backup,
+        wrap_pass!(tf_convert_headings),
+        wrap_pass!(tf_convert_lists),
+        wrap_pass!(tf_convert_quotes),
+        wrap_pass!(tf_convert_formatting),
+        wrap_pass!(tf_convert_breaks),
+        wrap_pass!(tf_convert_refs_and_details),
         tf_canonicalize_strip_non_content,
+        #[cfg(not(feature = "use-xpath"))]
         apply_tf_isolate_container_with_backup,
+        #[cfg(feature = "use-xpath")]
+        apply_tf_isolate_container_xpath_with_backup,
+        #[cfg(not(feature = "use-xpath"))]
+        tf_fallback_content_container,
+        #[cfg(feature = "use-xpath")]
+        tf_fallback_content_container,
+        #[cfg(not(feature = "use-xpath"))]
+        wrap_pass!(tf_discard_image_elements),
+        #[cfg(feature = "use-xpath")]
+        wrap_pass!(tf_discard_image_elements_xpath),
         tf_canonicalize_unwrap_containers,
         // Final tag whitelist — remove any tags not in TAG_CATALOG
         apply_tf_filter_tag_catalog,
@@ -239,20 +328,40 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
     &[
         tf_protect_content_forms,
         tf_extract_script_templates,
-        (|node| walk_pre_mut(node, &|n| tf_remove_cleaned(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_remove_teaser(n))) as fn(&mut DomNode),
+        wrap_pass!(tf_remove_cleaned),
+        #[cfg(not(feature = "use-xpath"))]
+        wrap_pass!(tf_remove_teaser),
+        #[cfg(feature = "use-xpath")]
+        wrap_pass!(tf_remove_teaser_xpath),
+        #[cfg(not(feature = "use-xpath"))]
         apply_tf_remove_unlikely_candidates_with_backup,
+        #[cfg(feature = "use-xpath")]
+        apply_tf_remove_unlikely_candidates_xpath_with_backup,
         tf_strip_unwrapped,
         // tf_remove_empty_cut SKIPPED -- preserve all content
+        #[cfg(not(feature = "use-xpath"))]
         apply_tf_filter_by_link_density_with_backup,
-        (|node| walk_pre_mut(node, &|n| tf_convert_headings(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_convert_lists(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_convert_quotes(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_convert_formatting(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_convert_breaks(n))) as fn(&mut DomNode),
-        (|node| walk_pre_mut(node, &|n| tf_convert_refs_and_details(n))) as fn(&mut DomNode),
+        #[cfg(feature = "use-xpath")]
+        apply_tf_filter_by_link_density_xpath_with_backup,
+        wrap_pass!(tf_convert_headings),
+        wrap_pass!(tf_convert_lists),
+        wrap_pass!(tf_convert_quotes),
+        wrap_pass!(tf_convert_formatting),
+        wrap_pass!(tf_convert_breaks),
+        wrap_pass!(tf_convert_refs_and_details),
         tf_canonicalize_strip_non_content,
+        #[cfg(not(feature = "use-xpath"))]
         apply_tf_isolate_container_with_backup,
+        #[cfg(feature = "use-xpath")]
+        apply_tf_isolate_container_xpath_with_backup,
+        #[cfg(not(feature = "use-xpath"))]
+        tf_fallback_content_container,
+        #[cfg(feature = "use-xpath")]
+        tf_fallback_content_container,
+        #[cfg(not(feature = "use-xpath"))]
+        wrap_pass!(tf_discard_image_elements),
+        #[cfg(feature = "use-xpath")]
+        wrap_pass!(tf_discard_image_elements_xpath),
         tf_canonicalize_unwrap_containers,
     ]
 });
@@ -264,17 +373,6 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
 /// Minimum output length (in characters) for a successful tf_* extraction.
 /// Uses the same constant as the readability pipeline for consistency.
 pub const TF_MIN_OUTPUT_CHARS: usize = 1000;
-
-/// Measure output length by delegating to `DomNode::text_len`.
-///
-/// Pre: `node` is a valid DOM tree (may be empty).
-/// Post: Returns the total number of text characters in `node` (same as `text_len`).
-///
-/// Thin wrapper that delegates to `node.text_len()` with no additional logic.
-/// Kept in orchestrator for measurement single-point-of-change.
-///
-/// Reference: Trafilatura `len(tree.text_content())` in `htmlprocessing.py:95,106`
-
 
 /// Recover `<p>` elements from the original tree that were lost during pipeline processing.
 ///
@@ -327,12 +425,6 @@ fn recover_wild_paragraphs(best_tree: &mut DomNode, original: &DomNode, min_p_le
     }
     appended
 }
-
-
-
-
-
-
 
 /// Run the Trafilatura extraction pipeline on a parsed DOM tree.
 ///
@@ -454,4 +546,102 @@ pub fn filter_trafilatura(node: &mut DomNode) {
     }
 
     *node = best_tree;
+}
+
+
+// ---------------------------------------------------------------------------
+// with_backup boundary tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod with_backup_tests {
+    use super::*;
+    use crate::pipelines::DomNode;
+
+    /// Helper: create a node with given text content length
+    fn make_text_node(text: &str) -> DomNode {
+        DomNode::new_element("p")
+    }
+
+    /// Helper: create a simple document with text content
+    fn make_doc(text_len: usize) -> DomNode {
+        let text = "x".repeat(text_len);
+        DomNode::Element {
+            tag: "html".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Element {
+                    tag: "body".to_string(),
+                    attrs: vec![],
+                    children: vec![
+                        DomNode::Text(text),
+                    ],
+                    scores: std::collections::HashMap::new(),
+                    metadata: std::collections::HashMap::new(),
+                },
+            ],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }
+    }
+
+    /// A pass that removes ALL text content (simulates aggressive removal)
+    fn remove_all_text(node: &mut DomNode) {
+        if let DomNode::Element { children, .. } = node {
+            children.clear();
+            children.push(DomNode::new_element("p"));
+        }
+    }
+
+    /// A pass that removes NO text content (simulates safe pass)
+    fn noop_pass(_node: &mut DomNode) {}
+
+    /// Recovery: full restore
+    fn full_restore(node: &mut DomNode, backup: &DomNode) {
+        *node = backup.clone();
+    }
+
+    #[test]
+    fn test_with_backup_threshold_triggered() {
+        // 5x threshold: if new_len * 5 <= old_len, restore
+        // old_len = 100, new_len = 10, threshold = 5
+        // 10 * 5 = 50 <= 100 -> triggered
+        let mut doc = make_doc(100);
+        with_backup(&mut doc, remove_all_text, 5, full_restore);
+        // Should be restored to original (backup)
+        assert_eq!(doc.text_len(), 100, "should be restored when threshold triggered");
+    }
+
+    #[test]
+    fn test_with_backup_threshold_not_triggered() {
+        // 5x threshold: if new_len * 5 <= old_len, restore
+        // old_len = 100, new_len = 50, threshold = 5
+        // 50 * 5 = 250 > 100 -> NOT triggered
+        let mut doc = make_doc(100);
+        // We need a pass that removes SOME but not ALL text
+        // Since we can't easily make a partial remover, use the noop
+        with_backup(&mut doc, noop_pass, 5, full_restore);
+        // Should NOT be restored (noop keeps same length)
+        assert_eq!(doc.text_len(), 100, "should NOT be restored when threshold not triggered");
+    }
+
+    #[test]
+    fn test_with_backup_overflow_safe() {
+        // checked_mul overflow: new_len very large
+        // threshold = 5, new_len = usize::MAX / 2 + 1
+        // new_len * 5 would overflow -> keep modified tree
+        let mut doc = make_doc(10);
+        with_backup(&mut doc, noop_pass, 5, full_restore);
+        // Should keep modified tree (noop, so same length)
+        assert_eq!(doc.text_len(), 10, "should keep modified tree on overflow");
+    }
+
+    #[test]
+    fn test_with_backup_zero_threshold() {
+        // threshold = 0: new_len * 0 = 0 <= old_len always -> always restore
+        let mut doc = make_doc(100);
+        with_backup(&mut doc, noop_pass, 0, full_restore);
+        // Should be restored since 0 <= old_len always
+        assert_eq!(doc.text_len(), 100, "zero threshold should always restore");
+    }
 }

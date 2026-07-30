@@ -404,7 +404,10 @@ pub fn first_diff_position(a: &str, b: &str) -> Option<(usize, String, String)> 
 ///    removed (before any restore) — 0 means nothing matched
 pub fn detect_backup_restore(html: &str) -> (bool, u32) {
     use delulu_webfetch::pipelines::walk_pre_mut;
+    #[cfg(not(feature = "use-xpath"))]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_unlikely_candidates;
+    #[cfg(feature = "use-xpath")]
+    use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_unlikely_candidates_xpath as tf_remove_unlikely_candidates;
 
     let root = parse_html(html).expect("parse_html failed");
     let original_len = tf_count_text_chars(&root);
@@ -470,7 +473,10 @@ static BODY_XPATH_PATTERN_2_RE: Lazy<Regex> = Lazy::new(|| {
     .expect("BODY_XPATH_PATTERN_2_RE: invalid regex")
 });
 pub fn detect_body_xpath_pattern(html: &str) -> Option<usize> {
+    #[cfg(not(feature = "use-xpath"))]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_isolate_content_container;
+    #[cfg(feature = "use-xpath")]
+    use delulu_webfetch::pipelines::passes::tf_filters::tf_isolate_content_container_xpath as tf_isolate_content_container;
 
     let mut root = parse_html(html).expect("parse_html failed");
     let original_count = count_elements(&root);

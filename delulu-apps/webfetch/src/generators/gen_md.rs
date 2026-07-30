@@ -21,26 +21,17 @@ fn collect_text(nodes: &[DomNode]) -> String {
     buf
 }
 
-/// Get the value of an attribute by name.
-fn get_attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
-    attrs
-        .iter()
-        .find(|(k, _)| k == name)
-        .map(|(_, v)| v.as_str())
-}
-
 /// Extract the code language and content from a <pre><code> block.
 fn extract_code_block(nodes: &[DomNode]) -> (String, String) {
     for node in nodes {
         if let DomNode::Element {
             tag,
-            attrs,
             children,
             ..
         } = node
             && tag == "code"
         {
-            let language = get_attr(attrs, "class")
+            let language = node.attr("class")
                 .and_then(|c| c.strip_prefix("language-"))
                 .unwrap_or_default()
                 .to_string();
@@ -99,19 +90,18 @@ fn collect_cells(nodes: &[DomNode]) -> Vec<DomNode> {
 fn table_is_complex(node: &DomNode) -> bool {
     if let DomNode::Element {
         tag,
-        attrs,
         children,
         ..
     } = node
     {
         if tag == "td" || tag == "th" {
             // Check for colspan/rowspan
-            if let Some(v) = get_attr(attrs, "colspan")
+            if let Some(v) = node.attr("colspan")
                 && v != "1"
             {
                 return true;
             }
-            if let Some(v) = get_attr(attrs, "rowspan")
+            if let Some(v) = node.attr("rowspan")
                 && v != "1"
             {
                 return true;
@@ -173,8 +163,8 @@ fn serialize_node_to_html(node: &DomNode) -> String {
         } => {
             // Special case: convert <math> to inline/display LaTeX
             if tag == "math" {
-                let alttext = get_attr(attrs, "alttext").unwrap_or("");
-                let display = get_attr(attrs, "display").unwrap_or("inline");
+                let alttext = node.attr("alttext").unwrap_or("");
+                let display = node.attr("display").unwrap_or("inline");
                 if let Some(latex) = math_to_latex(alttext, display) {
                     return latex;
                 }
@@ -319,7 +309,6 @@ impl MarkdownLowerer {
     fn lower_element(node: &DomNode, base_url: Option<&str>, out: &mut String, indent: usize) {
         let DomNode::Element {
             tag,
-            attrs,
             children,
             ..
         } = node
@@ -369,7 +358,7 @@ impl MarkdownLowerer {
 
             // ── Links ──────────────────────────────────────────────────
             "a" => {
-                let href = get_attr(attrs, "href").unwrap_or("");
+                let href = node.attr("href").unwrap_or("");
                 let text = Self::lower_inline(children, base_url);
                 if href.is_empty() {
                     out.push_str(&text);
@@ -385,8 +374,8 @@ impl MarkdownLowerer {
 
             // ── Images ─────────────────────────────────────────────────
             "img" => {
-                let src = get_attr(attrs, "src").unwrap_or("");
-                let alt = get_attr(attrs, "alt").unwrap_or("");
+                let src = node.attr("src").unwrap_or("");
+                let alt = node.attr("alt").unwrap_or("");
                 let resolved = resolve_url(src, base_url);
                 out.push('!');
                 out.push('[');
@@ -446,8 +435,8 @@ impl MarkdownLowerer {
 
             // ── Math (LaTeXML MathML) ────────────────────────────────
             "math" => {
-                let alttext = get_attr(attrs, "alttext").unwrap_or("");
-                let display = get_attr(attrs, "display").unwrap_or("inline");
+                let alttext = node.attr("alttext").unwrap_or("");
+                let display = node.attr("display").unwrap_or("inline");
                 if let Some(latex) = math_to_latex(alttext, display) {
                     out.push_str(&latex);
                 } else {
@@ -586,7 +575,7 @@ impl MarkdownLowerer {
 
         if md_rows.is_empty() {
             return;
-        }
+       }
 
         // Determine column count
         let col_count = md_rows.iter().map(|r| r.len()).max().unwrap_or(0);
