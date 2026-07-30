@@ -195,7 +195,7 @@ pub fn tf_remove_teaser(node: &mut DomNode) -> WalkerAction {
                     && val.to_ascii_lowercase().contains("teaser")
             });
             // Protect content containers: skip removal if id matches article content patterns
-            let is_content = attrs.iter().any(|(k, v)| k == "id" && BODY_XPATH_PATTERN_0_RE.is_match(v.as_str()));
+            let is_content = attrs.iter().any(|(k, v)| (k == "id" || k == "class") && BODY_XPATH_PATTERN_0_RE.is_match(v.as_str()));
             if has_teaser && !is_content {
                 WalkerAction::Remove
             } else {
@@ -687,8 +687,13 @@ pub fn tf_protect_content_forms(node: &mut DomNode) {
 pub(crate) fn collect_p_elements(node: &DomNode, result: &mut Vec<DomNode>) {
     match node {
         // Skip boilerplate containers entirely
-        DomNode::Element { tag, .. }
-            if matches!(tag.as_str(), "nav" | "footer" | "header" | "form") =>
+        // Protected content forms (marked by tf_protect_content_forms) are
+        // descended into because they wrap >90% of page content.
+        // Unprotected <form> elements are still skipped as boilerplate.
+        DomNode::Element { tag, metadata, .. }
+            if matches!(tag.as_str(), "nav" | "footer" | "header")
+                || (tag == "form"
+                    && metadata.get("tf_protected").map(|v| v.as_str()) != Some("true")) =>
         {
             // Don't descend into boilerplate containers
         }
@@ -852,17 +857,20 @@ pub fn tf_isolate_content_container(node: &mut DomNode) {
             || iv.starts_with("main") || rv.starts_with("main"),
     ];
     for check in PATTERN_CHECKS {
-        let mut path = Vec::new();
-        // Two-step process matching Python XPath [1] semantics:
-        // 1. Find the FIRST match of this pattern in document order
-        // 2. Check if it has enough content—if not, try next pattern
-        if find_first_match(children, &check, &mut path) {
-            if container_has_content(children, &path) {
-                best_path = Some(path);
+        // Collect ALL matches for this pattern (all siblings, all depths)
+        let mut all_paths: Vec<Vec<usize>> = Vec::new();
+        find_all_matches(children, &check, &mut all_paths, &mut Vec::new());
+        // Try each match in document order; accept the first with enough content
+        for path in &all_paths {
+            if container_has_content(children, path) {
+                best_path = Some(path.clone());
                 break;
             }
-            // First match failed threshold → try next pattern
         }
+        if best_path.is_some() {
+            break;
+        }
+        // No match with enough content → try next pattern
     }
     if let Some(path) = best_path {
         apply_path(children, &path);
@@ -876,6 +884,7 @@ pub fn tf_isolate_content_container(node: &mut DomNode) {
 /// Unlike the original implementation, this does NOT check the content threshold —
 /// it returns the first match regardless of `<p>` text count.
 /// The caller (`tf_isolate_content_container`) separately checks content.
+#[allow(dead_code)]
 fn find_first_match(
     nodes: &[DomNode],
     check: &fn(&str, &str, &str, &str, &str) -> bool,
@@ -909,7 +918,44 @@ fn find_first_match(
     false
 }
 
+/// Collect ALL elements matching a BODY_XPATH pattern in document order.
+/// Unlike `find_first_match` which returns the first match, this collects
+/// ALL matches (all siblings at all depths) so the caller can try each one
+/// for content threshold before falling through to the next pattern.
+/// This fixes sibling fallthrough: when two siblings both match Pattern 0 but
+/// the first has insufficient content, we should try the second sibling
+/// before moving to Pattern 1.
+fn find_all_matches(
+    nodes: &[DomNode],
+    check: &fn(&str, &str, &str, &str, &str) -> bool,
+    results: &mut Vec<Vec<usize>>,
+    current_path: &mut Vec<usize>,
+) {
+    for (i, node) in nodes.iter().enumerate() {
+        current_path.push(i);
+        if let DomNode::Element { tag, attrs, children, .. } = node
+            && matches!(tag.as_str(), "article" | "div" | "main" | "section")
+        {
+            let cv = attrs.iter().find(|(k, _)| k == "class").map(|(_, v)| v.as_str()).unwrap_or("");
+            let iv = attrs.iter().find(|(k, _)| k == "id").map(|(_, v)| v.as_str()).unwrap_or("");
+            let rv = attrs.iter().find(|(k, _)| k == "role").map(|(_, v)| v.as_str()).unwrap_or("");
+            let ipv = attrs.iter().find(|(k, _)| k == "itemprop").map(|(_, v)| v.as_str()).unwrap_or("");
+            if check(tag.as_str(), cv, iv, rv, ipv) {
+                results.push(current_path.clone());
+            }
+            find_all_matches(children, check, results, current_path);
+        } else if let DomNode::Element { children, .. } = node {
+            find_all_matches(children, check, results, current_path);
+        }
+        current_path.pop();
+    }
+}
+
 fn apply_path(nodes: &mut Vec<DomNode>, path: &[usize]) {
+    // Isolate the matched container by removing siblings at each level
+    // from the root down to the parent of the matched container.
+    // At the deepest level (path.len() == 1): remove siblings of the matched container.
+    // At intermediate levels: remove siblings of the path container.
     if path.is_empty() { return; }
     let idx = path[0];
     if path.len() == 1 {
@@ -1150,7 +1196,7 @@ pub fn tf_remove_teaser_xpath(node: &mut DomNode) -> WalkerAction {
                 v.to_ascii_lowercase().contains("teaser")
             });
             // Protect content containers: skip removal if id matches article content patterns
-            let is_content = node.attr("id").map_or(false, |v| BODY_XPATH_PATTERN_0_RE.is_match(v));
+            let is_content = node.attr("id").or(node.attr("class")).map_or(false, |v| BODY_XPATH_PATTERN_0_RE.is_match(v));
             if has_teaser && !is_content {
                 WalkerAction::Remove
             } else {

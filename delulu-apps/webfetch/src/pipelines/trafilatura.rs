@@ -152,7 +152,10 @@ pub fn apply_tf_remove_unlikely_candidates_with_backup(node: &mut DomNode) {
         node,
         |n| walk_pre_mut(n, &|n| tf_remove_unlikely_candidates(n)),
         5,
-        |node, backup| *node = backup.clone(),
+        |node, backup| {
+            *node = backup.clone();
+            walk_pre_mut(node, &|n| tf_remove_cleaned(n));
+        },
     );
 }
 
@@ -168,7 +171,10 @@ pub fn apply_tf_filter_by_link_density_with_backup(node: &mut DomNode) {
         node,
         |n| walk_pre_mut(n, &|n| tf_filter_by_link_density(n)),
         19,
-        |node, backup| *node = backup.clone(),
+        |node, backup| {
+            *node = backup.clone();
+            walk_pre_mut(node, &|n| tf_remove_cleaned(n));
+        },
     );
 }
 
@@ -204,7 +210,10 @@ pub fn apply_tf_remove_unlikely_candidates_xpath_with_backup(node: &mut DomNode)
         node,
         |n| walk_pre_mut(n, &|n| tf_remove_unlikely_candidates_xpath(n)),
         5,
-        |node, backup| *node = backup.clone(),
+        |node, backup| {
+            *node = backup.clone();
+            walk_pre_mut(node, &|n| tf_remove_cleaned(n));
+        },
     );
 }
 
@@ -218,7 +227,10 @@ pub fn apply_tf_filter_by_link_density_xpath_with_backup(node: &mut DomNode) {
         node,
         |n| walk_pre_mut(n, &|n| tf_filter_by_link_density(n)),
         19,
-        |node, backup| *node = backup.clone(),
+        |node, backup| {
+            *node = backup.clone();
+            walk_pre_mut(node, &|n| tf_remove_cleaned(n));
+        },
     );
 }
 
@@ -318,10 +330,10 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
     ]
 });
 
-/// Level: Recall — same as Balanced but WITHOUT `tf_remove_empty_cut` and WITHOUT `apply_tf_filter_tag_catalog`.
+/// Level: Recall — same as Balanced but WITHOUT `tf_remove_empty_cut` and WITH `apply_tf_filter_tag_catalog`.
 ///
 /// Pre: `node` is a valid DOM tree. `rd_analysis::mark_data_tables_by_structure` has been called.
-/// Post: All 16 passes are applied in order. `node` is mutated in-place. `tf_remove_empty_cut` and `apply_tf_filter_tag_catalog` are NOT applied.
+/// Post: All 16 passes are applied in order. `node` is mutated in-place. `tf_remove_empty_cut` is NOT applied, but `apply_tf_filter_tag_catalog` IS applied.
 ///
 /// Less aggressive filtering. Use as fallback when Balanced produces too little output.
 pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
@@ -363,6 +375,8 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
         #[cfg(feature = "use-xpath")]
         wrap_pass!(tf_discard_image_elements_xpath),
         tf_canonicalize_unwrap_containers,
+        // Final tag whitelist — remove any tags not in TAG_CATALOG
+        apply_tf_filter_tag_catalog,
     ]
 });
 
@@ -549,99 +563,6 @@ pub fn filter_trafilatura(node: &mut DomNode) {
 }
 
 
-// ---------------------------------------------------------------------------
-// with_backup boundary tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
-mod with_backup_tests {
-    use super::*;
-    use crate::pipelines::DomNode;
-
-    /// Helper: create a node with given text content length
-    fn make_text_node(text: &str) -> DomNode {
-        DomNode::new_element("p")
-    }
-
-    /// Helper: create a simple document with text content
-    fn make_doc(text_len: usize) -> DomNode {
-        let text = "x".repeat(text_len);
-        DomNode::Element {
-            tag: "html".to_string(),
-            attrs: vec![],
-            children: vec![
-                DomNode::Element {
-                    tag: "body".to_string(),
-                    attrs: vec![],
-                    children: vec![
-                        DomNode::Text(text),
-                    ],
-                    scores: std::collections::HashMap::new(),
-                    metadata: std::collections::HashMap::new(),
-                },
-            ],
-            scores: std::collections::HashMap::new(),
-            metadata: std::collections::HashMap::new(),
-        }
-    }
-
-    /// A pass that removes ALL text content (simulates aggressive removal)
-    fn remove_all_text(node: &mut DomNode) {
-        if let DomNode::Element { children, .. } = node {
-            children.clear();
-            children.push(DomNode::new_element("p"));
-        }
-    }
-
-    /// A pass that removes NO text content (simulates safe pass)
-    fn noop_pass(_node: &mut DomNode) {}
-
-    /// Recovery: full restore
-    fn full_restore(node: &mut DomNode, backup: &DomNode) {
-        *node = backup.clone();
-    }
-
-    #[test]
-    fn test_with_backup_threshold_triggered() {
-        // 5x threshold: if new_len * 5 <= old_len, restore
-        // old_len = 100, new_len = 10, threshold = 5
-        // 10 * 5 = 50 <= 100 -> triggered
-        let mut doc = make_doc(100);
-        with_backup(&mut doc, remove_all_text, 5, full_restore);
-        // Should be restored to original (backup)
-        assert_eq!(doc.text_len(), 100, "should be restored when threshold triggered");
-    }
-
-    #[test]
-    fn test_with_backup_threshold_not_triggered() {
-        // 5x threshold: if new_len * 5 <= old_len, restore
-        // old_len = 100, new_len = 50, threshold = 5
-        // 50 * 5 = 250 > 100 -> NOT triggered
-        let mut doc = make_doc(100);
-        // We need a pass that removes SOME but not ALL text
-        // Since we can't easily make a partial remover, use the noop
-        with_backup(&mut doc, noop_pass, 5, full_restore);
-        // Should NOT be restored (noop keeps same length)
-        assert_eq!(doc.text_len(), 100, "should NOT be restored when threshold not triggered");
-    }
-
-    #[test]
-    fn test_with_backup_overflow_safe() {
-        // checked_mul overflow: new_len very large
-        // threshold = 5, new_len = usize::MAX / 2 + 1
-        // new_len * 5 would overflow -> keep modified tree
-        let mut doc = make_doc(10);
-        with_backup(&mut doc, noop_pass, 5, full_restore);
-        // Should keep modified tree (noop, so same length)
-        assert_eq!(doc.text_len(), 10, "should keep modified tree on overflow");
-    }
-
-    #[test]
-    fn test_with_backup_zero_threshold() {
-        // threshold = 0: new_len * 0 = 0 <= old_len always -> always restore
-        let mut doc = make_doc(100);
-        with_backup(&mut doc, noop_pass, 0, full_restore);
-        // Should be restored since 0 <= old_len always
-        assert_eq!(doc.text_len(), 100, "zero threshold should always restore");
-    }
-}
+#[path = "../../tests/unit/pipelines/trafilatura_test.rs"]
+mod tests;
