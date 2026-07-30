@@ -1,6 +1,8 @@
 use super::*;
 use crate::pipelines::parse_html;
 use crate::pipelines::walk_pre_mut;
+use crate::pipelines::walk_post_mut;
+use crate::pipelines::walkers::WalkerFilter;
 use std::collections::HashMap;
 
 // ── tf_remove_cleaned ────────────────────────────────────────────────
@@ -1620,7 +1622,9 @@ fn test_tf_filter_tag_catalog_allowed_tags_kept() {
     let mut root = parse_html(
         r#"<p>paragraph</p><blockquote>quote</blockquote><code>code</code><pre>pre</pre>"#
     ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_filter_tag_catalog(n));
+    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
+    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
+    walk_post_mut(&mut root, &mut filters, None);
     assert!(find_tag(&root, "p"), "<p> should be kept");
     assert!(find_tag(&root, "blockquote"), "<blockquote> should be kept");
     assert!(find_tag(&root, "code"), "<code> should be kept");
@@ -1632,7 +1636,9 @@ fn test_tf_filter_tag_catalog_unknown_tags_removed() {
     let mut root = parse_html(
         r#"<div>div content</div><span>span content</span><section>section</section>"#
     ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_filter_tag_catalog(n));
+    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
+    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
+    walk_post_mut(&mut root, &mut filters, None);
     assert!(!find_tag(&root, "div"), "<div> should be removed");
     assert!(!find_tag(&root, "span"), "<span> should be removed");
     assert!(!find_tag(&root, "section"), "<section> should be removed");
@@ -1643,7 +1649,9 @@ fn test_tf_filter_tag_catalog_structural_tags_preserved() {
     let mut root = parse_html(
         r#"<html><body><p>content</p></body></html>"#
     ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_filter_tag_catalog(n));
+    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
+    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
+    walk_post_mut(&mut root, &mut filters, None);
     assert!(find_tag(&root, "html"), "<html> should be preserved");
     assert!(find_tag(&root, "body"), "<body> should be preserved");
     assert!(find_tag(&root, "p"), "<p> should be preserved");
@@ -1681,7 +1689,9 @@ fn test_tf_filter_tag_catalog_converted_tags_preserved() {
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
-    walk_pre_mut(&mut root, &|n| tf_filter_tag_catalog(n));
+    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
+    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
+    walk_post_mut(&mut root, &mut filters, None);
     assert!(find_tag(&root, "item"), "<item> should be preserved");
     assert!(find_tag(&root, "ref"), "<ref> should be preserved");
     assert!(find_tag(&root, "graphic"), "<graphic> should be preserved");
@@ -1690,7 +1700,9 @@ fn test_tf_filter_tag_catalog_converted_tags_preserved() {
 #[test]
 fn test_tf_filter_tag_catalog_text_nodes_survive() {
     let mut root = parse_html(r#"<div>text content</div>"#).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_filter_tag_catalog(n));
+    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
+    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
+    walk_post_mut(&mut root, &mut filters, None);
     // The <div> is removed, but text nodes inside it should survive
     // Actually the walker removes the element; text nodes inside are also removed with parent
     // This test verifies the function doesn't panic on text nodes

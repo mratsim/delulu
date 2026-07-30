@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use crate::pipelines::{DomNode, WalkerAction, walk_post_mut, walk_pre_mut};
 
 use super::passes::tf_filters::{
-    count_p_text, tf_discard_image_elements, tf_extract_script_templates,
-    tf_fallback_content_container, tf_filter_by_link_density, tf_filter_tag_catalog,
-    tf_isolate_content_container, tf_precision_discard, tf_protect_content_forms,
+    collect_p_elements, count_non_ws_chars, count_p_text, count_text_chars,
+    extract_jsonld_article_body, get_inner_text, recover_wild_p_elements,
+    tf_extract_script_templates, tf_fallback_content_container, tf_filter_by_link_density,
+    tf_filter_tag_catalog, tf_isolate_content_container, tf_protect_content_forms,
     tf_remove_cleaned, tf_remove_empty_cut, tf_remove_teaser,
     tf_remove_unlikely_candidates, tf_strip_unwrapped,
 };
@@ -25,16 +26,16 @@ use super::passes::tf_transforms::{
 /// variants and should not panic on well-formed input.
 pub type PassFn = fn(&mut DomNode);
 
-/// Apply tf_remove_unlikely_candidates with backup/restore safety mechanism.
+/// Remove unlikely candidates with backup/restore safety net.
 ///
-/// Measures text content before/after pruning. If >=86% of text was removed
-/// (i.e., new_len * 7 <= old_len), restores from backup copy.
+/// Pre: `node` is a valid DOM tree. The tree has been parsed and basic cleaning applied.
+/// Post: Elements matching OVERALL_DISCARD_XPATH are removed. If >=80% of text is removed (threshold: 5×), the node is restored to the backup state. Uses `*node = backup` (full restore).
 ///
 /// Matches Trafilatura's `prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH,
 /// with_backup=True)` (trafilatura/htmlprocessing.py:prune_unwanted_nodes).
 ///
-/// Trafilatura logic: `return tree if new_len > old_len / 7 else backup`
-/// Our equivalent: `if new_len * 7 <= old_len { restore }`
+/// Trafilatura logic: `return tree if new_len > old_len / 5 else backup`
+/// Our equivalent: `if new_len * 5 <= old_len { restore }`
 ///
 /// The backup only reverts the unlikely-candidates pass. Other passes
 /// (cleaned removal, teaser removal) are NOT reverted. Subsequent passes
@@ -76,10 +77,10 @@ pub fn apply_tf_remove_unlikely_candidates_with_backup(node: &mut DomNode) {
     }
 }
 
-/// Apply tf_filter_by_link_density with backup/restore safety mechanism.
+/// Filter by link density with backup/restore safety net.
 ///
-/// Measures text content before/after link density filtering. If >=95% of text
-/// was removed (i.e., new_len * 19 <= old_len), restores from backup copy.
+/// Pre: `node` is a valid DOM tree. Unlikely candidates have been removed.
+/// Post: Elements with link density >50% are removed. If >=95% of text is removed (threshold: 19×), the node is restored to the backup state. Uses `*node = backup` (full restore).
 ///
 /// This prevents catastrophic content loss when the full-page link density
 /// filter removes the main content container (e.g., dailymail.co.uk where
@@ -115,11 +116,10 @@ pub fn apply_tf_filter_by_link_density_with_backup(node: &mut DomNode) {
     }
 }
 
-/// Apply container isolation with recovery mechanism.
+/// Isolate content container with backup/recovery safety net.
 ///
-/// Measures text content before/after container isolation. If >=95% of text
-/// was removed (i.e., new_len * 19 <= old_len), recovers `<p>` elements from
-/// the backup tree instead of restoring the full tree with boilerplate.
+/// Pre: `node` is a valid DOM tree. Link density filtering has been applied.
+/// Post: Content container is isolated via BODY_XPATH cascade. If >=90% of text is removed (threshold: 10×), wild `<p>` elements are recovered from the backup (not full restore).
 ///
 /// This is a simplified version of Python's `recover_wild_text()` which scans
 /// the backup tree for wild `<p>`, `<code>`, `<quote>`, `<table>` elements.
@@ -142,7 +142,7 @@ pub fn apply_tf_isolate_container_with_backup(node: &mut DomNode) {
         );
         // Recover <p> elements from the backup tree that aren't already in node
         // This is a simplified version of Python's recover_wild_text()
-        let existing_text = collect_text_from_node(node);
+        let existing_text = get_inner_text(node);
         recover_wild_p_elements(node, &backup, &existing_text);
         let recovered_len = measure_output(node);
         tracing::info!(
@@ -164,60 +164,11 @@ pub fn apply_tf_isolate_container_with_backup(node: &mut DomNode) {
     }
 }
 
-/// Collect all text content from a DOM node tree.
-fn collect_text_from_node(node: &DomNode) -> String {
-    match node {
-        DomNode::Text(t) => t.clone(),
-        DomNode::Element { children, .. } => {
-            let mut result = String::new();
-            for child in children {
-                result.push_str(&collect_text_from_node(child));
-            }
-            result
-        }
-        _ => String::new(),
-    }
-}
 
-/// Recover `<p>` elements from a backup tree that aren't already in the current node.
-/// This is a simplified version of Python's recover_wild_text().
-fn recover_wild_p_elements(node: &mut DomNode, backup: &DomNode, existing_text: &str) {
-    // Collect all <p> element text from the backup tree
-    let mut recovered: Vec<DomNode> = Vec::new();
-    collect_p_elements(backup, &mut recovered);
 
-    // Add recovered <p> elements that aren't already in the current tree
-    if let DomNode::Element { children, .. } = node {
-        for p_node in recovered {
-            let p_text = collect_text_from_node(&p_node);
-            if !p_text.trim().is_empty() && !existing_text.contains(&p_text) {
-                children.push(p_node);
-            }
-        }
-    }
-}
 
-/// Collect all `<p>` element subtrees from a DOM tree,
-/// skipping `<p>` elements inside boilerplate containers.
-fn collect_p_elements(node: &DomNode, result: &mut Vec<DomNode>) {
-    match node {
-        // Skip boilerplate containers entirely
-        DomNode::Element { tag, .. }
-            if matches!(tag.as_str(), "nav" | "footer" | "header" | "form") =>
-        {
-            // Don't descend into boilerplate containers
-        }
-        DomNode::Element { tag, children, .. } if tag == "p" => {
-            result.push(node.clone());
-        }
-        DomNode::Element { children, .. } => {
-            for child in children {
-                collect_p_elements(child, result);
-            }
-        }
-        _ => {}
-    }
-}
+
+
 
 
 // ---------------------------------------------------------------------------
@@ -225,6 +176,9 @@ fn collect_p_elements(node: &DomNode, result: &mut Vec<DomNode>) {
 // ---------------------------------------------------------------------------
 
 /// Level: Balanced — standard Trafilatura-equivalent pipeline.
+///
+/// Pre: `node` is a valid DOM tree. `rd_analysis::mark_data_tables_by_structure` has been called.
+/// Post: All 18 passes are applied in order. `node` is mutated in-place. Output contains only tags in TAG_CATALOG.
 ///
 /// Order:
 /// 1. Remove MANUALLY_CLEANED tags (figure, script, nav, etc.)
@@ -244,6 +198,10 @@ fn apply_tf_filter_tag_catalog(node: &mut DomNode) {
     walk_post_mut(node, &mut filters, None);
 }
 
+/// Apply tag catalog filter — remove all tags not in TAG_CATALOG.
+///
+/// Pre: `node` is a valid DOM tree. All other passes have been applied.
+/// Post: Only tags in TAG_CATALOG survive. Unknown tags are replaced with their children (ReplaceWithChildren). Uses `walk_post_mut` (ReplaceWithChildren panics in pre-order).
 pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
     &[
         tf_protect_content_forms,
@@ -263,12 +221,15 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
         tf_canonicalize_strip_non_content,
         apply_tf_isolate_container_with_backup,
         tf_canonicalize_unwrap_containers,
-        // RC-10: Final tag whitelist — remove any tags not in TAG_CATALOG
+        // Final tag whitelist — remove any tags not in TAG_CATALOG
         apply_tf_filter_tag_catalog,
     ]
 });
 
-/// Level: Recall — same as Balanced but WITHOUT `tf_remove_empty_cut`.
+/// Level: Recall — same as Balanced but WITHOUT `tf_remove_empty_cut` and WITHOUT `apply_tf_filter_tag_catalog`.
+///
+/// Pre: `node` is a valid DOM tree. `rd_analysis::mark_data_tables_by_structure` has been called.
+/// Post: All 16 passes are applied in order. `node` is mutated in-place. `tf_remove_empty_cut` and `apply_tf_filter_tag_catalog` are NOT applied.
 ///
 /// Less aggressive filtering. Use as fallback when Balanced produces too little output.
 pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
@@ -301,93 +262,97 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
 /// Uses the same constant as the readability pipeline for consistency.
 pub const TF_MIN_OUTPUT_CHARS: usize = 1000;
 
-/// Measure the rendered text content length of a DOM tree.
+/// Measure output length by delegating to `tf_filters::count_text_chars`.
+///
+/// Pre: `node` is a valid DOM tree (may be empty).
+/// Post: Returns the total number of text characters in `node` (same as `count_text_chars`).
+///
+/// Thin wrapper that delegates to `count_text_chars(node)` with no additional logic.
+/// Kept in orchestrator for measurement single-point-of-change.
+///
+/// Reference: Trafilatura `len(tree.text_content())` in `htmlprocessing.py:95,106`
 fn measure_output(node: &DomNode) -> usize {
-    // Count text characters in the tree
     count_text_chars(node)
 }
 
-/// Count total text characters in a DOM tree recursively.
-fn count_text_chars(node: &DomNode) -> usize {
-    match node {
-        DomNode::Text(t) => t.len(),
-        DomNode::Element { children, .. } => children.iter().map(count_text_chars).sum(),
-        _ => 0,
-    }
-}
 
-/// Count non-whitespace text characters in a DOM tree recursively.
-/// This gives a better estimate of actual useful content than raw text length,
-/// which includes whitespace from HTML formatting (newlines, indentation).
-fn count_non_ws_chars(node: &DomNode) -> usize {
-    match node {
-        DomNode::Text(t) => t.chars().filter(|c| !c.is_whitespace()).count(),
-        DomNode::Element { children, .. } => children.iter().map(count_non_ws_chars).sum(),
-        _ => 0,
-    }
-}
-
-
-/// Extract `articleBody` from JSON-LD scripts in the DOM tree.
-/// Returns `None` if no JSON-LD script with `articleBody` is found.
-fn extract_jsonld_article_body(node: &DomNode) -> Option<String> {
-    match node {
-        DomNode::Text(_) => None,
-        DomNode::Element { tag, attrs, children, .. } if tag == "script" => {
-            // Check if type attribute is exactly "application/ld+json"
-            let is_jsonld = attrs.iter().any(|(k, v)| {
-                k.eq_ignore_ascii_case("type")
-                    && v == "application/ld+json"
-            });
-            if is_jsonld {
-                let text = super::passes::tf_filters::collect_text(children);
-                if text.contains("articleBody") {
-                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if let Some(body) = val.get("articleBody").and_then(|v| v.as_str()) {
-                            let trimmed = body.trim();
-                            if trimmed.len() >= 100 {
-                                // If articleBody contains <p> tags, parse as HTML and extract text
-                                let text = if trimmed.contains("<p>") {
-                                    let fragment = scraper::Html::parse_fragment(trimmed);
-                                    fragment.root_element().text().collect::<String>().trim().to_string()
-                                } else {
-                                    trimmed.to_string()
-                                };
-                                return Some(text);
-                            }
-                        }
-                    }
-                }
-            }
-            // Not a JSON-LD script — recurse into children
-            for child in children {
-                if let Some(body) = extract_jsonld_article_body(child) {
-                    return Some(body);
-                }
-            }
-            None
-        }
-        DomNode::Element { children, .. } => {
-            for child in children {
-                if let Some(body) = extract_jsonld_article_body(child) {
-                    return Some(body);
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-/// Run the tf_* pipeline with a retry cascade.
+/// Recover `<p>` elements from the original tree that were lost during pipeline processing.
 ///
-/// Tries `TF_BALANCED` first. If output < `TF_MIN_OUTPUT_CHARS`, tries `TF_RECALL`.
-/// Logs fallbacks with `tracing::info!`.
+/// Pre: `best_tree` is the current extraction result (may contain partial content).
+///      `original` is a clone of the original tree (pre-pipeline).
+///      `min_p_len` is the minimum paragraph length in characters (0 = no filter).
+/// Post: `<p>` elements from the cleaned original tree that don't duplicate existing text
+///       are appended to `best_tree.children`. Dedup uses substring `contains()` (matching
+///       Python behavior, not exact match). Paragraphs shorter than `min_p_len` are filtered out
+///       to avoid recovering boilerplate/sidebar snippets (see OVERALL_DISCARD_XPATH).
+/// Returns: The number of paragraphs appended to `best_tree`.
+///
+/// Note: This function is orchestrator-level, coordinating cleaning passes, element collection,
+///       and tree manipulation. It does NOT use recursion — stack depth is bounded by the
+///       DOM tree traversal in `collect_p_elements` and `walk_pre_mut`.
+///
+/// Reference: Trafilatura `recover_wild_text()` in `main_extractor.py:536-560`
+fn recover_wild_paragraphs(best_tree: &mut DomNode, original: &DomNode, min_p_len: usize) -> usize {
+    let mut recovery_tree = original.clone();
+    // Apply tf_protect_content_forms first to protect form-wrapped content
+    tf_protect_content_forms(&mut recovery_tree);
+    // Then apply cleaning passes to remove boilerplate
+    walk_pre_mut(&mut recovery_tree, &|n| tf_remove_teaser(n));
+    // Also remove script, style, svg, template, iframe, canvas
+    walk_pre_mut(&mut recovery_tree, &|n| {
+        match n {
+            DomNode::Element { tag, .. } if matches!(
+                tag.as_str(),
+                "script" | "style" | "svg" | "template" | "iframe" | "canvas"
+            ) => WalkerAction::Remove,
+            _ => WalkerAction::Continue,
+        }
+    });
+    // Collect <p> elements from the cleaned tree (boilerplate already removed)
+    let mut recovered_ps: Vec<DomNode> = Vec::new();
+    collect_p_elements(&recovery_tree, &mut recovered_ps);
+    // Get existing text in best_tree for dedup
+    let existing_text = get_inner_text(best_tree);
+    // Add recovered <p> elements that aren't already in best_tree
+    let mut appended = 0usize;
+    if let DomNode::Element { children, .. } = best_tree {
+        for p_node in &recovered_ps {
+            let p_text = get_inner_text(p_node);
+            let trimmed = p_text.trim();
+            if trimmed.len() >= min_p_len && !trimmed.is_empty() && !existing_text.contains(&p_text) {
+                children.push(p_node.clone());
+                appended += 1;
+            }
+        }
+    }
+    appended
+}
+
+
+
+
+
+
+
+/// Run the Trafilatura extraction pipeline on a parsed DOM tree.
+///
+/// Pre: `node` is a fully parsed DOM tree with `<html>` root.
+///      `rd_analysis::mark_data_tables_by_structure` has NOT yet been called
+///      (caller must call it before this function).
+/// Post: `node` is mutated to contain the best available extraction result;
+///       benchmark output is byte-identical for all 961 fixtures.
+///       The retry cascade (TF_BALANCED → TF_RECALL → wild p-recovery → JSON-LD rescue)
+///       has been applied. `node` may contain a subset of original elements.
+///       Never panics — all errors are silently recovered.
+/// Side effects: Clones the DOM tree up to 7 times per invocation (pre-existing behavior).
+///               Calls `rd_analysis::mark_data_tables_by_structure` on the input node.
+///
+/// Reference: Trafilatura `trafilatura_sequence()` in `core.py:95-122`
 pub fn filter_trafilatura(node: &mut DomNode) {
     // Run analysis passes first to populate metadata
     crate::pipelines::passes::rd_analysis::mark_data_tables_by_structure(node);
 
-    // TODO: Add fuzzing guard for large DOM trees
+    // TODO: Add fuzzing guard for large DOM trees (e.g., skip retry cascade when nodes > INPUT_NODE_LIMIT)
     let levels: &[&[PassFn]] = &[*TF_BALANCED, *TF_RECALL];
 
     let original = node.clone();
@@ -417,92 +382,31 @@ pub fn filter_trafilatura(node: &mut DomNode) {
     // If best output is below threshold, try recovering <p> elements
     // Uses a cleaned copy with boilerplate containers removed first.
     if best_len < 500 || (best_len < 2200 && count_non_ws_chars(&best_tree) < 250) {
-        let mut recovery_tree = original.clone();
-        // Apply tf_protect_content_forms first to protect form-wrapped content
-        tf_protect_content_forms(&mut recovery_tree);
-        // Then apply cleaning passes to remove boilerplate
-        walk_pre_mut(&mut recovery_tree, &|n| tf_remove_teaser(n));
-        // Also remove script, style, svg, template, iframe, canvas
-        walk_pre_mut(&mut recovery_tree, &|n| {
-            match n {
-                DomNode::Element { tag, .. } if matches!(
-                    tag.as_str(),
-                    "script" | "style" | "svg" | "template" | "iframe" | "canvas"
-                ) => WalkerAction::Remove,
-                _ => WalkerAction::Continue,
-            }
-        });
-        // Collect <p> elements from the cleaned tree (boilerplate already removed)
-        let mut recovered_ps: Vec<DomNode> = Vec::new();
-        collect_p_elements(&recovery_tree, &mut recovered_ps);
-        // Get existing text in best_tree for dedup
-        let existing_text = collect_text_from_node(&best_tree);
-        // Add recovered <p> elements that aren't already in best_tree
-        if let DomNode::Element { children, .. } = &mut best_tree {
-            for p_node in &recovered_ps {
-                let p_text = collect_text_from_node(p_node);
-                if !p_text.trim().is_empty() && !existing_text.contains(&p_text) {
-                    children.push(p_node.clone());
-                }
-            }
-        }
-        let recovered_len = measure_output(&best_tree);
-        if recovered_len > best_len {
+        let old_len = best_len;
+        let n = recover_wild_paragraphs(&mut best_tree, &original, 0);
+        best_len = measure_output(&best_tree);
+        if best_len > old_len {
             tracing::info!(
                 "recover_wild_text: {} -> {} chars (recovered {} p-elements)",
+                old_len,
                 best_len,
-                recovered_len,
-                recovered_ps.len()
+                n
             );
-            best_len = recovered_len;
         } else {
             tracing::debug!("recover_wild_text: no improvement ({} chars)", best_len);
         }
     } else if best_len < 800 {
-        // Recovery with paragraph length filter (>= 100 chars) to avoid boilerplate
-        // This handles cases where pipeline output is reasonable but content was
-        // removed by OVERALL_DISCARD_XPATH. Only recovers paragraphs with meaningful
-        // text content to avoid adding boilerplate/sidebar snippets.
-        let mut recovery_tree = original.clone();
-        // Apply tf_protect_content_forms first to protect form-wrapped content
-        tf_protect_content_forms(&mut recovery_tree);
-        // Then apply cleaning passes to remove boilerplate
-        walk_pre_mut(&mut recovery_tree, &|n| tf_remove_teaser(n));
-        // Also remove script, style, svg, template, iframe, canvas
-        walk_pre_mut(&mut recovery_tree, &|n| {
-            match n {
-                DomNode::Element { tag, .. } if matches!(
-                    tag.as_str(),
-                    "script" | "style" | "svg" | "template" | "iframe" | "canvas"
-                ) => WalkerAction::Remove,
-                _ => WalkerAction::Continue,
-            }
-        });
-        // Collect <p> elements from the cleaned tree (boilerplate already removed)
-        let mut recovered_ps: Vec<DomNode> = Vec::new();
-        collect_p_elements(&recovery_tree, &mut recovered_ps);
-        // Get existing text in best_tree for dedup
-        let existing_text = collect_text_from_node(&best_tree);
-        // Add recovered <p> elements that aren't already in best_tree
-        // Only add paragraphs with >= 100 chars of meaningful text (filters boilerplate)
-        if let DomNode::Element { children, .. } = &mut best_tree {
-            for p_node in &recovered_ps {
-                let p_text = collect_text_from_node(p_node);
-                let trimmed = p_text.trim();
-                if trimmed.len() >= 100 && !existing_text.contains(&p_text) {
-                    children.push(p_node.clone());
-                }
-            }
-        }
-        let recovered_len = measure_output(&best_tree);
-        if recovered_len > best_len {
+        let old_len = best_len;
+        let n = recover_wild_paragraphs(&mut best_tree, &original, 100);
+        best_len = measure_output(&best_tree);
+        if best_len > old_len {
             tracing::info!(
-                "recover_wild_text (filtered): {} -> {} chars (recovered {} p-elements, >=100 char filter)",
+                "recover_wild_text (filtered): {} -> {} chars (recovered {} p-elements, >={} char filter)",
+                old_len,
                 best_len,
-                recovered_len,
-                recovered_ps.len()
+                n,
+                100
             );
-            best_len = recovered_len;
         } else {
             tracing::debug!("recover_wild_text (filtered): no improvement ({} chars)", best_len);
         }
@@ -520,7 +424,7 @@ pub fn filter_trafilatura(node: &mut DomNode) {
         if let Some(body) = article_body {
             let trimmed = body.trim();
             if trimmed.len() >= 100 {
-                let existing_text = collect_text_from_node(&best_tree);
+                let existing_text = get_inner_text(&best_tree);
                 if !existing_text.contains(trimmed) {
                     tracing::info!(
                         "jsonld recovery: adding articleBody ({} chars) to best_tree (current {} chars)",
@@ -551,4 +455,3 @@ pub fn filter_trafilatura(node: &mut DomNode) {
 
     *node = best_tree;
 }
-

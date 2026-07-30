@@ -1,6 +1,5 @@
 use crate::pipelines::DomNode;
-use crate::pipelines::walkers::{WalkerAction, WalkerFilter, walk_post_mut, walk_pre_mut};
-use super::tf_filters::{count_p_text, collect_text, MIN_EXTRACTED_SIZE};
+use crate::pipelines::walkers::{WalkerAction, WalkerFilter, walk_post_mut};
 
 // ---------------------------------------------------------------------------
 // Heading conversion (h1-h6 → head)
@@ -10,6 +9,7 @@ use super::tf_filters::{count_p_text, collect_text, MIN_EXTRACTED_SIZE};
 ///
 /// - `h1` → `<head rend="h1">`
 /// - `h3` → `<head rend="h3">`
+/// Reference: Trafilatura `htmlprocessing.py:316-320` `convert_headings()`
 pub fn tf_convert_headings(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. }
@@ -36,6 +36,7 @@ pub fn tf_convert_headings(node: &mut DomNode) -> WalkerAction {
 ///
 /// - `ul`/`ol` → `list`
 /// - `li` → `item`
+/// Reference: Trafilatura `htmlprocessing.py:271-284` `convert_lists()`
 pub fn tf_convert_lists(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, .. } if matches!(tag.as_str(), "ul" | "ol") => {
@@ -61,6 +62,7 @@ pub fn tf_convert_lists(node: &mut DomNode) -> WalkerAction {
 /// - `blockquote` → `quote`
 /// - `pre` → `code`
 /// - `q` → `quote`
+/// Reference: Trafilatura `htmlprocessing.py:287-303` `convert_quotes()`
 pub fn tf_convert_quotes(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, .. } if matches!(tag.as_str(), "blockquote" | "q") => {
@@ -86,6 +88,7 @@ pub fn tf_convert_quotes(node: &mut DomNode) -> WalkerAction {
 /// - `b`/`strong` → `<hi rend="#b">`
 /// - `em`/`i` → `<hi rend="#i">`
 /// - `del`/`s`/`strike` → `<del rend="overstrike">`
+/// Reference: Trafilatura `htmlprocessing.py:26-38` `REND_TAG_MAPPING` + `convert_tags()`
 pub fn tf_convert_formatting(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. } if matches!(tag.as_str(), "b" | "strong") => {
@@ -124,6 +127,7 @@ pub fn tf_convert_formatting(node: &mut DomNode) -> WalkerAction {
 ///
 /// - `br` → `lb`
 /// - `hr` → `lb`
+/// Reference: Trafilatura `htmlprocessing.py:323-325` `convert_line_breaks()`
 pub fn tf_convert_breaks(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, .. } if matches!(tag.as_str(), "br" | "hr") => {
@@ -144,6 +148,7 @@ pub fn tf_convert_breaks(node: &mut DomNode) -> WalkerAction {
 /// - `a` → `ref`, move `href` → `target`
 /// - `details` → `div`
 /// - `summary` → `head`
+/// Reference: Trafilatura `htmlprocessing.py:334-338` `convert_details()` + `htmlprocessing.py:364-373` `convert_link()`
 pub fn tf_convert_refs_and_details(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. } if tag == "a" => {
@@ -186,6 +191,7 @@ pub fn tf_convert_refs_and_details(node: &mut DomNode) -> WalkerAction {
 ///
 /// Pre: DOM tree is fully parsed.
 /// Post: All non-content elements in the strip list are removed.
+/// Reference: Trafilatura `htmlprocessing.py:47-79` `tree_cleaning()` (partial)
 pub fn tf_canonicalize_strip_non_content(node: &mut DomNode) {
     // NOTE: head is intentionally EXCLUDED from this list.
     // The rd version (rd_strip_non_content) includes head.
@@ -228,6 +234,7 @@ pub fn tf_canonicalize_strip_non_content(node: &mut DomNode) {
 /// Pre: DOM tree is fully parsed. Analysis passes (rd_analysis) have populated
 ///      `metadata["is_data_table"]` on relevant `<table>` elements.
 /// Post: Layout containers are unwrapped. Data tables are preserved intact.
+/// Note: No direct Python trafilatura equivalent — Rust-specific.
 pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
     const CONTAINER_TAGS: &[&str] = &[
         "div", "span", "section", "article", "header", "main", "body", "html",
@@ -268,90 +275,6 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
     walk_post_mut(node, &mut filters, None);
 }
 
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Div-to-paragraph conversion — ptest + div fallback (Python main_extractor.py:765-768)
-// ---------------------------------------------------------------------------
-// Div-to-paragraph conversion — ptest + div fallback (Python main_extractor.py:765-768)
-// ---------------------------------------------------------------------------
-//
-/// Convert `<div>` elements to `<p>` when `<p>` text in the tree is sparse.
-///
-/// Python equivalent (main_extractor.py:765-768):
-/// ```python
-/// ptest = subtree.xpath("//p//text()")
-/// factor = 1 if options.focus == "precision" else 3
-/// if not ptest or len("".join(ptest)) < options.min_extracted_size * factor:
-///     potential_tags.add("div")
-/// ```
-///
-/// Then in `handle_other_elements` (line 285-309):
-/// - If `"div"` is in `potential_tags` and the div has meaningful text,
-///   its tag is changed from `"div"` to `"p"`.
-///
-/// This pass:
-/// 1. Counts `<p>` text in the tree
-/// 2. If p_text < MIN_EXTRACTED_SIZE * 3 (750 chars for balanced mode),
-///    converts `<div>` elements with meaningful text into `<p>` elements
-/// 3. Only converts divs that are NOT data tables (is_data_table != "true")
-/// 4. Only converts divs with > 50 chars of text content
-/// 5. Skips divs that contain block-level elements (p, div, table, ul, ol, dl,
-///    blockquote, pre, figure, h1-h6) to avoid creating nested <p> structures
-///
-/// Must run AFTER container isolation but BEFORE `tf_canonicalize_unwrap_containers`
-/// so that the converted `<p>` elements survive the unwrap pass.
-pub fn tf_convert_divs_to_paragraphs(node: &mut DomNode) {
-    // Count <p> text in the tree
-    if let DomNode::Element { children, .. } = node {
-        let p_text_len = count_p_text(children);
-        let threshold = MIN_EXTRACTED_SIZE * 3; // 750 chars for balanced mode
-
-        if p_text_len < threshold {
-            // Walk the tree and convert <div> elements to <p>
-            walk_pre_mut(node, &|n: &mut DomNode| {
-                if let DomNode::Element { tag, attrs, children, metadata, .. } = n {
-                    if tag == "div" {
-                        // Skip data tables
-                        let is_data_table = metadata.get("is_data_table")
-                            .map(|v| v == "true")
-                            .unwrap_or(false);
-                        if is_data_table {
-                            return WalkerAction::Continue;
-                        }
-
-                        // Only convert leaf divs: skip divs that contain block-level elements
-                        // (p, div, table, ul, ol, dl, blockquote, pre, figure, h1-h6)
-                        let has_block_child = children.iter().any(|child| {
-                            matches!(child, DomNode::Element { tag: ct, .. } if matches!(
-                                ct.as_str(),
-                                "p" | "div" | "table" | "ul" | "ol" | "dl"
-                                    | "blockquote" | "pre" | "figure"
-                                    | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
-                            ))
-                        });
-                        if has_block_child {
-                            return WalkerAction::Continue;
-                        }
-
-                        // Check if div has meaningful text content (> 50 chars)
-                        // Use flattened text from all descendants since leaf divs
-                        // only contain inline content (text, spans, anchors, etc.)
-                        let text = collect_text(children);
-                        let trimmed = text.trim();
-                        if trimmed.len() > 50 {
-                            // Convert div to p (Python: processed_element.tag = "p")
-                            tag.clear();
-                            tag.push_str("p");
-                            // Clear attributes (Python: processed_element.attrib.clear())
-                            attrs.clear();
-                        }
-                    }
-                }
-                WalkerAction::Continue
-            });
-        }
-    }
-}
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

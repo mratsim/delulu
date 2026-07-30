@@ -82,6 +82,7 @@ pub const TF_CLEANED_TAGS: &[&str] = &[
 ///
 /// Uses manual recursive traversal (similar to `tf_strip_unwrapped`) because elements need to
 /// be replaced with new ones.
+/// Note: No direct Python trafilatura equivalent — Rust-specific.
 pub fn tf_extract_script_templates(node: &mut DomNode) {
     fn extract_inner(nodes: &mut Vec<DomNode>) {
         let mut i = 0;
@@ -130,127 +131,11 @@ pub fn tf_extract_script_templates(node: &mut DomNode) {
 }
 
 
-/// Extract `articleBody` from `<script type="application/ld+json">` elements.
-///
-/// Some websites embed the article body text inside JSON-LD structured data
-/// (e.g., `{"articleBody": "..."}`). This function extracts that text and
-/// creates a `<p>` element with it, then removes the script element.
-///
-/// This is a rescue fallback matching Python trafilatura's `baseline()`
-/// function, which extracts `articleBody` from JSON-LD when the standard
-/// pipeline produces insufficient content.
-///
-/// Must run BEFORE `tf_remove_cleaned` since `"script"` is in `TF_CLEANED_TAGS`.
-///
-/// Matches `<script>` elements whose `type` attribute is exactly
-/// `"application/ld+json"`. For each match:
-/// 1. Extracts the text content of the script element
-/// 2. Parses it as JSON using `serde_json`
-/// 3. Checks for an `"articleBody"` field
-/// 4. If the extracted text is ≥ 100 chars, creates a `<p>` element
-///    with the text and replaces the script element with it
-/// 5. If the articleBody contains `<p>` tags, parses the HTML fragment
-///    and extracts plain text
-/// 6. If extraction fails or text is too short, removes the script element
-///
-/// Uses manual recursive traversal (similar to `tf_extract_script_templates`)
-/// because elements need to be replaced with new ones.
-pub fn tf_extract_jsonld(node: &mut DomNode) {
-    // Collect extracted <p> elements to add inside <body> (or at root level).
-    // Script elements may be inside <head>, which gets removed by tf_remove_cleaned.
-    // Adding <p> elements inside <body> ensures they survive container isolation.
-    let mut extracted_paragraphs: Vec<DomNode> = Vec::new();
-
-    fn extract_inner(nodes: &mut Vec<DomNode>, extracted: &mut Vec<DomNode>) {
-        let mut i = 0;
-        while i < nodes.len() {
-            match &mut nodes[i] {
-                DomNode::Element { tag, attrs, children, .. }
-                    if tag == "script" =>
-                {
-                    // Check if type attribute is exactly "application/ld+json"
-                    let is_jsonld = attrs.iter().any(|(k, v)| {
-                        k.eq_ignore_ascii_case("type")
-                            && v == "application/ld+json"
-                    });
-                    if is_jsonld {
-                        // Collect text content from the script element's children
-                        let text_content = collect_text(children);
-                        // Check if it contains "articleBody" (quick filter before parsing)
-                        if text_content.contains("articleBody") {
-                            // Parse JSON and extract articleBody
-                            let extracted_text: Option<String> =
-                                serde_json::from_str::<serde_json::Value>(&text_content)
-                                    .ok()
-                                    .and_then(|val| {
-                                        val.get("articleBody")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s.trim().to_string())
-                                    })
-                                    .filter(|s| s.len() >= 100);
-
-                            if let Some(body) = extracted_text {
-                                // If articleBody contains <p> tags, parse as HTML and extract text
-                                let text = if body.contains("<p>") {
-                                    let fragment = scraper::Html::parse_fragment(&body);
-                                    fragment.root_element().text().collect::<String>().trim().to_string()
-                                } else {
-                                    body
-                                };
-
-                                // Create <p> element with the extracted text
-                                let p_node = DomNode::Element {
-                                    tag: "p".to_string(),
-                                    attrs: vec![],
-                                    children: vec![DomNode::Text(text)],
-                                    scores: HashMap::new(),
-                                    metadata: HashMap::new(),
-                                };
-                                // Add to extracted list (will be placed inside <body> later)
-                                extracted.push(p_node);
-                            }
-                        }
-                        // Always remove the JSON-LD script element
-                        nodes.remove(i);
-                        // Don't increment i; next element shifts into position i
-                    } else {
-                        // Regular <script> (JavaScript) — recurse into children then continue
-                        extract_inner(children, extracted);
-                        i += 1;
-                    }
-                }
-                DomNode::Element { children, .. } => {
-                    extract_inner(children, extracted);
-                    i += 1;
-                }
-                _ => i += 1,
-            }
-        }
-    }
-    if let DomNode::Element { children, .. } = node {
-        extract_inner(children, &mut extracted_paragraphs);
-        // Add extracted <p> elements inside <body> if it exists, otherwise at root level.
-        // This ensures they survive container isolation (which operates on <body> children).
-        if !extracted_paragraphs.is_empty() {
-            // Find <body> element among root children
-            let body_idx = children.iter().position(|child| {
-                matches!(child, DomNode::Element { tag, .. } if tag == "body")
-            });
-            if let Some(idx) = body_idx {
-                if let DomNode::Element { children: body_children, .. } = &mut children[idx] {
-                    body_children.extend(extracted_paragraphs);
-                }
-            } else {
-                // No <body> found — add at root level as fallback
-                children.extend(extracted_paragraphs);
-            }
-        }
-    }
-}
 /// Remove elements whose tag is in the `MANUALLY_CLEANED` list.
 ///
 /// Returns `WalkerAction::Remove` if the node's tag is in `TF_CLEANED_TAGS`,
 /// `WalkerAction::Continue` otherwise.
+/// Reference: Trafilatura `htmlprocessing.py:47-79` `tree_cleaning()`
 pub fn tf_remove_cleaned(node: &mut DomNode) -> WalkerAction {
     match node {
         // Preserve <form> elements protected by tf_protect_content_forms (>90% page content).
@@ -295,6 +180,7 @@ pub fn tf_remove_cleaned(node: &mut DomNode) -> WalkerAction {
 /// Returns `WalkerAction::Remove` if the element's tag is in the allowed list
 /// AND its `class` or `id` (case-insensitive) contains "teaser".
 /// `WalkerAction::Continue` otherwise.
+/// Reference: Trafilatura `xpaths.py:156-163` `TEASER_DISCARD_XPATH`
 pub fn tf_remove_teaser(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. }
@@ -409,6 +295,7 @@ static PRECISION_LINK_RE: Lazy<Regex> = Lazy::new(|| {
 ///
 /// Pre: DOM tree is fully parsed, cleaned tags already removed.
 /// Post: Elements with unlikely-candidate class/id/role patterns are removed.
+/// Reference: Trafilatura `htmlprocessing.py:92-109` `prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH)`
 pub fn tf_remove_unlikely_candidates(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. } => {
@@ -536,6 +423,7 @@ pub const TF_STRIPPED_TAGS: &[&str] = &[
 /// `walk_pre_mut` does not support "replace with children."
 ///
 /// Uses manual iteration with index tracking to handle the splice operation.
+/// Reference: Trafilatura `htmlprocessing.py:63` `strip_tags(tree, stripping_list)` (MANUALLY_STRIPPED)
 pub fn tf_strip_unwrapped(node: &mut DomNode) {
     // Helper that operates on a Vec<DomNode> (used for recursion)
     fn strip_inner(nodes: &mut Vec<DomNode>) {
@@ -598,6 +486,7 @@ pub const TF_CUT_EMPTY_TAGS: &[&str] = &[
 /// An element is considered empty if:
 /// - It has no children, OR
 /// - All children are whitespace-only text nodes or void elements like `<br>`.
+/// Reference: Trafilatura `htmlprocessing.py:82-89` `prune_html()` (CUT_EMPTY_ELEMS)
 pub fn tf_remove_empty_cut(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, children, .. } if TF_CUT_EMPTY_TAGS.contains(&tag.as_str()) => {
@@ -642,10 +531,11 @@ pub fn tf_remove_empty_cut(node: &mut DomNode) -> WalkerAction {
 /// Post-condition: Elements whose link density exceeds 0.5 are removed.
 ///
 /// NOTE: The form guard (skipping `<form>` elements that wrap >90% of page
-/// content) is implemented separately in `tf_protect_content_forms` (RC-4a),
+/// content) is implemented separately in `tf_protect_content_forms`,
 /// which runs before `tf_remove_cleaned` in the pipeline. This function does
 /// NOT need to handle the form case — protected forms are already preserved
 /// by the time this pass runs.
+/// Reference: Trafilatura `htmlprocessing.py:183-206` `delete_by_link_density()`
 pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element {
@@ -700,6 +590,7 @@ pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
 ///
 /// Pre: DOM tree is fully parsed, cleaned tags already removed.
 /// Post: `<header>` elements and elements with bottom/link/border attributes are removed.
+/// Reference: Trafilatura `xpaths.py:166-175` `PRECISION_DISCARD_XPATH`
 pub fn tf_precision_discard(node: &mut DomNode) -> WalkerAction {
     match node {
         // Pattern 1: Remove all <header> elements
@@ -747,6 +638,7 @@ pub fn tf_precision_discard(node: &mut DomNode) -> WalkerAction {
 /// Pre: DOM tree is fully parsed, no passes have removed content yet.
 /// Post: `<form>` elements wrapping >90% of page content have
 ///       `metadata["tf_protected"] = "true"` set.
+/// Note: No direct Python trafilatura equivalent — Rust-specific.
 pub fn tf_protect_content_forms(node: &mut DomNode) {
     // Measure visible text content (excluding script/style to avoid
     // script inflation preventing form protection)
@@ -794,6 +686,7 @@ fn get_visible_text(node: &DomNode) -> String {
 // ---------------------------------------------------------------------------
 
 /// Collect all text content from a subtree, excluding comments and doctypes.
+/// Note: No direct Python trafilatura equivalent — Rust-specific.
 pub(crate) fn collect_text(nodes: &[DomNode]) -> String {
     let mut result = String::new();
     for node in nodes {
@@ -809,6 +702,7 @@ pub(crate) fn collect_text(nodes: &[DomNode]) -> String {
 /// Collect all text content from a single node's subtree.
 ///
 /// Unlike `collect_text` which takes a slice, this operates on a single
+/// Note: No direct Python trafilatura equivalent — Rust-specific.
 /// `&DomNode`. Returns the concatenated text of all descendant Text nodes.
 pub(crate) fn get_inner_text(node: &DomNode) -> String {
     match node {
@@ -823,6 +717,7 @@ pub(crate) fn get_inner_text(node: &DomNode) -> String {
 ///
 /// Assumes cleaned tags (script, style) have been removed by earlier pipeline steps.
 /// Uses byte length (`String::len()`). O(N) traversal; called per matching container.
+/// Note: No direct Python trafilatura equivalent — Rust-specific.
 pub(crate) fn count_p_text(nodes: &[DomNode]) -> usize {
     nodes
         .iter()
@@ -852,6 +747,167 @@ fn count_link_text(nodes: &[DomNode]) -> usize {
             _ => 0,
         })
         .sum()
+}
+
+// ---------------------------------------------------------------------------
+// Pass-level helpers: paragraph recovery, JSON-LD extraction, text measurement
+// ---------------------------------------------------------------------------
+
+/// Collect all `<p>` element subtrees from a DOM tree,
+/// skipping `<p>` elements inside boilerplate containers.
+///
+/// Pre: DOM tree is fully parsed.
+/// Post: All `<p>` element subtrees outside boilerplate containers are collected.
+///
+/// Note: This function is recursive. Stack overflow may occur on DOM trees deeper than ~1000 nodes.
+///
+/// Reference: Trafilatura `recover_wild_text()` in `main_extractor.py:536-560` (partial — collects `<p>` elements)
+pub(crate) fn collect_p_elements(node: &DomNode, result: &mut Vec<DomNode>) {
+    match node {
+        // Skip boilerplate containers entirely
+        DomNode::Element { tag, .. }
+            if matches!(tag.as_str(), "nav" | "footer" | "header" | "form") =>
+        {
+            // Don't descend into boilerplate containers
+        }
+        DomNode::Element { tag, children, .. } if tag == "p" => {
+            result.push(node.clone());
+        }
+        DomNode::Element { children, .. } => {
+            for child in children {
+                collect_p_elements(child, result);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Recover `<p>` elements from a backup tree that aren't already in the current node.
+/// This is a simplified version of Python's recover_wild_text().
+///
+/// Pre: `node` is the current DOM tree, `backup` is the original tree,
+///      `existing_text` is the concatenated text of `node`.
+/// Post: `<p>` elements from `backup` whose text is not in `existing_text`
+///       are added to `node`.
+///
+/// Note: This function is recursive (via `collect_p_elements`). Stack overflow may occur on DOM trees deeper than ~1000 nodes.
+///
+/// Reference: Trafilatura `recover_wild_text()` in `main_extractor.py:536-560`
+pub(crate) fn recover_wild_p_elements(node: &mut DomNode, backup: &DomNode, existing_text: &str) {
+    // Collect all <p> element text from the backup tree
+    let mut recovered: Vec<DomNode> = Vec::new();
+    collect_p_elements(backup, &mut recovered);
+
+    // Add recovered <p> elements that aren't already in the current tree
+    if let DomNode::Element { children, .. } = node {
+        for p_node in recovered {
+            let p_text = get_inner_text(&p_node);
+            if !p_text.trim().is_empty() && !existing_text.contains(&p_text) {
+                children.push(p_node);
+            }
+        }
+    }
+}
+
+// Regex for detecting any HTML tag in a string (case-insensitive).
+// Used by `extract_jsonld_article_body` to determine if articleBody contains HTML markup.
+static HTML_TAG_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)<[a-z][a-z0-9]*[^>]*>"#).expect("invalid HTML_TAG_RE")
+});
+
+/// Extract `articleBody` from JSON-LD scripts in the DOM tree.
+/// Returns `None` if no JSON-LD script with `articleBody` is found.
+///
+/// Pre: DOM tree is fully parsed (may contain `<script>` elements).
+/// Post: Returns the article body text if found and >= 100 chars.
+///
+/// Note: This function is recursive. Stack overflow may occur on DOM trees deeper than ~1000 nodes.
+///
+/// Reference: Trafilatura `baseline()` in `baseline.py:24-58` (JSON-LD articleBody extraction portion, lines 41-58)
+
+pub(crate) fn extract_jsonld_article_body(node: &DomNode) -> Option<String> {
+    match node {
+        DomNode::Text(_) => None,
+        DomNode::Element { tag, attrs, children, .. } if tag == "script" => {
+            // Check if type attribute is exactly "application/ld+json"
+            let is_jsonld = attrs.iter().any(|(k, v)| {
+                k.eq_ignore_ascii_case("type")
+                    && v == "application/ld+json"
+            });
+            if is_jsonld {
+                let text = collect_text(children);
+                if text.contains("articleBody") {
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if let Some(body) = val.get("articleBody").and_then(|v| v.as_str()) {
+                            let trimmed = body.trim();
+                            // Minimum article body length threshold (pre-existing, matches Trafilatura behavior)
+                            if trimmed.len() >= 100 {
+                                let text = if HTML_TAG_RE.is_match(trimmed) {
+                                    let fragment = scraper::Html::parse_fragment(trimmed);
+                                    fragment.root_element().text().collect::<String>().trim().to_string()
+                                } else {
+                                    trimmed.to_string()
+                                };
+                                return Some(text);
+                            }
+                        }
+                    }
+                }
+                // JSON-LD script was processed (even if no articleBody found) — skip child recursion
+                return None;
+            }
+            // Not a JSON-LD script — recurse into children
+            for child in children {
+                if let Some(body) = extract_jsonld_article_body(child) {
+                    return Some(body);
+                }
+            }
+            None
+        }
+        DomNode::Element { children, .. } => {
+            for child in children {
+                if let Some(body) = extract_jsonld_article_body(child) {
+                    return Some(body);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Count total text characters in a DOM tree recursively.
+///
+/// Pre: DOM tree is fully parsed.
+/// Post: Returns the total byte length of all text nodes in the tree.
+///
+/// Note: This function is recursive. Stack overflow may occur on DOM trees deeper than ~1000 nodes.
+///
+/// Reference: Trafilatura `len(tree.text_content())` in `htmlprocessing.py:95,106`
+pub(crate) fn count_text_chars(node: &DomNode) -> usize {
+    match node {
+        DomNode::Text(t) => t.len(),
+        DomNode::Element { children, .. } => children.iter().map(count_text_chars).sum(),
+        _ => 0,
+    }
+}
+
+/// Count non-whitespace text characters in a DOM tree recursively.
+/// This gives a better estimate of actual useful content than raw text length,
+/// which includes whitespace from HTML formatting (newlines, indentation).
+///
+/// Pre: DOM tree is fully parsed.
+/// Post: Returns the count of non-whitespace characters in all text nodes.
+///
+/// Note: This function is recursive. Stack overflow may occur on DOM trees deeper than ~1000 nodes.
+///
+/// Note: No direct Python trafilatura equivalent — Rust-specific utility for estimating useful content.
+pub(crate) fn count_non_ws_chars(node: &DomNode) -> usize {
+    match node {
+        DomNode::Text(t) => t.chars().filter(|c| !c.is_whitespace()).count(),
+        DomNode::Element { children, .. } => children.iter().map(count_non_ws_chars).sum(),
+        _ => 0,
+    }
 }
 
 /// Minimum extracted content size in characters (in `<p>` text at any depth within a container).
@@ -891,70 +947,6 @@ static BODY_XPATH_PATTERN_2_RE: Lazy<Regex> = Lazy::new(|| {
     .expect("BODY_XPATH_PATTERN_2_RE: invalid regex")
 });
 
-/// Check all 4 BODY_XPATH patterns in cascade order (Pattern 0 → 1 → 2 → 3).
-///
-/// Pattern 0: specific class/id/role selectors (checked first)
-/// Pattern 1: bare article/main tags
-/// Pattern 2: content class/id patterns
-/// Pattern 3: starts-with main / role main
-///
-/// ReDoS guard: skips regex matching if class_val or id_val exceeds 200 chars.
-fn matches_body_xpath_patterns(
-    tag: &str,
-    class_val: &str,
-    id_val: &str,
-    role_val: &str,
-    itemprop_val: &str,
-) -> bool {
-    // ReDoS guard: skip regex matching for very long values
-    if class_val.len() > 200 || id_val.len() > 200 {
-        return false;
-    }
-
-    // Pattern 0: specific selectors
-    if itemprop_val == "articleBody"
-        || id_val == "articleContent"
-        || matches!(
-            class_val,
-            "post" | "entry"
-        )
-        || role_val == "article"
-        || BODY_XPATH_PATTERN_0_RE.is_match(class_val)
-        || BODY_XPATH_PATTERN_0_RE.is_match(id_val)
-    {
-        return true;
-    }
-
-    // Pattern 1: bare article/main tag
-    if matches!(tag, "article" | "main") {
-        return true;
-    }
-
-    // Pattern 2: content class/id
-    if matches!(
-            class_val,
-            "content" | "postarea" | "art-postcontent" | "text" | "cell" | "story"
-        )
-        || id_val == "content"
-        || BODY_XPATH_PATTERN_2_RE.is_match(class_val)
-        || BODY_XPATH_PATTERN_2_RE.is_match(id_val)
-        || class_val.contains("main-content")
-        || class_val.contains("page-content")
-    {
-        return true;
-    }
-
-    // Pattern 3: starts-with main / role main
-    if tag == "main"
-        || class_val.starts_with("main")
-        || id_val.starts_with("main")
-        || role_val.starts_with("main")
-    {
-        return true;
-    }
-
-    false
-}
 
 /// Isolate the main content container using BODY_XPATH patterns.
 ///
@@ -972,16 +964,17 @@ fn matches_body_xpath_patterns(
 /// Post-condition: If a container was matched, only that container's subtree
 ///   (and its ancestor chain) survives. All siblings of the matched container
 ///   are discarded.
+/// Reference: Trafilatura `main_extractor.py:597-647` `_extract()` (BODY_XPATH iteration)
 pub fn tf_isolate_content_container(node: &mut DomNode) {
     if let DomNode::Element { children, .. } = node {
     let mut best_path: Option<Vec<usize>> = None;
     const PATTERN_CHECKS: [fn(&str, &str, &str, &str, &str) -> bool; 5] = [
-        |tag, cv, iv, rv, ipv| ipv == "articleBody" || iv == "articleContent"
+        |_tag, cv, iv, rv, ipv| ipv == "articleBody" || iv == "articleContent"
             || matches!(cv, "post" | "entry") || rv == "article"
             || BODY_XPATH_PATTERN_0_RE.is_match(cv) || BODY_XPATH_PATTERN_0_RE.is_match(iv)
             || cv.contains("p-body-pageContent") || iv.contains("p-body-pageContent"),
         |tag, _, _, _, _| matches!(tag, "article" | "main"),
-        |_, cv, iv, _, _| matches!(cv, "postarea" | "art-postcontent" | "text" | "cell" | "story"),
+        |_, cv, _iv, _, _| matches!(cv, "postarea" | "art-postcontent" | "text" | "cell" | "story"),
         |_, cv, iv, _, _| iv == "content"
             || cv == "content"
             || BODY_XPATH_PATTERN_2_RE.is_match(cv) || BODY_XPATH_PATTERN_2_RE.is_match(iv)
@@ -1008,51 +1001,10 @@ pub fn tf_isolate_content_container(node: &mut DomNode) {
     }
 }
 
-fn find_path_to_match(
-    nodes: &[DomNode],
-    check: &fn(&str, &str, &str, &str, &str) -> bool,
-    path: &mut Vec<usize>,
-) -> bool {
-    for (i, node) in nodes.iter().enumerate() {
-        if let DomNode::Element { tag, attrs, children, .. } = node
-            && matches!(tag.as_str(), "article" | "div" | "main" | "section")
-        {
-            let cv = attrs.iter().find(|(k, _)| k == "class").map(|(_, v)| v.as_str()).unwrap_or("");
-            let iv = attrs.iter().find(|(k, _)| k == "id").map(|(_, v)| v.as_str()).unwrap_or("");
-            let rv = attrs.iter().find(|(k, _)| k == "role").map(|(_, v)| v.as_str()).unwrap_or("");
-            let ipv = attrs.iter().find(|(k, _)| k == "itemprop").map(|(_, v)| v.as_str()).unwrap_or("");
-            if check(tag.as_str(), cv, iv, rv, ipv) {
-                let p_text = count_p_text(children);
-                if p_text >= MIN_EXTRACTED_SIZE {
-                    path.push(i);
-                    return true;
-                }
-                // Total-text fallback: accept if enough total text even without <p> tags
-                // Handles pages using <b>/<i>/<span>/<br> instead of <p>
-                if collect_text(children).len() >= MIN_EXTRACTED_SIZE {
-                    path.push(i);
-                    return true;
-                }
-            }
-            path.push(i);
-            if find_path_to_match(children, check, path) {
-                return true;
-            }
-            path.pop();
-        } else if let DomNode::Element { children, .. } = node {
-            path.push(i);
-            if find_path_to_match(children, check, path) {
-                return true;
-            }
-            path.pop();
-        }
-    }
-    false
-}
 
 
 /// Find the FIRST element matching a BODY_XPATH pattern in document order.
-/// Unlike `find_path_to_match`, this does NOT check the content threshold —
+/// Unlike the original implementation, this does NOT check the content threshold —
 /// it returns the first match regardless of `<p>` text count.
 /// The caller (`tf_isolate_content_container`) separately checks content.
 fn find_first_match(
@@ -1163,6 +1115,7 @@ fn apply_path(nodes: &mut Vec<DomNode>, path: &[usize]) {
 /// Pre: `tf_isolate_content_container` has already run (may have been a no-op).
 /// Post: If a suitable container was found via heuristic, only that container's
 ///       subtree survives. Otherwise, the tree is unchanged.
+/// Note: No direct Python trafilatura equivalent — Rust-specific heuristic.
 pub fn tf_fallback_content_container(node: &mut DomNode) {
     if let DomNode::Element { children, .. } = node {
         // Only apply if there are multiple top-level children
@@ -1245,6 +1198,7 @@ pub fn tf_fallback_content_container(node: &mut DomNode) {
 ///      refs) and canonicalization passes have run.
 /// Post: Elements with tags outside the allowed set are removed. Text nodes
 ///       and structural root elements are preserved.
+/// Reference: Trafilatura `settings.py` `TAG_CATALOG`
 pub fn tf_filter_tag_catalog(node: &mut DomNode) -> WalkerAction {
     match node {
         // Preserve non-element nodes (text, comments, doctypes)
@@ -1298,6 +1252,7 @@ pub fn tf_filter_tag_catalog(node: &mut DomNode) -> WalkerAction {
 ///
 /// Pre: DOM tree is fully parsed, all tag conversions have run.
 /// Post: Elements with "caption" in their class or id are removed.
+/// Reference: Trafilatura `xpaths.py:179-186` `DISCARD_IMAGE_ELEMENTS`
 pub fn tf_discard_image_elements(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. }

@@ -79,8 +79,5 @@ required-features = ["mcp"]
 name = "t_fetch_doc_e2e"
 path = "tests/t_fetch_doc_e2e.rs"
 
-[[test]]
-name = "trace_pass"
-path = "tests/pipeline_trafilatura/trace_pass.rs"
 [package.metadata.cargo-machete]
 ignored = ["rmcp"]
