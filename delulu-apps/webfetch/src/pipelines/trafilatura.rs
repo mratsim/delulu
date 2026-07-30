@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use crate::pipelines::{DomNode, WalkerAction, walk_post_mut, walk_pre_mut};
 
 use super::passes::tf_analysis::{
-    count_non_ws_chars, count_p_text, count_text_chars,
-    extract_jsonld_article_body, get_inner_text,
+    count_non_ws_chars,
+    extract_jsonld_article_body,
 };
 use super::passes::tf_filters::{
     collect_p_elements, recover_wild_p_elements,
@@ -49,13 +49,13 @@ pub type PassFn = fn(&mut DomNode);
 /// Reference: Trafilatura `main_extractor.py` line 710:
 ///   `tree = prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH, with_backup=True)`
 pub fn apply_tf_remove_unlikely_candidates_with_backup(node: &mut DomNode) {
-    let old_len = measure_output(node);
+    let old_len = node.text_len();
     let backup = node.clone();
 
     // Apply tf_remove_unlikely_candidates
     walk_pre_mut(node, &|n| tf_remove_unlikely_candidates(n));
 
-    let new_len = measure_output(node);
+    let new_len = node.text_len();
 
     // Adjusted threshold: restore if new_len * 5 <= old_len (>=80% removed)
     // Uses multiplication to avoid integer division edge case
@@ -89,13 +89,13 @@ pub fn apply_tf_remove_unlikely_candidates_with_backup(node: &mut DomNode) {
 /// filter removes the main content container (e.g., dailymail.co.uk where
 /// the top-level wrapper has high link density from navigation elements).
 pub fn apply_tf_filter_by_link_density_with_backup(node: &mut DomNode) {
-    let old_len = measure_output(node);
+    let old_len = node.text_len();
     let backup = node.clone();
 
     // Apply link density filter
     walk_pre_mut(node, &|n| tf_filter_by_link_density(n));
 
-    let new_len = measure_output(node);
+    let new_len = node.text_len();
 
     // If >=95% of text was removed by link density filtering, restore from backup
     if new_len * 19 <= old_len {
@@ -127,14 +127,14 @@ pub fn apply_tf_filter_by_link_density_with_backup(node: &mut DomNode) {
 /// This is a simplified version of Python's `recover_wild_text()` which scans
 /// the backup tree for wild `<p>`, `<code>`, `<quote>`, `<table>` elements.
 pub fn apply_tf_isolate_container_with_backup(node: &mut DomNode) {
-    let old_len = measure_output(node);
+    let old_len = node.text_len();
     let backup = node.clone();
 
     // Apply container isolation passes
     tf_isolate_content_container(node);
     tf_fallback_content_container(node);
 
-    let new_len = measure_output(node);
+    let new_len = node.text_len();
 
     // If >=90% of text was removed by container isolation, recover content
     if new_len * 10 <= old_len {
@@ -145,9 +145,9 @@ pub fn apply_tf_isolate_container_with_backup(node: &mut DomNode) {
         );
         // Recover <p> elements from the backup tree that aren't already in node
         // This is a simplified version of Python's recover_wild_text()
-        let existing_text = get_inner_text(node);
+        let existing_text = node.text_content();
         recover_wild_p_elements(node, &backup, &existing_text);
-        let recovered_len = measure_output(node);
+        let recovered_len = node.text_len();
         tracing::info!(
             "recovered wild p-elements: {} -> {} chars",
             new_len,
@@ -265,18 +265,15 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
 /// Uses the same constant as the readability pipeline for consistency.
 pub const TF_MIN_OUTPUT_CHARS: usize = 1000;
 
-/// Measure output length by delegating to `tf_analysis::count_text_chars`.
+/// Measure output length by delegating to `DomNode::text_len`.
 ///
 /// Pre: `node` is a valid DOM tree (may be empty).
-/// Post: Returns the total number of text characters in `node` (same as `count_text_chars`).
+/// Post: Returns the total number of text characters in `node` (same as `text_len`).
 ///
-/// Thin wrapper that delegates to `count_text_chars(node)` with no additional logic.
+/// Thin wrapper that delegates to `node.text_len()` with no additional logic.
 /// Kept in orchestrator for measurement single-point-of-change.
 ///
 /// Reference: Trafilatura `len(tree.text_content())` in `htmlprocessing.py:95,106`
-fn measure_output(node: &DomNode) -> usize {
-    count_text_chars(node)
-}
 
 
 /// Recover `<p>` elements from the original tree that were lost during pipeline processing.
@@ -315,12 +312,12 @@ fn recover_wild_paragraphs(best_tree: &mut DomNode, original: &DomNode, min_p_le
     let mut recovered_ps: Vec<DomNode> = Vec::new();
     collect_p_elements(&recovery_tree, &mut recovered_ps);
     // Get existing text in best_tree for dedup
-    let existing_text = get_inner_text(best_tree);
+    let existing_text = best_tree.text_content();
     // Add recovered <p> elements that aren't already in best_tree
     let mut appended = 0usize;
     if let DomNode::Element { children, .. } = best_tree {
         for p_node in &recovered_ps {
-            let p_text = get_inner_text(p_node);
+            let p_text = p_node.text_content();
             let trimmed = p_text.trim();
             if trimmed.len() >= min_p_len && !trimmed.is_empty() && !existing_text.contains(&p_text) {
                 children.push(p_node.clone());
@@ -368,7 +365,7 @@ pub fn filter_trafilatura(node: &mut DomNode) {
             pass(&mut attempt);
         }
 
-        let len = measure_output(&attempt);
+        let len = attempt.text_len();
         tracing::debug!("filter_trafilatura: level {} produced {} chars", i + 1, len,);
 
         if len > best_len {
@@ -387,7 +384,7 @@ pub fn filter_trafilatura(node: &mut DomNode) {
     if best_len < 500 || (best_len < 2200 && count_non_ws_chars(&best_tree) < 250) {
         let old_len = best_len;
         let n = recover_wild_paragraphs(&mut best_tree, &original, 0);
-        best_len = measure_output(&best_tree);
+        best_len = best_tree.text_len();
         if best_len > old_len {
             tracing::info!(
                 "recover_wild_text: {} -> {} chars (recovered {} p-elements)",
@@ -401,7 +398,7 @@ pub fn filter_trafilatura(node: &mut DomNode) {
     } else if best_len < 800 {
         let old_len = best_len;
         let n = recover_wild_paragraphs(&mut best_tree, &original, 100);
-        best_len = measure_output(&best_tree);
+        best_len = best_tree.text_len();
         if best_len > old_len {
             tracing::info!(
                 "recover_wild_text (filtered): {} -> {} chars (recovered {} p-elements, >={} char filter)",
@@ -418,7 +415,7 @@ pub fn filter_trafilatura(node: &mut DomNode) {
     // JSON-LD recovery: try to extract articleBody from original tree as rescue fallback.
     // Uses the original tree (which still has JSON-LD scripts) to extract articleBody
     // directly from script elements, then adds a <p> with the text to best_tree.
-    let p_text = count_p_text(std::slice::from_ref(&best_tree));
+    let p_text = best_tree.text_stats().0;
     // Trigger JSON-LD recovery when pipeline produces little content:
     // either low total chars (<500) or no real <p> content (<250)
     if best_len < 500 || p_text < 250 {
@@ -427,7 +424,7 @@ pub fn filter_trafilatura(node: &mut DomNode) {
         if let Some(body) = article_body {
             let trimmed = body.trim();
             if trimmed.len() >= 100 {
-                let existing_text = get_inner_text(&best_tree);
+                let existing_text = best_tree.text_content();
                 if !existing_text.contains(trimmed) {
                     tracing::info!(
                         "jsonld recovery: adding articleBody ({} chars) to best_tree (current {} chars)",
@@ -445,7 +442,7 @@ pub fn filter_trafilatura(node: &mut DomNode) {
                     if let DomNode::Element { children, .. } = &mut best_tree {
                         children.push(p_node);
                     }
-                    best_len = measure_output(&best_tree);
+                    best_len = best_tree.text_len();
                     tracing::info!("jsonld recovery: best_tree now {} chars", best_len);
                 } else {
                     tracing::debug!("jsonld recovery: articleBody already present in best_tree");

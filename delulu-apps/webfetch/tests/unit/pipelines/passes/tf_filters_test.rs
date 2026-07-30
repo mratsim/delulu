@@ -522,7 +522,7 @@ fn test_isolate_container_article_content_underscore() {
     assert!(find_tag(&nodes, "div"), "<div> should be kept (article_content matches Pattern 0)");
     assert!(!find_tag(&nodes, "nav"), "<nav> should be removed");
     // Also verify the inner article_maincontent div is preserved
-    let output_text = collect_text(&[nodes.clone()]);
+    let output_text = nodes.text_content();
     assert!(output_text.contains("AAAA"), "article content text should survive container isolation");
 }
 
@@ -538,7 +538,7 @@ fn test_tf_remove_teaser_protects_content_container() {
     .unwrap();
     walk_pre_mut(&mut nodes, &|n| tf_remove_teaser(n));
     // The article_content div should survive
-    let output_text = collect_text(&[nodes.clone()]);
+    let output_text = nodes.text_content();
     assert!(output_text.contains("AAAA"), "article_content text should survive tf_remove_teaser");
     // The teaser_other text should be removed
     assert!(!output_text.contains("should be removed"), "teaser_other text should be removed by tf_remove_teaser");

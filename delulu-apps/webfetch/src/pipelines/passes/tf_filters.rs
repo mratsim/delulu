@@ -5,10 +5,6 @@ use std::collections::HashMap;
 use crate::pipelines::DomNode;
 use crate::pipelines::walk_pre_mut;
 use crate::pipelines::walkers::WalkerAction;
-use super::tf_analysis::{
-    collect_text, container_has_content, count_link_text, count_p_text,
-    get_inner_text, get_visible_text,
-};
 
 // ---------------------------------------------------------------------------
 // MANUALLY_CLEANED tags — removed entirely
@@ -103,7 +99,7 @@ pub fn tf_extract_script_templates(node: &mut DomNode) {
                     });
                     if is_template {
                         // Extract text content from the script element's children
-                        let text_content = collect_text(children);
+                        let text_content: String = children.iter().map(DomNode::text_content).collect();
                         // Replace the <script> with a <div> containing the text
                         let new_div = DomNode::Element {
                             tag: "div".to_string(),
@@ -545,18 +541,14 @@ pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element {
             tag,
-            children,
             ..
         } if matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") => {
-            // Compute total text length from all children
-            let total_text_len: usize = children.iter().map(get_inner_text).map(|s| s.len()).sum();
+            // Compute total and link text length in a single traversal
+            let (total_text_len, link_text_len) = node.link_density_stats();
 
             if total_text_len == 0 {
                 return WalkerAction::Continue;
             }
-
-            // Compute link text length from <a> descendants (recursive, any depth)
-            let link_text_len = count_link_text(children);
 
             let link_density = link_text_len as f64 / total_text_len as f64;
 
@@ -647,7 +639,7 @@ pub fn tf_precision_discard(node: &mut DomNode) -> WalkerAction {
 pub fn tf_protect_content_forms(node: &mut DomNode) {
     // Measure visible text content (excluding script/style to avoid
     // script inflation preventing form protection)
-    let total_text_len = get_visible_text(node).len();
+    let total_text_len = node.visible_text_len();
     if total_text_len == 0 {
         return;
     }
@@ -659,7 +651,7 @@ pub fn tf_protect_content_forms(node: &mut DomNode) {
         if let DomNode::Element { tag, children, metadata, .. } = n
             && tag == "form"
         {
-            let form_text_len = collect_text(children).len();
+            let form_text_len: usize = children.iter().map(|c| c.text_len()).sum();
             if form_text_len >= threshold {
                 metadata.insert("tf_protected".to_string(), "true".to_string());
             }
@@ -729,7 +721,7 @@ pub(crate) fn recover_wild_p_elements(node: &mut DomNode, backup: &DomNode, exis
     // Add recovered <p> elements that aren't already in the current tree
     if let DomNode::Element { children, .. } = node {
         for p_node in recovered {
-            let p_text = get_inner_text(&p_node);
+            let p_text = p_node.text_content();
             if !p_text.trim().is_empty() && !existing_text.contains(&p_text) {
                 children.push(p_node);
             }
@@ -749,6 +741,51 @@ pub(crate) fn recover_wild_p_elements(node: &mut DomNode, backup: &DomNode, exis
 /// For CJK content, byte length may overestimate vs UTF-8 char count, making the
 /// threshold slightly more lenient — acceptable for precision mode.
 pub const MIN_EXTRACTED_SIZE: usize = 250;
+
+/// Check if a container element has enough content to be considered the main article.
+///
+/// Navigates the path to the matched element and checks:
+/// 1. If `<p>` text content is >= `MIN_EXTRACTED_SIZE`
+/// 2. If total text content (all tags) is >= `MIN_EXTRACTED_SIZE`
+///
+/// This is the content threshold check that matches Trafilatura's behavior:
+/// a BODY_XPATH match is only accepted if the container has enough text.
+///
+/// Pre: `root_children` is the children of the root `<html>` element.
+///      `path` is a valid path to a child element found by `find_first_match`.
+/// Post: Returns `true` if the container has enough content.
+///
+/// Note: No direct Python trafilatura equivalent — Rust-specific content check.
+pub(crate) fn container_has_content(root_children: &[DomNode], path: &[usize]) -> bool {
+    if path.is_empty() {
+        return false;
+    }
+    // Navigate to the parent of the matched element (all indices except last)
+    let mut current = root_children;
+    let parent_len = path.len() - 1;
+    for &idx in &path[..parent_len] {
+        if idx >= current.len() {
+            return false;
+        }
+        if let DomNode::Element { children, .. } = &current[idx] {
+            current = children;
+        } else {
+            return false;
+        }
+    }
+    // Get the matched element at the last index
+    let last_idx = path[parent_len];
+    if last_idx >= current.len() {
+        return false;
+    }
+    if matches!(&current[last_idx], DomNode::Element { .. }) {
+        let (p_text, total_text) = current[last_idx].text_stats();
+        if p_text >= MIN_EXTRACTED_SIZE || total_text >= MIN_EXTRACTED_SIZE {
+            return true;
+        }
+    }
+    false
+}
 
 // ---------------------------------------------------------------------------
 // BODY_XPATH container isolation
@@ -895,11 +932,11 @@ fn apply_path(nodes: &mut Vec<DomNode>, path: &[usize]) {
 /// multiple top-level children), this function uses a heuristic:
 ///
 /// 1. Check if the root has multiple top-level children.
-/// 2. If so, find the child with the most `<p>` text content (using `count_p_text`).
+/// 2. If so, find the child with the most `<p>` text content (using `text_stats`).
 /// 3. If that child has at least `MIN_EXTRACTED_SIZE` chars of `<p>` text, isolate
 ///    it by discarding all sibling nodes.
 /// 4. If no child has enough `<p>` text, use a secondary fallback: select the child
-///    with the most total text content (`get_inner_text` length). This handles
+///    with the most total text content (`text_len`). This handles
 ///    CMS layouts that use `<div>`-based content without `<p>` tags (e.g., Webflow,
 ///    headless CMS, table-based layouts).
 ///
@@ -926,7 +963,7 @@ pub fn tf_fallback_content_container(node: &mut DomNode) {
         let mut best_p_len = 0usize;
 
         for (i, child) in children.iter().enumerate() {
-            let p_len = count_p_text(std::slice::from_ref(child));
+            let p_len = child.text_stats().0;
             if p_len > best_p_len {
                 best_p_len = p_len;
                 best_idx = Some(i);
@@ -941,7 +978,7 @@ pub fn tf_fallback_content_container(node: &mut DomNode) {
             children.clear();
             children.push(matched);
         } else {
-            // Secondary fallback: use total text content (get_inner_text length)
+            // Secondary fallback: use total text content (text_len)
             // when no child has enough <p> text. This handles CMS layouts
             // that use <div>-based content without <p> tags (e.g., Webflow,
             // headless CMS, table-based layouts).
@@ -949,7 +986,7 @@ pub fn tf_fallback_content_container(node: &mut DomNode) {
             let mut best_text_len = 0usize;
 
             for (i, child) in children.iter().enumerate() {
-                let text_len = get_inner_text(child).len();
+                let text_len = child.text_len();
                 if text_len > best_text_len {
                     best_text_len = text_len;
                     best_text_idx = Some(i);
