@@ -19,6 +19,8 @@ use std::path::PathBuf;
 use delulu_webfetch::pipelines::{DomNode, parse_html};
 use serde::Deserialize;
 
+use once_cell::sync::Lazy;
+use regex::Regex;
 // ---------------------------------------------------------------------------
 // Fixture directory
 // ---------------------------------------------------------------------------
@@ -443,20 +445,30 @@ fn count_elements(node: &DomNode) -> u32 {
     }
 }
 
-/// Detect which BODY_XPATH pattern (0-3) matches for the given HTML.
+/// Detect which BODY_XPATH pattern (0-4) matches for the given HTML.
 ///
-/// BODY_XPATH identifies the main content container. The 4 patterns are
+/// BODY_XPATH identifies the main content container. The 5 patterns are
 /// checked in cascade order — the first match wins:
 ///
 /// - Pattern 0 (most specific): exact class/id matches like "post", "entry",
 ///   "article-body", itemprop="articleBody", role="article"
 /// - Pattern 1: bare `<article>` or `<main>` tag (no class/id requirement)
-/// - Pattern 2: content class/id patterns like "content-main", "main-content"
-/// - Pattern 3 (most general): starts-with "main" in class, id, role, or tag
+/// - Pattern 2: specific content class/id patterns like "postarea", "text", "story"
+/// - Pattern 3: broader content patterns like "content", "main-content", "page-content"
+/// - Pattern 4 (most general): starts-with "main" in class, id, role, or tag
 ///
-/// Returns Some(0-3) if a match is found, or None if no container identified.
+/// Returns Some(0-4) if a match is found, or None if no container identified.
 /// A Pattern 0 match = strong signal (page structure is well-known).
-/// A Pattern 3 match = weak signal (page may have unusual structure).
+/// A Pattern 4 match = weak signal (page may have unusual structure).
+
+/// Local copy of the BODY_XPATH_PATTERN_2_RE regex from tf_filters.rs.
+/// Replicated here because the original is private to the tf_filters module.
+static BODY_XPATH_PATTERN_2_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"(?i)^(?:content[-_]main|content(?:-|__)?body|contentBody|main-content|page-content)"#,
+    )
+    .expect("BODY_XPATH_PATTERN_2_RE: invalid regex")
+});
 pub fn detect_body_xpath_pattern(html: &str) -> Option<usize> {
     use delulu_webfetch::pipelines::passes::tf_filters::tf_isolate_content_container;
 
@@ -503,22 +515,31 @@ fn find_matching_pattern(node: &DomNode) -> Option<usize> {
                 return Some(1);
             }
 
-            // Pattern 2: content class/id
-            if class_val == "content"
-                || id_val == "content"
-                || class_val.contains("main-content")
+            // Pattern 2: content class/id (reduced — "content" and P2_RE moved to Pattern 3)
+            if class_val.contains("main-content")
                 || class_val.contains("page-content")
             {
                 return Some(2);
             }
 
-            // Pattern 3: starts-with main / role main
+            // Pattern 3: broader content patterns (split from Python P2)
+            if class_val == "content"
+                || id_val == "content"
+                || BODY_XPATH_PATTERN_2_RE.is_match(class_val)
+                || BODY_XPATH_PATTERN_2_RE.is_match(id_val)
+                || class_val.contains("main-content")
+                || class_val.contains("page-content")
+            {
+                return Some(3);
+            }
+
+            // Pattern 4: starts-with main / role main
             if tag == "main"
                 || class_val.starts_with("main")
                 || id_val.starts_with("main")
                 || role_val.starts_with("main")
             {
-                return Some(3);
+                return Some(4);
             }
 
             // Recurse into children

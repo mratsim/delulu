@@ -1,9 +1,10 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::collections::HashMap;
 
 use crate::pipelines::DomNode;
+use crate::pipelines::walk_pre_mut;
 use crate::pipelines::walkers::WalkerAction;
-
 // ---------------------------------------------------------------------------
 // MANUALLY_CLEANED tags — removed entirely
 // ---------------------------------------------------------------------------
@@ -66,13 +67,199 @@ pub const TF_CLEANED_TAGS: &[&str] = &[
     "use",
 ];
 
+/// Extract content from `<script type="text/template">` elements before they are removed.
+///
+/// Some websites (e.g., Google Blogger) embed article HTML inside `<script type='text/template'>`
+/// elements. Since `"script"` is in `TF_CLEANED_TAGS`, these elements would be removed entirely
+/// by `tf_remove_cleaned`, losing the article content.
+///
+/// This function runs BEFORE `tf_remove_cleaned` and replaces each matching `<script>` element
+/// with a `<div>` containing the script's text content as a text node. The content is then
+/// preserved and processed by subsequent pipeline passes.
+///
+/// Matches `<script>` elements whose `type` attribute contains "template" (case-insensitive),
+/// e.g., `type="text/template"`, `type="text/template-picture"`, etc.
+///
+/// Uses manual recursive traversal (similar to `tf_strip_unwrapped`) because elements need to
+/// be replaced with new ones.
+pub fn tf_extract_script_templates(node: &mut DomNode) {
+    fn extract_inner(nodes: &mut Vec<DomNode>) {
+        let mut i = 0;
+        while i < nodes.len() {
+            match &mut nodes[i] {
+                DomNode::Element { tag, attrs, children, .. }
+                    if tag == "script" =>
+                {
+                    // Check if type attribute contains "template" (case-insensitive)
+                    let is_template = attrs.iter().any(|(k, v)| {
+                        k.eq_ignore_ascii_case("type")
+                            && v.to_ascii_lowercase().contains("template")
+                    });
+                    if is_template {
+                        // Extract text content from the script element's children
+                        let text_content = collect_text(children);
+                        // Replace the <script> with a <div> containing the text
+                        let new_div = DomNode::Element {
+                            tag: "div".to_string(),
+                            attrs: vec![],
+                            children: vec![DomNode::Text(text_content)],
+                            scores: HashMap::new(),
+                            metadata: HashMap::new(),
+                        };
+                        nodes[i] = new_div;
+                        // Don't recurse into the new div (it has only a text child).
+                        // Increment i to continue with next sibling.
+                        i += 1;
+                    } else {
+                        // Regular <script> (JavaScript) — recurse into children then continue
+                        extract_inner(children);
+                        i += 1;
+                    }
+                }
+                DomNode::Element { children, .. } => {
+                    extract_inner(children);
+                    i += 1;
+                }
+                _ => i += 1,
+            }
+        }
+    }
+    if let DomNode::Element { children, .. } = node {
+        extract_inner(children);
+    }
+}
+
+
+/// Extract `articleBody` from `<script type="application/ld+json">` elements.
+///
+/// Some websites embed the article body text inside JSON-LD structured data
+/// (e.g., `{"articleBody": "..."}`). This function extracts that text and
+/// creates a `<p>` element with it, then removes the script element.
+///
+/// This is a rescue fallback matching Python trafilatura's `baseline()`
+/// function, which extracts `articleBody` from JSON-LD when the standard
+/// pipeline produces insufficient content.
+///
+/// Must run BEFORE `tf_remove_cleaned` since `"script"` is in `TF_CLEANED_TAGS`.
+///
+/// Matches `<script>` elements whose `type` attribute is exactly
+/// `"application/ld+json"`. For each match:
+/// 1. Extracts the text content of the script element
+/// 2. Parses it as JSON using `serde_json`
+/// 3. Checks for an `"articleBody"` field
+/// 4. If the extracted text is ≥ 100 chars, creates a `<p>` element
+///    with the text and replaces the script element with it
+/// 5. If the articleBody contains `<p>` tags, parses the HTML fragment
+///    and extracts plain text
+/// 6. If extraction fails or text is too short, removes the script element
+///
+/// Uses manual recursive traversal (similar to `tf_extract_script_templates`)
+/// because elements need to be replaced with new ones.
+pub fn tf_extract_jsonld(node: &mut DomNode) {
+    // Collect extracted <p> elements to add inside <body> (or at root level).
+    // Script elements may be inside <head>, which gets removed by tf_remove_cleaned.
+    // Adding <p> elements inside <body> ensures they survive container isolation.
+    let mut extracted_paragraphs: Vec<DomNode> = Vec::new();
+
+    fn extract_inner(nodes: &mut Vec<DomNode>, extracted: &mut Vec<DomNode>) {
+        let mut i = 0;
+        while i < nodes.len() {
+            match &mut nodes[i] {
+                DomNode::Element { tag, attrs, children, .. }
+                    if tag == "script" =>
+                {
+                    // Check if type attribute is exactly "application/ld+json"
+                    let is_jsonld = attrs.iter().any(|(k, v)| {
+                        k.eq_ignore_ascii_case("type")
+                            && v == "application/ld+json"
+                    });
+                    if is_jsonld {
+                        // Collect text content from the script element's children
+                        let text_content = collect_text(children);
+                        // Check if it contains "articleBody" (quick filter before parsing)
+                        if text_content.contains("articleBody") {
+                            // Parse JSON and extract articleBody
+                            let extracted_text: Option<String> =
+                                serde_json::from_str::<serde_json::Value>(&text_content)
+                                    .ok()
+                                    .and_then(|val| {
+                                        val.get("articleBody")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.trim().to_string())
+                                    })
+                                    .filter(|s| s.len() >= 100);
+
+                            if let Some(body) = extracted_text {
+                                // If articleBody contains <p> tags, parse as HTML and extract text
+                                let text = if body.contains("<p>") {
+                                    let fragment = scraper::Html::parse_fragment(&body);
+                                    fragment.root_element().text().collect::<String>().trim().to_string()
+                                } else {
+                                    body
+                                };
+
+                                // Create <p> element with the extracted text
+                                let p_node = DomNode::Element {
+                                    tag: "p".to_string(),
+                                    attrs: vec![],
+                                    children: vec![DomNode::Text(text)],
+                                    scores: HashMap::new(),
+                                    metadata: HashMap::new(),
+                                };
+                                // Add to extracted list (will be placed inside <body> later)
+                                extracted.push(p_node);
+                            }
+                        }
+                        // Always remove the JSON-LD script element
+                        nodes.remove(i);
+                        // Don't increment i; next element shifts into position i
+                    } else {
+                        // Regular <script> (JavaScript) — recurse into children then continue
+                        extract_inner(children, extracted);
+                        i += 1;
+                    }
+                }
+                DomNode::Element { children, .. } => {
+                    extract_inner(children, extracted);
+                    i += 1;
+                }
+                _ => i += 1,
+            }
+        }
+    }
+    if let DomNode::Element { children, .. } = node {
+        extract_inner(children, &mut extracted_paragraphs);
+        // Add extracted <p> elements inside <body> if it exists, otherwise at root level.
+        // This ensures they survive container isolation (which operates on <body> children).
+        if !extracted_paragraphs.is_empty() {
+            // Find <body> element among root children
+            let body_idx = children.iter().position(|child| {
+                matches!(child, DomNode::Element { tag, .. } if tag == "body")
+            });
+            if let Some(idx) = body_idx {
+                if let DomNode::Element { children: body_children, .. } = &mut children[idx] {
+                    body_children.extend(extracted_paragraphs);
+                }
+            } else {
+                // No <body> found — add at root level as fallback
+                children.extend(extracted_paragraphs);
+            }
+        }
+    }
+}
 /// Remove elements whose tag is in the `MANUALLY_CLEANED` list.
 ///
 /// Returns `WalkerAction::Remove` if the node's tag is in `TF_CLEANED_TAGS`,
 /// `WalkerAction::Continue` otherwise.
 pub fn tf_remove_cleaned(node: &mut DomNode) -> WalkerAction {
     match node {
-        // Preserve <head> elements with a rend attribute (converted headings like <head rend=\"h1\">).
+        // Preserve <form> elements protected by tf_protect_content_forms (>90% page content).
+        DomNode::Element { tag, metadata, .. }
+            if tag == "form" && metadata.get("tf_protected").map(|v| v.as_str()) == Some("true") =>
+        {
+            WalkerAction::Continue
+        }
+        // Preserve <head> elements with a rend attribute (converted headings like <head rend="h1">).
         // Use case-insensitive check for robustness.
         DomNode::Element { tag, attrs, .. }
             if tag == "head" && attrs.iter().any(|(k, _)| k.eq_ignore_ascii_case("rend")) =>
@@ -120,7 +307,9 @@ pub fn tf_remove_teaser(node: &mut DomNode) -> WalkerAction {
                 matches!(key.as_str(), "class" | "id")
                     && val.to_ascii_lowercase().contains("teaser")
             });
-            if has_teaser {
+            // Protect content containers: skip removal if id matches article content patterns
+            let is_content = attrs.iter().any(|(k, v)| k == "id" && BODY_XPATH_PATTERN_0_RE.is_match(v.as_str()));
+            if has_teaser && !is_content {
                 WalkerAction::Remove
             } else {
                 WalkerAction::Continue
@@ -140,7 +329,7 @@ pub fn tf_remove_teaser(node: &mut DomNode) -> WalkerAction {
 // Pattern 1: Shared id|class — matches `re:test(@id|@class, ...)`
 static OVERALL_DISCARD_SHARED_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        "(?i)^shar|viral|social|syndication|newsletter|cookie|tags|sidebar|banner|bread-?crumb|author|button"
+        "(?i)^shar|viral|social|syndication|newsletter|cookie|tags|\\bsidebar\\b|banner|bread-?crumb|author|button"
     ).expect("invalid OVERALL_DISCARD_SHARED_RE")
 });
 
@@ -154,7 +343,7 @@ static OVERALL_DISCARD_ID_RE: Lazy<Regex> = Lazy::new(|| {
 /// Pattern 3: Class-only — matches `re:test(@class, ...)`
 static OVERALL_DISCARD_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        "(?i)^(?:nav|post-nav|ZendeskForm)| ad |footer|Footer|byline|Byline|elated|share-|sociable|embedded|embed|subnav|tag-list|bar|meta|menu|avigation|navbar|navbox|rating|widget|attachment|timestamp|user-info|user-profile|-ad-|-icon|article-infos|nfoline|outbrain|taboola|criteo|options|expand|consent|modal-content|permission|next-|-stories|most-popular|mol-factbox|message-container|yin|zlylin|xg1|slide|viewport|overlay|paid-?content|obfuscated|blurred"
+        "(?i)^(?:nav|post-nav|ZendeskForm)| ad |footer|Footer|byline|Byline|elated|share-|sociable|embedded|embed|subnav|tag-list|\\bbar\\b|avigation|navbar|navbox|rating|(?:^| )widget(?: |$)|attachment|timestamp|user-info|user-profile|-ad-|-icon|article-infos|nfoline|outbrain|taboola|criteo|options|expand|consent|modal-content|permission|next-|-stories|most-popular|mol-factbox|message-container|yin|zlylin|xg1|slide|viewport|overlay|paid-?content|obfuscated|blurred"
     ).expect("invalid OVERALL_DISCARD_CLASS_RE")
 });
 
@@ -176,7 +365,16 @@ static OVERALL_DISCARD_P2_ID_RE: Lazy<Regex> = Lazy::new(|| {
 /// Pattern 2: Class-only — matches `re:test(@class, ...)` for Trafilatura Pattern 2
 static OVERALL_DISCARD_P2_CLASS_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        "(?i)^hide-|^reply-|comments-title|nocomments|-reply-|message|akismet|suggest-links|-hide-|hide-print| hidden| hide|noprint|notloaded").expect("invalid OVERALL_DISCARD_P2_CLASS_RE")
+        "(?i)^hide-|^reply-|comments-title|nocomments|-reply-|(?:^| )message(?:[^- ]|$)|akismet|suggest-links|-hide-|hide-print| hidden| hide|noprint|notloaded").expect("invalid OVERALL_DISCARD_P2_CLASS_RE")
+});
+
+/// Regex for matching standalone "link" in class/id values (word-boundary anchored).
+///
+/// Used by `tf_precision_discard` to avoid matching compound words like
+/// "related-links", "quick-links-nav", or "hyperlink" as boilerplate.
+/// Only matches "link" as a standalone word (e.g., "footer-links", "nav-links").
+static PRECISION_LINK_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new("(?i)\\blink\\b").expect("invalid PRECISION_LINK_RE")
 });
 
 /// Remove elements whose `class` or `id` attribute matches Trafilatura's
@@ -425,11 +623,178 @@ pub fn tf_remove_empty_cut(node: &mut DomNode) -> WalkerAction {
 }
 
 // ---------------------------------------------------------------------------
+// LINK DENSITY FILTER — port of Readability's remove_high_link_density
+// ---------------------------------------------------------------------------
+
+/// Remove elements with high link density.
+///
+/// For each element with tag "table", "ul", "div", "form", or "fieldset",
+/// computes `link_text_len / total_text_len` across its descendants.
+/// If the ratio exceeds 0.5, the element is removed.
+///
+/// This is a port of Readability's `remove_high_link_density` adapted for
+/// the Trafilatura pipeline:
+/// - Uses `walk_pre_mut` instead of `walk_post_acc_mut` (no data table analysis)
+/// - No metadata scoring infrastructure
+/// - Simpler threshold (0.5 vs Readability's 0.333 with comma gate)
+///
+/// Pre-condition: MANUALLY_CLEANED tags have been removed by `tf_remove_cleaned`.
+/// Post-condition: Elements whose link density exceeds 0.5 are removed.
+///
+/// NOTE: The form guard (skipping `<form>` elements that wrap >90% of page
+/// content) is implemented separately in `tf_protect_content_forms` (RC-4a),
+/// which runs before `tf_remove_cleaned` in the pipeline. This function does
+/// NOT need to handle the form case — protected forms are already preserved
+/// by the time this pass runs.
+pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
+    match node {
+        DomNode::Element {
+            tag,
+            children,
+            ..
+        } if matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") => {
+            // Compute total text length from all children
+            let total_text_len: usize = children.iter().map(get_inner_text).map(|s| s.len()).sum();
+
+            if total_text_len == 0 {
+                return WalkerAction::Continue;
+            }
+
+            // Compute link text length from <a> descendants (recursive, any depth)
+            let link_text_len = count_link_text(children);
+
+            let link_density = link_text_len as f64 / total_text_len as f64;
+
+            if link_density > 0.5 {
+                WalkerAction::Remove
+            } else {
+                WalkerAction::Continue
+            }
+        }
+        _ => WalkerAction::Continue,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PRECISION_DISCARD_XPATH — remove header, bottom/link/border elements
+// ---------------------------------------------------------------------------
+
+/// Remove elements matching Trafilatura's `PRECISION_DISCARD_XPATH` patterns.
+///
+/// Maps to Trafilatura's `PRECISION_DISCARD_XPATH` (xpaths.py:166-175):
+///
+/// Pattern 1: Remove all `<header>` elements.
+/// ```xpath
+/// .//header
+/// ```
+///
+/// Pattern 2: Remove `div`/`p`/`section`/`span` elements whose `id` or `class`
+/// contains "bottom" or standalone "link" (word-boundary anchored), or whose `style`
+/// contains "border" (case-insensitive).
+///
+/// Note: Uses `PRECISION_LINK_RE` (word-boundary anchored `\blink\b`) instead of
+/// `contains("link")` to avoid matching compound words like "related-links",
+/// "quick-links-nav", or "hyperlink".
+///
+/// This is a precision-mode pass. Added to `TF_BALANCED` pipeline only.
+///
+/// Pre: DOM tree is fully parsed, cleaned tags already removed.
+/// Post: `<header>` elements and elements with bottom/link/border attributes are removed.
+pub fn tf_precision_discard(node: &mut DomNode) -> WalkerAction {
+    match node {
+        // Pattern 1: Remove all <header> elements
+        DomNode::Element { tag, .. } if tag == "header" => WalkerAction::Remove,
+        // Pattern 2: Remove div/p/section/span elements with bottom/link/border attributes
+        DomNode::Element { tag, attrs, .. }
+            if matches!(tag.as_str(), "div" | "p" | "section" | "span") =>
+        {
+            let has_bottom_or_link = attrs.iter().any(|(key, val)| {
+                matches!(key.as_str(), "class" | "id")
+                    && (val.to_ascii_lowercase().contains("bottom")
+                        || PRECISION_LINK_RE.is_match(val))
+            });
+            let has_border = attrs.iter().any(|(key, val)| {
+                key == "style" && val.to_ascii_lowercase().contains("border")
+            });
+            if has_bottom_or_link || has_border {
+                WalkerAction::Remove
+            } else {
+                WalkerAction::Continue
+            }
+        }
+        _ => WalkerAction::Continue,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FORM CONTENT PROTECTION -- guard against <form>-wrapped pages
+// ---------------------------------------------------------------------------
+
+/// Protect `<form>` elements that wrap >90% of the page's text content.
+///
+/// Some websites (especially ASP.NET-based) wrap their entire page content
+/// inside a `<form>` element. Since `<form>` is in `TF_CLEANED_TAGS`, the
+/// `tf_remove_cleaned` pass would remove it entirely, deleting 99%+ of content.
+///
+/// This function measures the total text content of the root node, then walks
+/// the tree to find `<form>` elements. For each `<form>`, it measures the text
+/// content inside it. If the form's text content is >90% of the total, it marks
+/// the form with `metadata["tf_protected"] = "true"`, which `tf_remove_cleaned`
+/// checks before removing.
+///
+/// Must run BEFORE `tf_remove_cleaned` in the pipeline.
+///
+/// Pre: DOM tree is fully parsed, no passes have removed content yet.
+/// Post: `<form>` elements wrapping >90% of page content have
+///       `metadata["tf_protected"] = "true"` set.
+pub fn tf_protect_content_forms(node: &mut DomNode) {
+    // Measure visible text content (excluding script/style to avoid
+    // script inflation preventing form protection)
+    let total_text_len = get_visible_text(node).len();
+    if total_text_len == 0 {
+        return;
+    }
+
+    let threshold = (total_text_len as f64 * 0.9) as usize;
+
+    // Walk the tree to find <form> elements and protect those wrapping >90% content
+    walk_pre_mut(node, &|n: &mut DomNode| {
+        if let DomNode::Element { tag, children, metadata, .. } = n
+            && tag == "form"
+        {
+            let form_text_len = collect_text(children).len();
+            if form_text_len >= threshold {
+                metadata.insert("tf_protected".to_string(), "true".to_string());
+            }
+        }
+        WalkerAction::Continue
+    });
+}
+
+/// Get text content from visible elements only, excluding <script> and <style>.
+fn get_visible_text(node: &DomNode) -> String {
+    match node {
+        DomNode::Text(t) => t.clone(),
+        DomNode::Element { tag, children, .. } if matches!(
+            tag.as_str(), "script" | "style"
+        ) => String::new(),
+        DomNode::Element { children, .. } => {
+            let mut result = String::new();
+            for child in children {
+                result.push_str(&get_visible_text(child));
+            }
+            result
+        }
+        _ => String::new(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Utility: text collection helpers
 // ---------------------------------------------------------------------------
 
 /// Collect all text content from a subtree, excluding comments and doctypes.
-fn collect_text(nodes: &[DomNode]) -> String {
+pub(crate) fn collect_text(nodes: &[DomNode]) -> String {
     let mut result = String::new();
     for node in nodes {
         match node {
@@ -441,16 +806,49 @@ fn collect_text(nodes: &[DomNode]) -> String {
     result
 }
 
+/// Collect all text content from a single node's subtree.
+///
+/// Unlike `collect_text` which takes a slice, this operates on a single
+/// `&DomNode`. Returns the concatenated text of all descendant Text nodes.
+pub(crate) fn get_inner_text(node: &DomNode) -> String {
+    match node {
+        DomNode::Text(t) => t.clone(),
+        DomNode::Element { children, .. } => collect_text(children),
+        _ => String::new(),
+    }
+}
+
+
 /// Count total text length from all `<p>` elements in the subtree (any depth).
 ///
 /// Assumes cleaned tags (script, style) have been removed by earlier pipeline steps.
 /// Uses byte length (`String::len()`). O(N) traversal; called per matching container.
-fn count_p_text(nodes: &[DomNode]) -> usize {
+pub(crate) fn count_p_text(nodes: &[DomNode]) -> usize {
     nodes
         .iter()
         .map(|node| match node {
             DomNode::Element { tag, children, .. } if tag == "p" => collect_text(children).len(),
             DomNode::Element { children, .. } => count_p_text(children),
+            _ => 0,
+        })
+        .sum()
+}
+
+/// Count total text length from all `<a>` descendant elements (recursive, any depth).
+///
+/// Recursively traverses the node tree. For each `<a>` element found, adds its
+/// inner text length. Continues descending into non-`<a>` elements to find
+/// nested anchors (e.g., `<div><span><a>link</a></span></div>`).
+///
+/// This is used by `tf_filter_by_link_density` to compute the link-to-text ratio.
+/// The recursive search ensures nested `<a>` tags (inside `<span>`, `<p>`, `<li>`,
+/// etc.) are counted, matching Readability's behavior.
+fn count_link_text(nodes: &[DomNode]) -> usize {
+    nodes
+        .iter()
+        .map(|node| match node {
+            DomNode::Element { tag, children, .. } if tag == "a" => get_inner_text(node).len(),
+            DomNode::Element { children, .. } => count_link_text(children),
             _ => 0,
         })
         .sum()
@@ -474,13 +872,12 @@ pub const MIN_EXTRACTED_SIZE: usize = 250;
 /// Maps to Trafilatura's BODY_XPATH Pattern 0 (specific class/id selectors).
 static BODY_XPATH_PATTERN_0_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"(?ix)^(?:
-            post|entry|text|cell|story|postarea|art-postcontent|
+        r#"(?ix)(?:
             post[-_]text|post-body|post-?entry|post[-_]?content|postContent|post_inner_wrapper|
-            article-?text|articleText|(?:entry|page|text|article|art)-content|article__content|
+            article-?text|articleText|article[-_]?content|article[-_]?maincontent|(?:entry|page|text|article|art)-content|article__content|
             article(?:-|__)?body|articleBody|ArticleContent|body-text|article__container|
             (?:entry|article|art)-content|article__content|article(?:-|__)?body|articleBody|body-text
-        )$"#,
+        )"#,
     )
     .expect("BODY_XPATH_PATTERN_0_RE: invalid regex")
 });
@@ -489,7 +886,7 @@ static BODY_XPATH_PATTERN_0_RE: Lazy<Regex> = Lazy::new(|| {
 /// Maps to Trafilatura's BODY_XPATH Pattern 2 (content class/id).
 static BODY_XPATH_PATTERN_2_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"(?i)^(?:content[-_]main|content(?:-|__)?body|contentBody|main-content|page-content)$"#,
+        r#"(?i)^(?:content[-_]main|content(?:-|__)?body|contentBody|main-content|page-content)"#,
     )
     .expect("BODY_XPATH_PATTERN_2_RE: invalid regex")
 });
@@ -519,7 +916,7 @@ fn matches_body_xpath_patterns(
         || id_val == "articleContent"
         || matches!(
             class_val,
-            "post" | "entry" | "text" | "cell" | "story" | "postarea" | "art-postcontent"
+            "post" | "entry"
         )
         || role_val == "article"
         || BODY_XPATH_PATTERN_0_RE.is_match(class_val)
@@ -534,7 +931,10 @@ fn matches_body_xpath_patterns(
     }
 
     // Pattern 2: content class/id
-    if class_val == "content"
+    if matches!(
+            class_val,
+            "content" | "postarea" | "art-postcontent" | "text" | "cell" | "story"
+        )
         || id_val == "content"
         || BODY_XPATH_PATTERN_2_RE.is_match(class_val)
         || BODY_XPATH_PATTERN_2_RE.is_match(id_val)
@@ -574,86 +974,347 @@ fn matches_body_xpath_patterns(
 ///   are discarded.
 pub fn tf_isolate_content_container(node: &mut DomNode) {
     if let DomNode::Element { children, .. } = node {
-        isolate_container_recursive(children);
+    let mut best_path: Option<Vec<usize>> = None;
+    const PATTERN_CHECKS: [fn(&str, &str, &str, &str, &str) -> bool; 5] = [
+        |tag, cv, iv, rv, ipv| ipv == "articleBody" || iv == "articleContent"
+            || matches!(cv, "post" | "entry") || rv == "article"
+            || BODY_XPATH_PATTERN_0_RE.is_match(cv) || BODY_XPATH_PATTERN_0_RE.is_match(iv)
+            || cv.contains("p-body-pageContent") || iv.contains("p-body-pageContent"),
+        |tag, _, _, _, _| matches!(tag, "article" | "main"),
+        |_, cv, iv, _, _| matches!(cv, "postarea" | "art-postcontent" | "text" | "cell" | "story"),
+        |_, cv, iv, _, _| iv == "content"
+            || cv == "content"
+            || BODY_XPATH_PATTERN_2_RE.is_match(cv) || BODY_XPATH_PATTERN_2_RE.is_match(iv)
+            || cv.contains("main-content") || cv.contains("page-content"),
+        |tag, cv, iv, rv, _| tag == "main" || cv.starts_with("main")
+            || iv.starts_with("main") || rv.starts_with("main"),
+    ];
+    for check in PATTERN_CHECKS {
+        let mut path = Vec::new();
+        // Two-step process matching Python XPath [1] semantics:
+        // 1. Find the FIRST match of this pattern in document order
+        // 2. Check if it has enough content—if not, try next pattern
+        if find_first_match(children, &check, &mut path) {
+            if container_has_content(children, &path) {
+                best_path = Some(path);
+                break;
+            }
+            // First match failed threshold → try next pattern
+        }
+    }
+    if let Some(path) = best_path {
+        apply_path(children, &path);
+    }
     }
 }
 
-/// Recursive helper for `tf_isolate_content_container`.
-/// Returns true if a container was matched at this level or in any descendant.
-fn isolate_container_recursive(nodes: &mut Vec<DomNode>) -> bool {
-    let mut i = 0;
-    while i < nodes.len() {
-        let is_match = match &mut nodes[i] {
-            DomNode::Element {
-                tag,
-                attrs,
-                children,
-                ..
-            } if matches!(tag.as_str(), "article" | "div" | "main" | "section") => {
-                // FIRST recurse into children to find deepest match
-                let child_matched = isolate_container_recursive(children);
-                if child_matched {
-                    // A deeper container was found and already isolated within children
-                    // Now isolate THIS level too (keep only the element containing the match)
-                    true
-                } else {
-                    // No deeper match found — check if THIS element matches
-                    // Extract attributes in a single pass through attrs
-                    let class_val = attrs
-                        .iter()
-                        .find(|(k, _)| k == "class")
-                        .map(|(_, v)| v.as_str())
-                        .unwrap_or("");
-                    let id_val = attrs
-                        .iter()
-                        .find(|(k, _)| k == "id")
-                        .map(|(_, v)| v.as_str())
-                        .unwrap_or("");
-                    let role_val = attrs
-                        .iter()
-                        .find(|(k, _)| k == "role")
-                        .map(|(_, v)| v.as_str())
-                        .unwrap_or("");
-                    let itemprop_val = attrs
-                        .iter()
-                        .find(|(k, _)| k == "itemprop")
-                        .map(|(_, v)| v.as_str())
-                        .unwrap_or("");
-
-                    // Check if this element matches any BODY_XPATH pattern
-                    // AND has sufficient <p> text content
-                    if matches_body_xpath_patterns(
-                        tag.as_str(),
-                        class_val,
-                        id_val,
-                        role_val,
-                        itemprop_val,
-                    ) {
-                        let p_text_total = count_p_text(children);
-                        p_text_total >= MIN_EXTRACTED_SIZE
-                    } else {
-                        false
-                    }
+fn find_path_to_match(
+    nodes: &[DomNode],
+    check: &fn(&str, &str, &str, &str, &str) -> bool,
+    path: &mut Vec<usize>,
+) -> bool {
+    for (i, node) in nodes.iter().enumerate() {
+        if let DomNode::Element { tag, attrs, children, .. } = node
+            && matches!(tag.as_str(), "article" | "div" | "main" | "section")
+        {
+            let cv = attrs.iter().find(|(k, _)| k == "class").map(|(_, v)| v.as_str()).unwrap_or("");
+            let iv = attrs.iter().find(|(k, _)| k == "id").map(|(_, v)| v.as_str()).unwrap_or("");
+            let rv = attrs.iter().find(|(k, _)| k == "role").map(|(_, v)| v.as_str()).unwrap_or("");
+            let ipv = attrs.iter().find(|(k, _)| k == "itemprop").map(|(_, v)| v.as_str()).unwrap_or("");
+            if check(tag.as_str(), cv, iv, rv, ipv) {
+                let p_text = count_p_text(children);
+                if p_text >= MIN_EXTRACTED_SIZE {
+                    path.push(i);
+                    return true;
+                }
+                // Total-text fallback: accept if enough total text even without <p> tags
+                // Handles pages using <b>/<i>/<span>/<br> instead of <p>
+                if collect_text(children).len() >= MIN_EXTRACTED_SIZE {
+                    path.push(i);
+                    return true;
                 }
             }
-            DomNode::Element { children, .. } => {
-                // Non-container tag — recurse into children
-                isolate_container_recursive(children)
+            path.push(i);
+            if find_path_to_match(children, check, path) {
+                return true;
             }
-            _ => false, // Text, Comment, Doctype — skip
-        };
-
-        if is_match {
-            // Found a container match at this level: isolate it by discarding siblings
-            let matched = nodes.remove(i);
-            nodes.clear();
-            nodes.push(matched);
-            return true;
+            path.pop();
+        } else if let DomNode::Element { children, .. } = node {
+            path.push(i);
+            if find_path_to_match(children, check, path) {
+                return true;
+            }
+            path.pop();
         }
-
-        i += 1;
     }
     false
+}
+
+
+/// Find the FIRST element matching a BODY_XPATH pattern in document order.
+/// Unlike `find_path_to_match`, this does NOT check the content threshold —
+/// it returns the first match regardless of `<p>` text count.
+/// The caller (`tf_isolate_content_container`) separately checks content.
+fn find_first_match(
+    nodes: &[DomNode],
+    check: &fn(&str, &str, &str, &str, &str) -> bool,
+    path: &mut Vec<usize>,
+) -> bool {
+    for (i, node) in nodes.iter().enumerate() {
+        if let DomNode::Element { tag, attrs, children, .. } = node
+            && matches!(tag.as_str(), "article" | "div" | "main" | "section")
+        {
+            let cv = attrs.iter().find(|(k, _)| k == "class").map(|(_, v)| v.as_str()).unwrap_or("");
+            let iv = attrs.iter().find(|(k, _)| k == "id").map(|(_, v)| v.as_str()).unwrap_or("");
+            let rv = attrs.iter().find(|(k, _)| k == "role").map(|(_, v)| v.as_str()).unwrap_or("");
+            let ipv = attrs.iter().find(|(k, _)| k == "itemprop").map(|(_, v)| v.as_str()).unwrap_or("");
+            if check(tag.as_str(), cv, iv, rv, ipv) {
+                path.push(i);
+                return true;
+            }
+            path.push(i);
+            if find_first_match(children, check, path) {
+                return true;
+            }
+            path.pop();
+        } else if let DomNode::Element { children, .. } = node {
+            path.push(i);
+            if find_first_match(children, check, path) {
+                return true;
+            }
+            path.pop();
+        }
+    }
+    false
+}
+
+fn container_has_content(root_children: &[DomNode], path: &[usize]) -> bool {
+    if path.is_empty() {
+        return false;
+    }
+    // Navigate to the parent of the matched element (all indices except last)
+    let mut current = root_children;
+    let parent_len = path.len() - 1;
+    for &idx in &path[..parent_len] {
+        if idx >= current.len() {
+            return false;
+        }
+        if let DomNode::Element { children, .. } = &current[idx] {
+            current = children;
+        } else {
+            return false;
+        }
+    }
+    // Get the matched element at the last index
+    let last_idx = path[parent_len];
+    if last_idx >= current.len() {
+        return false;
+    }
+    if let DomNode::Element { children, .. } = &current[last_idx] {
+        let p_text = count_p_text(children);
+        if p_text >= MIN_EXTRACTED_SIZE {
+            return true;
+        }
+        if collect_text(children).len() >= MIN_EXTRACTED_SIZE {
+            return true;
+        }
+    }
+    false
+}
+fn apply_path(nodes: &mut Vec<DomNode>, path: &[usize]) {
+    if path.is_empty() { return; }
+    let idx = path[0];
+    if path.len() == 1 {
+        let matched = nodes.remove(idx);
+        nodes.clear();
+        nodes.push(matched);
+    } else if let DomNode::Element { children, .. } = &mut nodes[idx] {
+        apply_path(children, &path[1..]);
+        let matched = nodes.remove(idx);
+        nodes.clear();
+        nodes.push(matched);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BODY_XPATH FALLBACK — heuristic container isolation when patterns fail
+// ---------------------------------------------------------------------------
+
+/// Fallback content container isolation for when BODY_XPATH patterns don't match.
+///
+/// When `tf_isolate_content_container` finds no matching container (tree still has
+/// multiple top-level children), this function uses a heuristic:
+///
+/// 1. Check if the root has multiple top-level children.
+/// 2. If so, find the child with the most `<p>` text content (using `count_p_text`).
+/// 3. If that child has at least `MIN_EXTRACTED_SIZE` chars of `<p>` text, isolate
+///    it by discarding all sibling nodes.
+/// 4. If no child has enough `<p>` text, use a secondary fallback: select the child
+///    with the most total text content (`get_inner_text` length). This handles
+///    CMS layouts that use `<div>`-based content without `<p>` tags (e.g., Webflow,
+///    headless CMS, table-based layouts).
+///
+/// This handles Webflow-generated class names, table-based layouts, and nonstandard
+/// HTML where BODY_XPATH patterns (which match specific class/id patterns like
+/// "post", "article", "content", "main") cannot identify the main container.
+///
+/// Must run AFTER `tf_isolate_content_container` in the pipeline.
+///
+/// Pre: `tf_isolate_content_container` has already run (may have been a no-op).
+/// Post: If a suitable container was found via heuristic, only that container's
+///       subtree survives. Otherwise, the tree is unchanged.
+pub fn tf_fallback_content_container(node: &mut DomNode) {
+    if let DomNode::Element { children, .. } = node {
+        // Only apply if there are multiple top-level children
+        // (container isolation was a no-op or only partially effective)
+        if children.len() <= 1 {
+            return;
+        }
+
+        // Find the child with the most <p> text content
+        let mut best_idx = None;
+        let mut best_p_len = 0usize;
+
+        for (i, child) in children.iter().enumerate() {
+            let p_len = count_p_text(std::slice::from_ref(child));
+            if p_len > best_p_len {
+                best_p_len = p_len;
+                best_idx = Some(i);
+            }
+        }
+
+        // If the best child has enough <p> text, isolate it
+        if let Some(idx) = best_idx
+            && best_p_len >= MIN_EXTRACTED_SIZE
+        {
+            let matched = children.remove(idx);
+            children.clear();
+            children.push(matched);
+        } else {
+            // Secondary fallback: use total text content (get_inner_text length)
+            // when no child has enough <p> text. This handles CMS layouts
+            // that use <div>-based content without <p> tags (e.g., Webflow,
+            // headless CMS, table-based layouts).
+            let mut best_text_idx = None;
+            let mut best_text_len = 0usize;
+
+            for (i, child) in children.iter().enumerate() {
+                let text_len = get_inner_text(child).len();
+                if text_len > best_text_len {
+                    best_text_len = text_len;
+                    best_text_idx = Some(i);
+                }
+            }
+
+            if let Some(idx) = best_text_idx
+                && best_text_len >= MIN_EXTRACTED_SIZE
+            {
+                let matched = children.remove(idx);
+                children.clear();
+                children.push(matched);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TAG_CATALOG — whitelist of allowed output tags
+// ---------------------------------------------------------------------------
+
+/// Set of tags allowed in the final tf output after all conversions.
+///
+/// Maps to Trafilatura's `TAG_CATALOG` (settings.py:462):
+/// ```python
+/// TAG_CATALOG = frozenset(["blockquote", "code", "del", "head", "hi", "lb",
+///                          "list", "p", "pre", "quote"])
+/// ```
+///
+/// Elements whose tag is NOT in this catalog are removed, with the following
+/// exceptions preserved:
+/// - `<item>` (converted from `<li>` by `tf_convert_lists`)
+/// - `<ref>` (converted from `<a>` by `tf_convert_refs_and_details`)
+/// - `<graphic>` (image references)
+/// - `<html>`, `<body>` (structural root tags)
+///
+/// Text nodes, comments, and doctypes are preserved (left untouched).
+///
+/// Must run as the LAST pass in the pipeline, after all tag conversions and
+/// canonicalization passes have completed.
+///
+/// Pre: All tag conversions (headings, lists, quotes, formatting, breaks,
+///      refs) and canonicalization passes have run.
+/// Post: Elements with tags outside the allowed set are removed. Text nodes
+///       and structural root elements are preserved.
+pub fn tf_filter_tag_catalog(node: &mut DomNode) -> WalkerAction {
+    match node {
+        // Preserve non-element nodes (text, comments, doctypes)
+        DomNode::Text(_) | DomNode::Comment(_) | DomNode::Doctype(_) => WalkerAction::Continue,
+        // Check element tags
+        DomNode::Element { tag, .. } => {
+            // Tags in TAG_CATALOG — allowed
+            if matches!(
+                tag.as_str(),
+                "blockquote" | "code" | "del" | "head" | "hi" | "lb" | "list" | "p" | "pre" | "quote"
+            ) {
+                return WalkerAction::Continue;
+            }
+            // Additional preserved tags (converted or structural)
+            if matches!(
+                tag.as_str(),
+                "item" | "ref" | "graphic" | "html" | "body" | "table" | "tr" | "td" | "th" | "row" | "cell"
+            ) {
+                return WalkerAction::Continue;
+            }
+            // All other element tags — replace with children to preserve text content
+            // even inside custom/non-standard wrapper elements (e.g., <eop-in-viewport>)
+            WalkerAction::ReplaceWithChildren
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DISCARD_IMAGE_ELEMENTS — remove elements whose id/class contains "caption"
+// ---------------------------------------------------------------------------
+
+/// Remove elements whose `id` or `class` attribute contains "caption".
+///
+/// Maps to Trafilatura's `DISCARD_IMAGE_ELEMENTS` (xpaths.py:179-186):
+/// ```xpath
+/// .//*[self::div or self::item or self::list or self::p or self::section or self::span][
+///   contains(@id, 'caption') or contains(@class, 'caption')]
+/// ```
+///
+/// This implementation matches `div`, `p`, `section`, `span`, `item`, and `list`
+/// elements whose `class` or `id` attribute contains "caption" (case-insensitive).
+/// These are typically image captions or figure captions that should be
+/// discarded in text-only extraction.
+///
+/// The `item` and `list` tags are included because `tf_discard_image_elements`
+/// runs at pipeline step 20, AFTER `tf_convert_lists` (step 10), so converted
+/// `<li>` and `<ul>`/`<ol>` elements exist as `item` and `list` at this point.
+///
+/// Place this pass after canonicalization passes but before TAG_CATALOG
+/// filtering in the pipeline.
+///
+/// Pre: DOM tree is fully parsed, all tag conversions have run.
+/// Post: Elements with "caption" in their class or id are removed.
+pub fn tf_discard_image_elements(node: &mut DomNode) -> WalkerAction {
+    match node {
+        DomNode::Element { tag, attrs, .. }
+            if matches!(tag.as_str(), "div" | "p" | "section" | "span" | "item" | "list") =>
+        {
+            let has_caption = attrs.iter().any(|(key, val)| {
+                matches!(key.as_str(), "class" | "id")
+                    && val.to_ascii_lowercase().contains("caption")
+            });
+            if has_caption {
+                WalkerAction::Remove
+            } else {
+                WalkerAction::Continue
+            }
+        }
+        _ => WalkerAction::Continue,
+    }
 }
 
 // ---------------------------------------------------------------------------

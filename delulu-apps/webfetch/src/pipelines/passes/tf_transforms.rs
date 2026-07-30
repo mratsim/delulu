@@ -1,5 +1,6 @@
 use crate::pipelines::DomNode;
-use crate::pipelines::walkers::{WalkerAction, WalkerFilter, walk_post_mut};
+use crate::pipelines::walkers::{WalkerAction, WalkerFilter, walk_post_mut, walk_pre_mut};
+use super::tf_filters::{count_p_text, collect_text, MIN_EXTRACTED_SIZE};
 
 // ---------------------------------------------------------------------------
 // Heading conversion (h1-h6 → head)
@@ -194,8 +195,10 @@ pub fn tf_canonicalize_strip_non_content(node: &mut DomNode) {
     ];
     debug_assert!(!STRIPPED_TAGS.is_empty(), "strip list must not be empty");
     let mut filter = |n: &mut DomNode| -> WalkerAction {
-        if let DomNode::Element { tag, .. } = n
+        if let DomNode::Element { tag, metadata, .. } = n
             && STRIPPED_TAGS.contains(&tag.as_str())
+            && !(tag == "form"
+                && metadata.get("tf_protected").map(|v| v.as_str()) == Some("true"))
         {
             return WalkerAction::Remove;
         }
@@ -239,10 +242,15 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
         && metadata.iter().any(|(k, _)|
             k.eq_ignore_ascii_case("is_data_table")
         ));
+        let is_protected_form = matches!(n, DomNode::Element { tag, metadata, .. }
+            if tag == "form"
+                && metadata.get("tf_protected").map(|v| v.as_str()) == Some("true"));
 
         match n {
             DomNode::Element { tag, .. } => {
-                if is_data_table {
+                if is_protected_form {
+                    WalkerAction::ReplaceWithChildren
+                } else if is_data_table {
                     WalkerAction::Continue
                 } else if tag == "table" && has_is_data_table_key {
                     // Explicitly marked as layout (is_data_table set to non-true) — unwrap
@@ -260,6 +268,90 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
     walk_post_mut(node, &mut filters, None);
 }
 
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Div-to-paragraph conversion — ptest + div fallback (Python main_extractor.py:765-768)
+// ---------------------------------------------------------------------------
+// Div-to-paragraph conversion — ptest + div fallback (Python main_extractor.py:765-768)
+// ---------------------------------------------------------------------------
+//
+/// Convert `<div>` elements to `<p>` when `<p>` text in the tree is sparse.
+///
+/// Python equivalent (main_extractor.py:765-768):
+/// ```python
+/// ptest = subtree.xpath("//p//text()")
+/// factor = 1 if options.focus == "precision" else 3
+/// if not ptest or len("".join(ptest)) < options.min_extracted_size * factor:
+///     potential_tags.add("div")
+/// ```
+///
+/// Then in `handle_other_elements` (line 285-309):
+/// - If `"div"` is in `potential_tags` and the div has meaningful text,
+///   its tag is changed from `"div"` to `"p"`.
+///
+/// This pass:
+/// 1. Counts `<p>` text in the tree
+/// 2. If p_text < MIN_EXTRACTED_SIZE * 3 (750 chars for balanced mode),
+///    converts `<div>` elements with meaningful text into `<p>` elements
+/// 3. Only converts divs that are NOT data tables (is_data_table != "true")
+/// 4. Only converts divs with > 50 chars of text content
+/// 5. Skips divs that contain block-level elements (p, div, table, ul, ol, dl,
+///    blockquote, pre, figure, h1-h6) to avoid creating nested <p> structures
+///
+/// Must run AFTER container isolation but BEFORE `tf_canonicalize_unwrap_containers`
+/// so that the converted `<p>` elements survive the unwrap pass.
+pub fn tf_convert_divs_to_paragraphs(node: &mut DomNode) {
+    // Count <p> text in the tree
+    if let DomNode::Element { children, .. } = node {
+        let p_text_len = count_p_text(children);
+        let threshold = MIN_EXTRACTED_SIZE * 3; // 750 chars for balanced mode
+
+        if p_text_len < threshold {
+            // Walk the tree and convert <div> elements to <p>
+            walk_pre_mut(node, &|n: &mut DomNode| {
+                if let DomNode::Element { tag, attrs, children, metadata, .. } = n {
+                    if tag == "div" {
+                        // Skip data tables
+                        let is_data_table = metadata.get("is_data_table")
+                            .map(|v| v == "true")
+                            .unwrap_or(false);
+                        if is_data_table {
+                            return WalkerAction::Continue;
+                        }
+
+                        // Only convert leaf divs: skip divs that contain block-level elements
+                        // (p, div, table, ul, ol, dl, blockquote, pre, figure, h1-h6)
+                        let has_block_child = children.iter().any(|child| {
+                            matches!(child, DomNode::Element { tag: ct, .. } if matches!(
+                                ct.as_str(),
+                                "p" | "div" | "table" | "ul" | "ol" | "dl"
+                                    | "blockquote" | "pre" | "figure"
+                                    | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+                            ))
+                        });
+                        if has_block_child {
+                            return WalkerAction::Continue;
+                        }
+
+                        // Check if div has meaningful text content (> 50 chars)
+                        // Use flattened text from all descendants since leaf divs
+                        // only contain inline content (text, spans, anchors, etc.)
+                        let text = collect_text(children);
+                        let trimmed = text.trim();
+                        if trimmed.len() > 50 {
+                            // Convert div to p (Python: processed_element.tag = "p")
+                            tag.clear();
+                            tag.push_str("p");
+                            // Clear attributes (Python: processed_element.attrib.clear())
+                            attrs.clear();
+                        }
+                    }
+                }
+                WalkerAction::Continue
+            });
+        }
+    }
+}
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

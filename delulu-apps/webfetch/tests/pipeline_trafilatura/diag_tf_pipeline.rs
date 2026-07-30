@@ -36,6 +36,7 @@ use delulu_webfetch::pipelines::trafilatura::filter_trafilatura;
 #[path = "test_utils.rs"]
 mod test_utils;
 
+
 use test_utils::{
     classify_output, compute_confusion_matrix, detect_backup_restore,
     detect_body_xpath_pattern, detect_retry_level, first_diff_position, fixture_dir,
@@ -61,6 +62,7 @@ struct BatchResult {
     recall: f64,
     f1: f64,
     truncated: bool,
+    dup_chars: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -121,8 +123,12 @@ fn run_batch(fixtures_arg: &Option<PathBuf>) {
         let norm_output = normalize_output(&output_md);
         let norm_expected = normalize_output(&expected_md);
 
+        // Detect exact duplicate paragraphs in expected output
+        // (Python trafilatura sometimes extracts the same content twice)
+        let dup_chars = count_dup_paragraphs(&expected_md);
+
         let out_len = norm_output.len();
-        let exp_len = norm_expected.len();
+        let exp_len = norm_expected.len().saturating_sub(dup_chars);
         let ratio = if exp_len > 0 {
             out_len as f64 / exp_len as f64
         } else {
@@ -151,6 +157,7 @@ fn run_batch(fixtures_arg: &Option<PathBuf>) {
             recall,
             f1,
             truncated,
+            dup_chars,
         });
     }
 
@@ -164,25 +171,27 @@ fn run_batch(fixtures_arg: &Option<PathBuf>) {
 
     // Print padded header
     println!(
-        "{name:width$}  {output:>10}  {expected:>10}  {ratio:>6}  {class:class_width$}  {prec:>7}  {rec:>7}  {f1:>7}  {trunc}",
+        "{name:width$}  {output:>10}  {expected:>10}  {ratio:>6}  {class:class_width$}  {prec:>7}  {rec:>7}  {f1:>7}  {trunc}  {dup}",
         name = "fixture", width = max_name_len,
         output = "output_len", expected = "expected_len",
         ratio = "ratio",
         class = "classification", class_width = max_class_len,
         prec = "precision", rec = "recall", f1 = "f1",
         trunc = "truncated",
+        dup = "dup_chars",
     );
 
     for r in &results {
         let cl = format!("{}", r.classification);
         println!(
-            "{name:width$}  {output:>10}  {expected:>10}  {ratio:>6.4}  {class:class_width$}  {prec:>7.4}  {rec:>7.4}  {f1:>7.4}  {trunc}",
+            "{name:width$}  {output:>10}  {expected:>10}  {ratio:>6.4}  {class:class_width$}  {prec:>7.4}  {rec:>7.4}  {f1:>7.4}  {trunc}  {dup}",
             name = r.name, width = max_name_len,
             output = r.output_len, expected = r.expected_len,
             ratio = r.ratio,
             class = cl, class_width = max_class_len,
             prec = r.precision, rec = r.recall, f1 = r.f1,
             trunc = if r.truncated { "true" } else { "false" },
+            dup = r.dup_chars,
         );
     }
 
@@ -458,4 +467,26 @@ fn diag_main() {
             );
         }
     }
+}
+
+/// Count characters that are in exact duplicate paragraphs.
+/// Splits text on double newlines and sums lengths of paragraphs
+fn count_dup_paragraphs(text: &str) -> usize {
+    let paragraphs: Vec<&str> = text.split("\n\n").collect();
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for p in &paragraphs {
+        if p.len() > 20 {
+            *seen.entry(p.to_string()).or_insert(0) += 1;
+        }
+    }
+    let mut dup_total = 0usize;
+    for p in &paragraphs {
+        if p.len() > 20 {
+            let key = p.to_string();
+            if seen.get(&key).copied().unwrap_or(0) > 1 {
+                dup_total += p.len();
+            }
+        }
+    }
+    dup_total
 }
