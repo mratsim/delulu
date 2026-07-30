@@ -374,7 +374,7 @@ pub fn first_diff_position(a: &str, b: &str) -> Option<(usize, String, String)> 
 // the Rust tf_* pipeline and the Python trafilatura reference.
 //
 // Backup/restore: Trafilatura's safety mechanism. If OVERALL_DISCARD_XPATH
-//   removes ≥86% of text, the pass restores from a pre-removal clone.
+//   removes ≥80% of text (threshold 5×), the pass restores from a pre-removal clone.
 //   Detecting this in the diagnostic tells you whether the discard patterns
 //   are too aggressive for a given page — the pipeline is "working by accident"
 //   and relying on backup as a crutch rather than correct pattern matching.
@@ -398,8 +398,7 @@ pub fn first_diff_position(a: &str, b: &str) -> Option<(usize, String, String)> 
 /// and then restored). To distinguish from "nothing was removed", also runs
 /// the pass WITHOUT backup on another clone.
 ///
-/// Returns `(backup_triggered, items_removed_count)` where:
-/// - `backup_triggered`: true if ≥86% text was removed and restored
+/// - `backup_triggered`: true if ≥80% text was removed and restored
 /// - `items_removed_count`: how many elements `tf_remove_unlikely_candidates`
 ///    removed (before any restore) — 0 means nothing matched
 pub fn detect_backup_restore(html: &str) -> (bool, u32) {
@@ -419,7 +418,7 @@ pub fn detect_backup_restore(html: &str) -> (bool, u32) {
         let _snapshot = with_backup.clone();
         walk_pre_mut(&mut with_backup, &|n| tf_remove_unlikely_candidates(n));
         let _new = tf_count_text_chars(&with_backup);
-        // If ≥86% removed, the real pipeline would restore from snapshot
+        // If ≥80% removed (threshold 5×), the real pipeline would restore from snapshot
         // We detect this: if the with-backup result matches original,
         // backup triggered (the snapshot restore happened)
     }
@@ -463,15 +462,7 @@ fn count_elements(node: &DomNode) -> u32 {
 /// Returns Some(0-4) if a match is found, or None if no container identified.
 /// A Pattern 0 match = strong signal (page structure is well-known).
 /// A Pattern 4 match = weak signal (page may have unusual structure).
-
-/// Local copy of the BODY_XPATH_PATTERN_2_RE regex from tf_filters.rs.
-/// Replicated here because the original is private to the tf_filters module.
-static BODY_XPATH_PATTERN_2_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r#"(?i)^(?:content[-_]main|content(?:-|__)?body|contentBody|main-content|page-content)"#,
-    )
-    .expect("BODY_XPATH_PATTERN_2_RE: invalid regex")
-});
+use delulu_webfetch::pipelines::passes::tf_filters::BODY_XPATH_PATTERN_2_RE;
 pub fn detect_body_xpath_pattern(html: &str) -> Option<usize> {
     #[cfg(not(feature = "use-xpath"))]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_isolate_content_container;

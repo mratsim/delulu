@@ -480,12 +480,9 @@ fn count_dup_paragraphs(text: &str) -> usize {
         }
     }
     let mut dup_total = 0usize;
-    for p in &paragraphs {
-        if p.len() > 20 {
-            let key = p.to_string();
-            if seen.get(&key).copied().unwrap_or(0) > 1 {
-                dup_total += p.len();
-            }
+    for (key, count) in &seen {
+        if *count > 1 {
+            dup_total += key.len() * (count - 1);
         }
     }
     dup_total
