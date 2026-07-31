@@ -56,7 +56,7 @@ pub(crate) fn extract_jsonld_article_body(node: &DomNode) -> Option<String> {
                             }
                         }
                         Err(e) => {
-                            let preview = &text[..text.len().min(200)];
+                            let preview: String = text.chars().take(200).collect();
                             tracing::warn!("JSON-LD parse error: {} (preview: {:?})", e, preview);
                         }
                     }
@@ -102,3 +102,7 @@ pub(crate) fn count_non_ws_chars(node: &DomNode) -> usize {
         _ => 0,
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/pipelines/passes/tf_analysis_test.rs"]
+mod tests;
