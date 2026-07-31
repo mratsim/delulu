@@ -214,13 +214,7 @@ pub fn rd_strip_analytics(node: &mut DomNode) -> WalkerAction {
                     // Check inline text content for analytics API calls
                     let text_content: String = children
                         .iter()
-                        .filter_map(|c| {
-                            if let DomNode::Text(t) = c {
-                                Some(t.as_str())
-                            } else {
-                                None
-                            }
-                        })
+                        .map(|c| c.text_content())
                         .collect();
                     if ANALYTICS_INLINE_RE.is_match(&text_content) {
                         return WalkerAction::Remove;
@@ -232,13 +226,7 @@ pub fn rd_strip_analytics(node: &mut DomNode) -> WalkerAction {
                     // (scraper parses noscript children as text nodes, not elements)
                     let text_content: String = children
                         .iter()
-                        .filter_map(|c| {
-                            if let DomNode::Text(t) = c {
-                                Some(t.as_str())
-                            } else {
-                                None
-                            }
-                        })
+                        .map(|c| c.text_content())
                         .collect();
                     if ANALYTICS_SRC_RE.is_match(&text_content)
                         || ANALYTICS_PIXEL_RE.is_match(&text_content)

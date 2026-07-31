@@ -8,18 +8,6 @@ const MAX_OUTPUT_SIZE: usize = 500 * 1024; // 500 KiB
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Collect all descendant text nodes into a single string.
-fn collect_text(nodes: &[DomNode]) -> String {
-    let mut buf = String::new();
-    for node in nodes {
-        match node {
-            DomNode::Text(t) => buf.push_str(t),
-            DomNode::Element { children, .. } => buf.push_str(&collect_text(children)),
-            _ => {}
-        }
-    }
-    buf
-}
 
 /// Extract the code language and content from a <pre><code> block.
 fn extract_code_block(nodes: &[DomNode]) -> (String, String) {
@@ -35,10 +23,10 @@ fn extract_code_block(nodes: &[DomNode]) -> (String, String) {
                 .and_then(|c| c.strip_prefix("language-"))
                 .unwrap_or_default()
                 .to_string();
-            return (language, collect_text(children));
+            return (language, children.iter().map(|c| c.text_content()).collect::<String>());
         }
     }
-    (String::new(), collect_text(nodes))
+    (String::new(), nodes.iter().map(|c| c.text_content()).collect::<String>())
 }
 
 /// Collect rows from a <table> element.
@@ -320,7 +308,7 @@ impl MarkdownLowerer {
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 let level = tag[1..].parse::<usize>().unwrap_or(1);
                 let prefix = "#".repeat(level);
-                let text = collect_text(children);
+                let text = children.iter().map(|c| c.text_content()).collect::<String>();
                 out.push_str(&prefix);
                 out.push(' ');
                 out.push_str(&text);
@@ -427,7 +415,7 @@ impl MarkdownLowerer {
 
             // ── Inline code ────────────────────────────────────────────
             "code" => {
-                let text = collect_text(children);
+                let text = children.iter().map(|c| c.text_content()).collect::<String>();
                 out.push('`');
                 out.push_str(&text);
                 out.push('`');
@@ -441,7 +429,7 @@ impl MarkdownLowerer {
                     out.push_str(&latex);
                 } else {
                     // Fallback: render text content
-                    let text = collect_text(children);
+                    let text = children.iter().map(|c| c.text_content()).collect::<String>();
                     out.push_str(&text);
                 }
             }

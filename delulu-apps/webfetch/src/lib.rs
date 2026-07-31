@@ -561,7 +561,7 @@ fn find_first_heading(node: &DomNode, tag: &str) -> Option<String> {
         DomNode::Element {
             tag: t, children, ..
         } if t == tag => {
-            let text = collect_text_from_nodes(children);
+            let text = children.iter().map(|c| c.text_content()).collect::<String>();
             let trimmed = text.trim().to_string();
             if !trimmed.is_empty() {
                 return Some(trimmed);
@@ -579,20 +579,6 @@ fn find_first_heading(node: &DomNode, tag: &str) -> Option<String> {
     None
 }
 
-/// Collect all descendant text nodes into a single string.
-fn collect_text_from_nodes(nodes: &[DomNode]) -> String {
-    let mut buf = String::new();
-    for node in nodes {
-        match node {
-            DomNode::Text(t) => buf.push_str(t),
-            DomNode::Element { children, .. } => {
-                buf.push_str(&collect_text_from_nodes(children));
-            }
-            _ => {}
-        }
-    }
-    buf
-}
 
 // ---------------------------------------------------------------------------
 // Tests
