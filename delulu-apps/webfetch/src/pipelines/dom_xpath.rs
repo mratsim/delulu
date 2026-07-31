@@ -57,7 +57,7 @@ pub enum XPathError {
 // ---------------------------------------------------------------------------
 
 /// Maximum depth for the XPath evaluator's tree traversal.
-pub const MAX_XPATH_DEPTH: usize = 1000;
+pub(crate) const MAX_XPATH_DEPTH: usize = 1000;
 
 /// Maximum nesting depth for parsing expressions.
 const MAX_PARSE_DEPTH: usize = 100;
@@ -68,7 +68,7 @@ const MAX_PARSE_DEPTH: usize = 100;
 
 /// Tokens recognized by the XPath tokenizer.
 #[derive(Debug, Clone, PartialEq)]
-pub enum XPathToken {
+pub(crate) enum XPathToken {
     /// `(`
     LParen,
     /// `)`
@@ -117,7 +117,7 @@ pub enum XPathToken {
 /// Post: Returns a `Vec<XPathToken>` representing the lexed expression.
 ///
 /// Reference: Standard XPath 1.0 tokenization rules.
-pub fn tokenize(input: &str) -> Result<Vec<XPathToken>, XPathError> {
+pub(crate) fn tokenize(input: &str) -> Result<Vec<XPathToken>, XPathError> {
     let chars: Vec<char> = input.chars().collect();
     let mut tokens = Vec::new();
     let mut pos = 0;
@@ -259,7 +259,7 @@ fn scan_number(chars: &[char], pos: &mut usize) -> f64 {
 
 /// An XPath expression.
 #[derive(Debug, Clone)]
-pub enum XPathExpr {
+pub(crate) enum XPathExpr {
     /// A path expression (e.g., `div/p`, `.//article`)
     Path(PathExpr),
     /// A union of two expressions (`|`)
@@ -291,27 +291,27 @@ pub enum XPathExpr {
 
 /// A path expression: a sequence of steps separated by `/` or `//`.
 #[derive(Debug, Clone)]
-pub struct PathExpr {
+pub(crate) struct PathExpr {
     /// The initial step or expression (e.g., `.` or a step)
-    pub initial: Box<XPathExpr>,
+    pub(crate) initial: Box<XPathExpr>,
     /// Subsequent steps
-    pub steps: Vec<Step>,
+    pub(crate) steps: Vec<Step>,
 }
 
 /// A single step in a path expression.
 #[derive(Debug, Clone)]
-pub struct Step {
+pub(crate) struct Step {
     /// The axis (child, descendant-or-self, self)
-    pub axis: Axis,
+    pub(crate) axis: Axis,
     /// The node test
-    pub node_test: NodeTest,
+    pub(crate) node_test: NodeTest,
     /// Predicates
-    pub predicates: Vec<Predicate>,
+    pub(crate) predicates: Vec<Predicate>,
 }
 
 /// An axis specifier.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Axis {
+pub(crate) enum Axis {
     /// `child::` (default)
     Child,
     /// `descendant-or-self::`
@@ -322,7 +322,7 @@ pub enum Axis {
 
 /// A node test in a step.
 #[derive(Debug, Clone, PartialEq)]
-pub enum NodeTest {
+pub(crate) enum NodeTest {
     /// Any element (`*`)
     Any,
     /// A specific element name (e.g., `div`, `p`)
@@ -335,13 +335,13 @@ pub enum NodeTest {
 
 /// A predicate expression.
 #[derive(Debug, Clone)]
-pub struct Predicate {
-    pub expr: Box<XPathExpr>,
+pub(crate) struct Predicate {
+    pub(crate) expr: Box<XPathExpr>,
 }
 
 /// An argument to an XPath function (can be a node-set, string, or number).
 #[derive(Debug, Clone)]
-pub enum XPathArg {
+pub(crate) enum XPathArg {
     NodeSet(Vec<DomNode>),
     String(String),
     Number(f64),
@@ -357,7 +357,7 @@ pub enum XPathArg {
 /// Post: Returns an `XPathExpr` AST if parsing succeeds.
 ///
 /// Reference: Standard XPath 1.0 parsing rules (simplified).
-pub fn parse(tokens: &[XPathToken]) -> Result<XPathExpr, XPathError> {
+pub(crate) fn parse(tokens: &[XPathToken]) -> Result<XPathExpr, XPathError> {
     if tokens.is_empty() {
         return Err(XPathError::EmptyExpression);
     }
@@ -759,9 +759,9 @@ fn parse_step(tokens: &[XPathToken], pos: &mut usize, axis: Axis, depth: usize) 
 /// and pre-compiled regex patterns for `re:test()` calls.
 pub struct XPath {
     /// The parsed expression
-    pub compiled: XPathExpr,
+    pub(crate) compiled: XPathExpr,
     /// Pre-compiled regex patterns (in order of re:test calls)
-    pub regex_cache: Vec<(String, Regex)>,
+    pub(crate) regex_cache: Vec<(String, Regex)>,
 }
 
 impl XPath {
