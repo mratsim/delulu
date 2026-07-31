@@ -1156,7 +1156,7 @@ fn string_value_of_expr<'a>(
             } else {
                 let result = eval_expr(expr, candidates.first().copied().unwrap_or(root), root, regex_cache, depth + 1)?;
                 if let Some(node) = result.first() {
-                    Ok(node_to_string(node))
+                    Ok(node.text_content())
                 } else {
                     Ok(String::new())
                 }
@@ -1181,7 +1181,7 @@ fn string_value_of_expr<'a>(
                 if let XPathExpr::Attribute(name) = left.as_ref() {
                     Ok(get_attr_value(ctx, name).to_string())
                 } else {
-                    Ok(node_to_string(node))
+                    Ok(node.text_content())
                 }
             } else {
                 Ok(String::new())
@@ -1200,7 +1200,7 @@ fn string_value_of_expr<'a>(
         _ => {
             let result = eval_expr(expr, candidates.first().copied().unwrap_or(root), root, regex_cache, depth + 1)?;
             if let Some(node) = result.first() {
-                Ok(node_to_string(node))
+                Ok(node.text_content())
             } else {
                 Ok(String::new())
             }
@@ -1349,21 +1349,6 @@ fn translate_string(source: &str, from: &str, to: &str) -> String {
     result
 }
 
-/// Get the string value of a node (for XPath string() function).
-fn node_to_string(node: &DomNode) -> String {
-    match node {
-        DomNode::Text(t) => t.clone(),
-        DomNode::Element { children, .. } => {
-            let mut buf = String::new();
-            for child in children {
-                buf.push_str(&node_to_string(child));
-            }
-            buf
-        }
-        DomNode::Comment(c) => c.clone(),
-        DomNode::Doctype(d) => d.clone(),
-    }
-}
 
 /// Get the value of an attribute by name.
 fn get_attr_value<'a>(node: &'a DomNode, name: &str) -> &'a str {
