@@ -2,7 +2,7 @@
 //!
 //! Provides:
 //! - `fixture_dir()`: Path to the `tests/fixtures-trafilatura/` directory
-//! - `load_test_case_tf()`: Load source.html.zst + expected.md.zst + optional annotations.json
+//! - `load_test_case_tf()`: Load source.html.zst + expected.md.zst + optional annotations.json.zst
 //! - `decompress_zst()`: zstd decompression helper (panics on error)
 //! - `try_decompress_zst()`: zstd decompression helper (returns Result)
 //! - `Annotations`, `Classification`, `Severity`, `ConfusionMatrix` types
@@ -265,7 +265,7 @@ pub fn load_test_case_tf(name: &str) -> (DomNode, String, Option<Annotations>) {
     let dir = fixture_dir().join(name);
     let source_path = dir.join("source.html.zst");
     let expected_path = dir.join("expected.md.zst");
-    let annotations_path = dir.join("annotations.json");
+    let annotations_path = dir.join("annotations.json.zst");
 
     let source_html = decompress_zst(&source_path);
     let expected_md = decompress_zst(&expected_path);
@@ -274,10 +274,10 @@ pub fn load_test_case_tf(name: &str) -> (DomNode, String, Option<Annotations>) {
         .unwrap_or_else(|e| panic!("Failed to parse HTML for '{name}': {e}"));
 
     let annotations = if annotations_path.exists() {
-        let content = std::fs::read_to_string(&annotations_path)
-            .unwrap_or_else(|e| panic!("Failed to read annotations.json for '{name}': {e}"));
+        let content = try_decompress_zst(&annotations_path)
+            .unwrap_or_else(|e| panic!("Failed to decompress annotations.json.zst for '{name}': {e}"));
         Some(serde_json::from_str(&content)
-            .unwrap_or_else(|e| panic!("Failed to parse annotations.json for '{name}': {e}")))
+            .unwrap_or_else(|e| panic!("Failed to parse annotations.json.zst for '{name}': {e}")))
     } else {
         None
     };
@@ -856,7 +856,7 @@ mod tests {
             _ => panic!("expected DomNode::Element root"),
         }
         assert!(!expected.is_empty(), "expected markdown should not be empty");
-        let ann = annotations.expect("fixture should have annotations.json");
+        let ann = annotations.expect("fixture should have annotations.json.zst");
         assert!(!ann.with.is_empty(), "should have with[] annotations");
         assert!(!ann.without.is_empty(), "should have without[] annotations");
     }
