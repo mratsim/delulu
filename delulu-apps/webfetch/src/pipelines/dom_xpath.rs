@@ -14,43 +14,20 @@ use std::collections::HashMap;
 use crate::pipelines::DomNode;
 
 // ---------------------------------------------------------------------------
-// XPathError — Phase 0b
+// XPathError
 // ---------------------------------------------------------------------------
 
 /// Errors that can occur during XPath parsing and evaluation.
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum XPathError {
-    // Parse errors
-    /// Unterminated string literal at the given position.
-    #[error("unterminated string at position {position}")]
-    UnterminatedString { position: usize },
-    /// Unexpected token at the given position.
-    #[error("unexpected token at position {position}: expected {expected}, found {found}")]
-    UnexpectedToken { expected: &'static str, found: String, position: usize },
-    /// Empty XPath expression.
-    #[error("empty XPath expression")]
-    EmptyExpression,
-    /// Nesting limit exceeded during parsing.
-    #[error("nesting limit exceeded (max depth: {max_depth})")]
-    NestingLimitExceeded { max_depth: usize },
-    // Evaluation errors
-    /// Unknown function name.
-    #[error("unknown function: {name}")]
-    InvalidFunction { name: String },
-    /// Wrong number of arguments to a function.
-    #[error("wrong argument count for {function}: expected {expected}, found {found}")]
-    WrongArgumentCount { function: &'static str, expected: usize, found: usize },
-    /// Type mismatch during evaluation.
-    #[error("type mismatch: expected {expected}, found {found}")]
-    TypeMismatch { expected: &'static str, found: &'static str },
-    /// Maximum evaluation depth exceeded.
-    #[error("max depth exceeded (depth: {depth}, max: {max_depth})")]
-    MaxDepthExceeded { depth: usize, max_depth: usize },
-    // Regex errors
-    /// Invalid regex pattern.
-    #[error("invalid regex pattern '{pattern}': {source}")]
-    InvalidRegex { pattern: String, source: regex::Error },
+#[derive(Debug, Clone, PartialEq)]
+pub struct XPathError(pub String);
+
+impl std::fmt::Display for XPathError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
+
+impl std::error::Error for XPathError {}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -63,7 +40,7 @@ pub(crate) const MAX_XPATH_DEPTH: usize = 1000;
 const MAX_PARSE_DEPTH: usize = 100;
 
 // ---------------------------------------------------------------------------
-// Tokenizer — Phase 1a
+// Tokenizer
 // ---------------------------------------------------------------------------
 
 /// Tokens recognized by the XPath tokenizer.
@@ -177,7 +154,7 @@ pub(crate) fn tokenize(input: &str) -> Result<Vec<XPathToken>, XPathError> {
                     pos += 1;
                 }
                 if pos >= chars.len() {
-                    return Err(XPathError::UnterminatedString { position: start });
+                    return Err(XPathError(format!("unterminated string at position {start}")));
                 }
                 pos += 1; // skip closing quote
                 tokens.push(XPathToken::StringLiteral(s));
@@ -188,11 +165,7 @@ pub(crate) fn tokenize(input: &str) -> Result<Vec<XPathToken>, XPathError> {
                     tokens.push(XPathToken::NotEquals);
                     pos += 2;
                 } else {
-                    return Err(XPathError::UnexpectedToken {
-                        expected: "!= or name",
-                        found: format!("! at position {}", pos),
-                        position: pos,
-                    });
+                    return Err(XPathError(format!("unexpected token at position {pos}: expected != or name, found ! at position {pos}")))
                 }
             }
             _ => {
@@ -208,11 +181,7 @@ pub(crate) fn tokenize(input: &str) -> Result<Vec<XPathToken>, XPathError> {
                         _ => tokens.push(XPathToken::Name(name)),
                     }
                 } else {
-                    return Err(XPathError::UnexpectedToken {
-                        expected: "valid XPath token",
-                        found: format!("'{}' at position {}", ch, pos),
-                        position: pos,
-                    });
+                    return Err(XPathError(format!("unexpected token at position {pos}: expected valid XPath token, found '{}'", ch)))
                 }
             }
         }
@@ -254,7 +223,7 @@ fn scan_number(chars: &[char], pos: &mut usize) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// AST — Phase 1a
+// AST
 // ---------------------------------------------------------------------------
 
 /// An XPath expression.
@@ -348,7 +317,7 @@ pub(crate) enum XPathArg {
 }
 
 // ---------------------------------------------------------------------------
-// Parser — Phase 1a
+// Parser
 // ---------------------------------------------------------------------------
 
 /// Parse a sequence of tokens into an XPath expression.
@@ -359,7 +328,7 @@ pub(crate) enum XPathArg {
 /// Reference: Standard XPath 1.0 parsing rules (simplified).
 pub(crate) fn parse(tokens: &[XPathToken]) -> Result<XPathExpr, XPathError> {
     if tokens.is_empty() {
-        return Err(XPathError::EmptyExpression);
+        return Err(XPathError("empty XPath expression".to_string()));
     }
     let mut pos = 0;
     parse_or_expr(tokens, &mut pos, 0)
@@ -367,7 +336,7 @@ pub(crate) fn parse(tokens: &[XPathToken]) -> Result<XPathExpr, XPathError> {
 
 fn parse_or_expr(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> Result<XPathExpr, XPathError> {
     if depth > MAX_PARSE_DEPTH {
-        return Err(XPathError::NestingLimitExceeded { max_depth: MAX_PARSE_DEPTH });
+        return Err(XPathError(format!("nesting limit exceeded (max depth: {MAX_PARSE_DEPTH})")));
     }
     let mut left = parse_equality_expr(tokens, pos, depth + 1)?;
     while *pos < tokens.len() && tokens[*pos] == XPathToken::Or {
@@ -381,7 +350,7 @@ fn parse_or_expr(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> Result
 /// Parse equality expression: UnionExpr (('=' | '!=') UnionExpr)*
 fn parse_equality_expr(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> Result<XPathExpr, XPathError> {
     if depth > MAX_PARSE_DEPTH {
-        return Err(XPathError::NestingLimitExceeded { max_depth: MAX_PARSE_DEPTH });
+        return Err(XPathError(format!("nesting limit exceeded (max depth: {MAX_PARSE_DEPTH})")));
     }
     let mut left = parse_union_expr(tokens, pos, depth + 1)?;
     while *pos < tokens.len() {
@@ -404,7 +373,7 @@ fn parse_equality_expr(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> 
 
 fn parse_union_expr(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> Result<XPathExpr, XPathError> {
     if depth > MAX_PARSE_DEPTH {
-        return Err(XPathError::NestingLimitExceeded { max_depth: MAX_PARSE_DEPTH });
+        return Err(XPathError(format!("nesting limit exceeded (max depth: {MAX_PARSE_DEPTH})")));
     }
     let mut left = parse_path_expr(tokens, pos, depth + 1)?;
     while *pos < tokens.len() && tokens[*pos] == XPathToken::Pipe {
@@ -417,7 +386,7 @@ fn parse_union_expr(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> Res
 
 fn parse_path_expr(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> Result<XPathExpr, XPathError> {
     if depth > MAX_PARSE_DEPTH {
-        return Err(XPathError::NestingLimitExceeded { max_depth: MAX_PARSE_DEPTH });
+        return Err(XPathError(format!("nesting limit exceeded (max depth: {MAX_PARSE_DEPTH})")));
     }
 
     // Check for leading / or //
@@ -432,11 +401,7 @@ fn parse_path_expr(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> Resu
     };
 
     if *pos >= tokens.len() {
-        return Err(XPathError::UnexpectedToken {
-            expected: "step or expression after /",
-            found: "end of input".to_string(),
-            position: *pos,
-        });
+        return Err(XPathError(format!("unexpected token at position {pos}: expected step or expression after /, found end of input")))
     }
 
     // Parse the first step or primary expression
@@ -452,11 +417,7 @@ fn parse_path_expr(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> Resu
                     XPathToken::Slash => {
                         *pos += 1;
                         if *pos >= tokens.len() {
-                            return Err(XPathError::UnexpectedToken {
-                                expected: "step after /",
-                                found: "end of input".to_string(),
-                                position: *pos,
-                            });
+                            return Err(XPathError(format!("unexpected token at position {pos}: expected step after /, found end of input")))
                         }
                         let step = parse_step(tokens, pos, Axis::Child, depth + 1)?;
                         steps.push(step);
@@ -482,15 +443,11 @@ fn parse_path_expr(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> Resu
 
 fn parse_step_or_primary(tokens: &[XPathToken], pos: &mut usize, depth: usize) -> Result<XPathExpr, XPathError> {
     if depth > MAX_PARSE_DEPTH {
-        return Err(XPathError::NestingLimitExceeded { max_depth: MAX_PARSE_DEPTH });
+        return Err(XPathError(format!("nesting limit exceeded (max depth: {MAX_PARSE_DEPTH})")));
     }
 
     if *pos >= tokens.len() {
-        return Err(XPathError::UnexpectedToken {
-            expected: "expression",
-            found: "end of input".to_string(),
-            position: *pos,
-        });
+        return Err(XPathError(format!("unexpected token at position {pos}: expected expression, found end of input")))
     }
 
     match &tokens[*pos] {
@@ -498,11 +455,8 @@ fn parse_step_or_primary(tokens: &[XPathToken], pos: &mut usize, depth: usize) -
             *pos += 1;
             let expr = parse_or_expr(tokens, pos, depth + 1)?;
             if *pos >= tokens.len() || tokens[*pos] != XPathToken::RParen {
-                return Err(XPathError::UnexpectedToken {
-                    expected: "')'",
-                    found: if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() },
-                    position: *pos,
-                });
+                let found = if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() };
+                return Err(XPathError(format!("unexpected token at position {pos}: expected ')', found {found}")))
             }
             *pos += 1;
             Ok(expr)
@@ -530,11 +484,7 @@ fn parse_step_or_primary(tokens: &[XPathToken], pos: &mut usize, depth: usize) -
                     "child" => Axis::Child,
                     "descendant-or-self" => Axis::DescendantOrSelf,
                     "self" => Axis::SelfAxis,
-                    other => return Err(XPathError::UnexpectedToken {
-                        expected: "child, descendant-or-self, or self",
-                        found: format!("axis '{}'", other),
-                        position: *pos - 2 - name.len(),
-                    }),
+                    other => return Err(XPathError(format!("unexpected token at position {pos}: expected child, descendant-or-self, or self, found axis '{other}'")))
                 };
                 let step = parse_step(tokens, pos, axis, depth + 1)?;
                 Ok(XPathExpr::Path(PathExpr {
@@ -553,11 +503,8 @@ fn parse_step_or_primary(tokens: &[XPathToken], pos: &mut usize, depth: usize) -
                     }
                 }
                 if *pos >= tokens.len() || tokens[*pos] != XPathToken::RParen {
-                    return Err(XPathError::UnexpectedToken {
-                        expected: "')'",
-                        found: if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() },
-                        position: *pos,
-                    });
+                    let found = if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() };
+                    return Err(XPathError(format!("unexpected token at position {pos}: expected ')', found {found}")))
                 }
                 *pos += 1;
                 Ok(XPathExpr::FunctionCall { name, args })
@@ -573,11 +520,8 @@ fn parse_step_or_primary(tokens: &[XPathToken], pos: &mut usize, depth: usize) -
                     *pos += 1;
                     let expr = parse_or_expr(tokens, pos, depth + 1)?;
                     if *pos >= tokens.len() || tokens[*pos] != XPathToken::RBracket {
-                        return Err(XPathError::UnexpectedToken {
-                            expected: "']'",
-                            found: if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() },
-                            position: *pos,
-                        });
+                        let found = if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() };
+                        return Err(XPathError(format!("unexpected token at position {pos}: expected ']', found {found}")))
                     }
                     *pos += 1;
                     step.predicates.push(Predicate { expr: Box::new(expr) });
@@ -591,22 +535,14 @@ fn parse_step_or_primary(tokens: &[XPathToken], pos: &mut usize, depth: usize) -
         XPathToken::At => {
             *pos += 1;
             if *pos >= tokens.len() {
-                return Err(XPathError::UnexpectedToken {
-                    expected: "attribute name after @",
-                    found: "end of input".to_string(),
-                    position: *pos,
-                });
+                return Err(XPathError(format!("unexpected token at position {pos}: expected attribute name after @, found end of input")))
             }
             if let XPathToken::Name(name) = &tokens[*pos] {
                 let name = name.clone();
                 *pos += 1;
                 Ok(XPathExpr::Attribute(name))
             } else {
-                return Err(XPathError::UnexpectedToken {
-                    expected: "attribute name",
-                    found: format!("{:?}", tokens[*pos]),
-                    position: *pos,
-                });
+                return Err(XPathError(format!("unexpected token at position {pos}: expected attribute name, found {:?}", tokens[*pos])))
             }
         }
         XPathToken::StringLiteral(s) => {
@@ -635,26 +571,19 @@ fn parse_step_or_primary(tokens: &[XPathToken], pos: &mut usize, depth: usize) -
             *pos += 1;
             let expr = parse_or_expr(tokens, pos, depth + 1)?;
             if *pos >= tokens.len() || tokens[*pos] != XPathToken::RBracket {
-                return Err(XPathError::UnexpectedToken {
-                    expected: "']'",
-                    found: if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() },
-                    position: *pos,
-                });
+                let found = if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() };
+                return Err(XPathError(format!("unexpected token at position {pos}: expected ']', found {found}")))
             }
             *pos += 1;
             Ok(XPathExpr::Predicate(Box::new(expr)))
         }
-        _ => Err(XPathError::UnexpectedToken {
-            expected: "expression (name, @attr, (, ., string, number)",
-            found: format!("{:?}", tokens[*pos]),
-            position: *pos,
-        }),
+        _ => return Err(XPathError(format!("unexpected token at position {pos}: expected expression (name, @attr, (, ., string, number), found {:?}", tokens[*pos])))
     }
 }
 
 fn parse_step(tokens: &[XPathToken], pos: &mut usize, axis: Axis, depth: usize) -> Result<Step, XPathError> {
     if depth > MAX_PARSE_DEPTH {
-        return Err(XPathError::NestingLimitExceeded { max_depth: MAX_PARSE_DEPTH });
+        return Err(XPathError(format!("nesting limit exceeded (max depth: {MAX_PARSE_DEPTH})")));
     }
 
     let node_test = if *pos < tokens.len() {
@@ -666,33 +595,24 @@ fn parse_step(tokens: &[XPathToken], pos: &mut usize, axis: Axis, depth: usize) 
                 if name == "text" && *pos < tokens.len() && tokens[*pos] == XPathToken::LParen {
                     *pos += 1;
                     if *pos >= tokens.len() || tokens[*pos] != XPathToken::RParen {
-                        return Err(XPathError::UnexpectedToken {
-                            expected: "')' after text(",
-                            found: if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() },
-                            position: *pos,
-                        });
+                        let found = if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() };
+                        return Err(XPathError(format!("unexpected token at position {pos}: expected ')' after text(, found {found}")))
                     }
                     *pos += 1;
                     NodeTest::Text
                 } else if name == "node" && *pos < tokens.len() && tokens[*pos] == XPathToken::LParen {
                     *pos += 1;
                     if *pos >= tokens.len() || tokens[*pos] != XPathToken::RParen {
-                        return Err(XPathError::UnexpectedToken {
-                            expected: "')' after node(",
-                            found: format!("{:?}", tokens[*pos]),
-                            position: *pos,
-                        });
+                        let found = if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() };
+                        return Err(XPathError(format!("unexpected token at position {pos}: expected ')' after node(, found {found}")));
                     }
                     *pos += 1;
                     NodeTest::Any
                 } else if name == "comment" && *pos < tokens.len() && tokens[*pos] == XPathToken::LParen {
                     *pos += 1;
                     if *pos >= tokens.len() || tokens[*pos] != XPathToken::RParen {
-                        return Err(XPathError::UnexpectedToken {
-                            expected: "')' after comment(",
-                            found: format!("{:?}", tokens[*pos]),
-                            position: *pos,
-                        });
+                        let found = if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() };
+                        return Err(XPathError(format!("unexpected token at position {pos}: expected ')' after comment(, found {found}")));
                     }
                     *pos += 1;
                     NodeTest::Comment
@@ -710,24 +630,12 @@ fn parse_step(tokens: &[XPathToken], pos: &mut usize, axis: Axis, depth: usize) 
                 NodeTest::Any
             }
             XPathToken::At => {
-                return Err(XPathError::UnexpectedToken {
-                    expected: "node test",
-                    found: "@".to_string(),
-                    position: *pos,
-                });
+                return Err(XPathError(format!("unexpected token at position {pos}: expected node test, found @")))
             }
-            _ => return Err(XPathError::UnexpectedToken {
-                expected: "node test (name, *, text(), node())",
-                found: format!("{:?}", tokens[*pos]),
-                position: *pos,
-            }),
+            _ => return Err(XPathError(format!("unexpected token at position {pos}: expected node test (name, *, text(), node()), found {:?}", tokens[*pos])))
         }
     } else {
-        return Err(XPathError::UnexpectedToken {
-            expected: "node test",
-            found: "end of input".to_string(),
-            position: *pos,
-        });
+        return Err(XPathError(format!("unexpected token at position {pos}: expected node test, found end of input")))
     };
 
     // Parse predicates
@@ -736,11 +644,8 @@ fn parse_step(tokens: &[XPathToken], pos: &mut usize, axis: Axis, depth: usize) 
         *pos += 1;
         let expr = parse_or_expr(tokens, pos, depth + 1)?;
         if *pos >= tokens.len() || tokens[*pos] != XPathToken::RBracket {
-            return Err(XPathError::UnexpectedToken {
-                expected: "']'",
-                found: if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() },
-                position: *pos,
-            });
+            let found = if *pos < tokens.len() { format!("{:?}", tokens[*pos]) } else { "end of input".to_string() };
+            return Err(XPathError(format!("unexpected token at position {pos}: expected ']', found {found}")))
         }
         *pos += 1;
         predicates.push(Predicate { expr: Box::new(expr) });
@@ -750,7 +655,7 @@ fn parse_step(tokens: &[XPathToken], pos: &mut usize, axis: Axis, depth: usize) 
 }
 
 // ---------------------------------------------------------------------------
-// XPath Compiled Expression — Phase 1b
+// XPath Compiled Expression
 // ---------------------------------------------------------------------------
 
 /// A compiled XPath expression, ready for evaluation.
@@ -816,10 +721,7 @@ fn restore_re_test(expr: &mut XPathExpr, regex_cache: &mut Vec<(String, Regex)>)
                 *name = "re:test".to_string();
                 if args.len() >= 2 {
                     if let XPathExpr::Literal(pattern) = &args[1] {
-                        let re = Regex::new(pattern).map_err(|e| XPathError::InvalidRegex {
-                            pattern: pattern.clone(),
-                            source: e,
-                        })?;
+                        let re = Regex::new(pattern).map_err(|e| XPathError(format!("invalid regex pattern '{pattern}': {e}")))?;
                         regex_cache.push((pattern.clone(), re));
                     }
                 }
@@ -862,7 +764,7 @@ fn contains_ptr<'a>(v: &[&'a DomNode], target: &'a DomNode) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Evaluator — Phase 1b
+// Evaluator
 // ---------------------------------------------------------------------------
 
 /// Evaluate an XPath expression and return matching nodes.
@@ -874,10 +776,7 @@ fn eval_expr<'a>(
     depth: usize,
 ) -> Result<Vec<&'a DomNode>, XPathError> {
     if depth > MAX_XPATH_DEPTH {
-        return Err(XPathError::MaxDepthExceeded {
-            depth,
-            max_depth: MAX_XPATH_DEPTH,
-        });
+        return Err(XPathError(format!("max depth exceeded (depth: {depth}, max: {MAX_XPATH_DEPTH})")));
     }
 
     match expr {
@@ -952,7 +851,7 @@ fn eval_path<'a>(
     depth: usize,
 ) -> Result<Vec<&'a DomNode>, XPathError> {
     if depth > MAX_XPATH_DEPTH {
-        return Err(XPathError::MaxDepthExceeded { depth, max_depth: MAX_XPATH_DEPTH });
+        return Err(XPathError(format!("max depth exceeded (depth: {depth}, max: {MAX_XPATH_DEPTH})")));
     }
 
     // Start with the context node(s) from the initial expression
@@ -984,7 +883,7 @@ fn eval_step<'a>(
     depth: usize,
 ) -> Result<Vec<&'a DomNode>, XPathError> {
     if depth > MAX_XPATH_DEPTH {
-        return Err(XPathError::MaxDepthExceeded { depth, max_depth: MAX_XPATH_DEPTH });
+        return Err(XPathError(format!("max depth exceeded (depth: {depth}, max: {MAX_XPATH_DEPTH})")));
     }
 
     let candidates = match step.axis {
@@ -1030,7 +929,7 @@ fn apply_predicate<'a>(
     depth: usize,
 ) -> Result<Vec<&'a DomNode>, XPathError> {
     if depth > MAX_XPATH_DEPTH {
-        return Err(XPathError::MaxDepthExceeded { depth, max_depth: MAX_XPATH_DEPTH });
+        return Err(XPathError(format!("max depth exceeded (depth: {depth}, max: {MAX_XPATH_DEPTH})")));
     }
 
     // Check if it's a numeric predicate (position check)
@@ -1064,7 +963,7 @@ fn eval_predicate_expr(
     position: usize,
 ) -> Result<bool, XPathError> {
     if depth > MAX_XPATH_DEPTH {
-        return Err(XPathError::MaxDepthExceeded { depth, max_depth: MAX_XPATH_DEPTH });
+        return Err(XPathError(format!("max depth exceeded (depth: {depth}, max: {MAX_XPATH_DEPTH})")));
     }
 
     match expr {
@@ -1127,7 +1026,7 @@ fn string_value_of_expr<'a>(
     depth: usize,
 ) -> Result<String, XPathError> {
     if depth > MAX_XPATH_DEPTH {
-        return Err(XPathError::MaxDepthExceeded { depth, max_depth: MAX_XPATH_DEPTH });
+        return Err(XPathError(format!("max depth exceeded (depth: {depth}, max: {MAX_XPATH_DEPTH})")));
     }
 
     match expr {
@@ -1218,17 +1117,13 @@ fn eval_function<'a>(
     depth: usize,
 ) -> Result<Vec<&'a DomNode>, XPathError> {
     if depth > MAX_XPATH_DEPTH {
-        return Err(XPathError::MaxDepthExceeded { depth, max_depth: MAX_XPATH_DEPTH });
+        return Err(XPathError(format!("max depth exceeded (depth: {depth}, max: {MAX_XPATH_DEPTH})")));
     }
 
     match name {
         "re:test" => {
             if args.len() < 2 {
-                return Err(XPathError::WrongArgumentCount {
-                    function: "re:test",
-                    expected: 2,
-                    found: args.len(),
-                });
+                return Err(XPathError(format!("wrong argument count for re:test: expected 2, found {}", args.len(),)));
             }
             // Get the string value of the first argument
             let node_set = eval_expr(&args[0], context, root, regex_cache, depth + 1)?;
@@ -1237,10 +1132,7 @@ fn eval_function<'a>(
             // Get the regex pattern from the second argument
             let pattern = match &args[1] {
                 XPathExpr::Literal(s) => s.clone(),
-                _ => return Err(XPathError::TypeMismatch {
-                    expected: "string literal",
-                    found: "expression",
-                }),
+                _ => return Err(XPathError(format!("type mismatch: expected string literal, found expression"))),
             };
 
             // Find the pre-compiled regex
@@ -1254,11 +1146,7 @@ fn eval_function<'a>(
         }
         "contains" => {
             if args.len() < 2 {
-                return Err(XPathError::WrongArgumentCount {
-                    function: "contains",
-                    expected: 2,
-                    found: args.len(),
-                });
+                return Err(XPathError(format!("wrong argument count for contains: expected 2, found {}", args.len(),)));
             }
             let haystack = eval_expr(&args[0], context, root, regex_cache, depth + 1)?;
             let needle = eval_expr(&args[1], context, root, regex_cache, depth + 1)?;
@@ -1271,11 +1159,7 @@ fn eval_function<'a>(
         }
         "starts-with" => {
             if args.len() < 2 {
-                return Err(XPathError::WrongArgumentCount {
-                    function: "starts-with",
-                    expected: 2,
-                    found: args.len(),
-                });
+                return Err(XPathError(format!("wrong argument count for starts-with: expected 2, found {}", args.len(),)));
             }
             let haystack = eval_expr(&args[0], context, root, regex_cache, depth + 1)?;
             let needle = eval_expr(&args[1], context, root, regex_cache, depth + 1)?;
@@ -1288,11 +1172,7 @@ fn eval_function<'a>(
         }
         "translate" => {
             if args.len() < 3 {
-                return Err(XPathError::WrongArgumentCount {
-                    function: "translate",
-                    expected: 3,
-                    found: args.len(),
-                });
+                return Err(XPathError(format!("wrong argument count for translate: expected 3, found {}", args.len(),)));
             }
             let source = eval_expr(&args[0], context, root, regex_cache, depth + 1)?;
             let from = eval_expr(&args[1], context, root, regex_cache, depth + 1)?;
@@ -1316,11 +1196,7 @@ fn eval_function<'a>(
         }
         "not" => {
             if args.is_empty() {
-                return Err(XPathError::WrongArgumentCount {
-                    function: "not",
-                    expected: 1,
-                    found: 0,
-                });
+                return Err(XPathError(format!("wrong argument count for not: expected 1, found {}", 0,)));
             }
             let result = eval_expr(&args[0], context, root, regex_cache, depth + 1)?;
             if result.is_empty() {
@@ -1329,7 +1205,7 @@ fn eval_function<'a>(
                 Ok(Vec::new())
             }
         }
-        _ => Err(XPathError::InvalidFunction { name: name.to_string() }),
+        _ => Err(XPathError(format!("unknown function: {}", name))),
     }
 }
 
@@ -1485,7 +1361,7 @@ mod tests {
     fn test_empty_expression() {
         let result = parse(&[]);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), XPathError::EmptyExpression));
+        assert_eq!(result.unwrap_err().to_string(), "empty XPath expression");
     }
 
     // Test: simple path parsing
