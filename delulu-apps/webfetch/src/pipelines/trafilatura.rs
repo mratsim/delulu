@@ -12,7 +12,7 @@ use super::passes::tf_analysis::{
 use super::passes::tf_filters::{
     collect_p_elements,
     tf_extract_script_templates, tf_fallback_content_container, tf_filter_by_link_density,
-    tf_filter_tag_catalog, tf_isolate_content_container, tf_protect_content_forms,
+    tf_filter_tag_catalog, tf_isolate_content_container,
     tf_remove_cleaned, tf_remove_empty_cut, tf_remove_teaser,
     tf_strip_unwrapped,
 };
@@ -249,7 +249,7 @@ pub fn apply_tf_isolate_container_xpath_with_backup(node: &mut DomNode) {
 /// Level: Balanced — standard Trafilatura-equivalent pipeline.
 ///
 /// Pre: `node` is a valid DOM tree. `rd_analysis::mark_data_tables_by_structure` has been called.
-/// Post: All 18 passes are applied in order. `node` is mutated in-place. Output contains only tags in TAG_CATALOG.
+/// Post: All 17 passes are applied in order. `node` is mutated in-place. Output contains only tags in TAG_CATALOG.
 ///
 /// Order:
 /// 1. Remove MANUALLY_CLEANED tags (figure, script, nav, etc.)
@@ -275,7 +275,6 @@ fn apply_tf_filter_tag_catalog(node: &mut DomNode) {
 /// Post: Only tags in TAG_CATALOG survive. Unknown tags are replaced with their children (ReplaceWithChildren). Uses `walk_post_mut` (ReplaceWithChildren panics in pre-order).
 pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
     &[
-        tf_protect_content_forms,
         tf_extract_script_templates,
         wrap_pass!(tf_remove_cleaned),
         #[cfg(not(feature = "use-xpath"))]
@@ -320,12 +319,11 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
 /// Level: Recall — same as Balanced but WITHOUT `tf_remove_empty_cut` and WITH `apply_tf_filter_tag_catalog`.
 ///
 /// Pre: `node` is a valid DOM tree. `rd_analysis::mark_data_tables_by_structure` has been called.
-/// Post: All 16 passes are applied in order. `node` is mutated in-place. `tf_remove_empty_cut` is NOT applied, but `apply_tf_filter_tag_catalog` IS applied.
+/// Post: All 15 passes are applied in order. `node` is mutated in-place. `tf_remove_empty_cut` is NOT applied, but `apply_tf_filter_tag_catalog` IS applied.
 ///
 /// Less aggressive filtering. Use as fallback when Balanced produces too little output.
 pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
     &[
-        tf_protect_content_forms,
         tf_extract_script_templates,
         wrap_pass!(tf_remove_cleaned),
         #[cfg(not(feature = "use-xpath"))]
@@ -393,9 +391,7 @@ pub const TF_MIN_OUTPUT_CHARS: usize = 1000;
 /// Reference: Trafilatura `recover_wild_text()` in `main_extractor.py:536-560`
 fn recover_wild_paragraphs(best_tree: &mut DomNode, original: &DomNode, min_p_len: usize) -> usize {
     let mut recovery_tree = original.clone();
-    // Apply tf_protect_content_forms first to protect form-wrapped content
-    tf_protect_content_forms(&mut recovery_tree);
-    // Then apply cleaning passes to remove boilerplate
+    // Apply cleaning passes to remove boilerplate
     walk_pre_mut(&mut recovery_tree, &|n| tf_remove_teaser(n));
     // Also remove script, style, svg, template, iframe, canvas
     walk_pre_mut(&mut recovery_tree, &|n| {

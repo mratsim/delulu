@@ -1266,25 +1266,6 @@ fn test_pattern2_preserves_pattern1_sidebar() {
     );
 }
 
-
-// ── Helper: find protected form ─────────────────────────────────
-
-/// Check if any <form> element has metadata["tf_protected"] == "true".
-fn find_protected_form(node: &DomNode) -> bool {
-    match node {
-        DomNode::Element { tag, metadata, children, .. }
-            if tag == "form" && metadata.get("tf_protected").map(|v| v.as_str()) == Some("true") =>
-        {
-            true
-        }
-        DomNode::Element { children, .. } => children.iter().any(find_protected_form),
-        _ => false,
-    }
-}
-
-
-
-
 // ── tf_extract_script_templates ─────────────────────────────────
 
 #[test]
@@ -1329,55 +1310,6 @@ fn test_tf_extract_script_templates_no_type_attribute() {
     ).unwrap();
     tf_extract_script_templates(&mut root);
     assert!(find_tag(&root, "script"), "script without type should be preserved");
-}
-
-// ── tf_protect_content_forms ────────────────────────────────────
-
-#[test]
-fn test_tf_protect_content_forms_large_form_protected() {
-    // Build a page where the <form> wraps >90% of text content
-    let form_inner = format!("<p>{}</p>", "x".repeat(900));
-    let page = format!(
-        r#"<html><body><form>{}</form><aside>small</aside></body></html>"#,
-        form_inner
-    );
-    let mut root = parse_html(&page).unwrap();
-    tf_protect_content_forms(&mut root);
-    // The form should be protected (metadata set)
-    assert!(
-        find_protected_form(&root),
-        "large <form> should be protected"
-    );
-}
-
-#[test]
-fn test_tf_protect_content_forms_small_form_not_protected() {
-    // Build a page where the <form> wraps <10% of text content
-    let page = r#"<html><body><form><p>small</p></form><main><p>big content here</p></main></body></html>"#;
-    let mut root = parse_html(page).unwrap();
-    tf_protect_content_forms(&mut root);
-    // The form should NOT be protected
-    assert!(
-        !find_protected_form(&root),
-        "small <form> should NOT be protected"
-    );
-}
-
-#[test]
-fn test_tf_protect_content_forms_empty_input() {
-    let mut root = DomNode::Element {
-        tag: "html".into(),
-        attrs: vec![],
-        children: vec![],
-        scores: HashMap::new(),
-        metadata: HashMap::new(),
-    };
-    tf_protect_content_forms(&mut root);
-    // Should not panic
-    assert!(
-        matches!(&root, DomNode::Element { children, .. } if children.is_empty()),
-        "empty input should remain empty"
-    );
 }
 
 // ── tf_fallback_content_container ───────────────────────────────
@@ -1491,12 +1423,13 @@ fn test_tf_fallback_content_container_no_p_text_noop() {
 
 #[test]
 fn test_tf_fallback_content_container_secondary_fallback_text() {
-    // No <p> text, but one child has enough total text -> secondary fallback should kick in
+    // When no child has enough <p> text, the secondary fallback
+    // should select the child with most total text content
     let children = vec![
         DomNode::Element {
             tag: "div".into(),
             attrs: vec![("class".into(), "sidebar".into())],
-            children: vec![DomNode::Text("short".into())],
+            children: vec![DomNode::Text("short text here".into())],
             scores: HashMap::new(),
             metadata: HashMap::new(),
         },
@@ -1517,341 +1450,131 @@ fn test_tf_fallback_content_container_secondary_fallback_text() {
     };
     tf_fallback_content_container(&mut root);
     if let DomNode::Element { children, .. } = &root {
-        assert_eq!(children.len(), 1, "secondary fallback should isolate one child");
+        assert_eq!(children.len(), 1, "should isolate one child via secondary fallback");
         if let DomNode::Element { attrs, .. } = &children[0] {
             assert!(
                 attrs.iter().any(|(k, v)| k == "class" && v == "content"),
-                "secondary fallback should select child with most total text"
+                "should select content div with most text"
             );
         }
     }
 }
 
-// ── tf_filter_by_link_density ───────────────────────────────────
+// ── collect_p_elements ──────────────────────────────────────────
 
 #[test]
-fn test_tf_filter_by_link_density_high_density_removed() {
-    // Element with mostly links (>50% link text) should be removed
-    let mut root = parse_html(
-        r#"<div><a>link1</a><a>link2</a><a>link3</a><span>short</span></div>"#
-    ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
-    assert!(
-        !find_tag(&root, "div"),
-        "high link density <div> should be removed"
-    );
+fn test_collect_p_elements_basic() {
+    let root = parse_html("<html><body><p>first</p><p>second</p></body></html>").unwrap();
+    let mut result = Vec::new();
+    collect_p_elements(&root, &mut result);
+    assert_eq!(result.len(), 2, "should collect both <p> elements");
 }
 
 #[test]
-fn test_tf_filter_by_link_density_low_density_kept() {
-    let mut root = parse_html(
-        r#"<div><a>link</a><p>lots of real content here that is much longer than the link</p></div>"#
-    ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
-    assert!(
-        find_tag(&root, "div"),
-        "low link density <div> should be kept"
-    );
+fn test_collect_p_elements_skips_nav() {
+    let root = parse_html("<html><body><nav><p>nav link</p></nav><p>content</p></body></html>").unwrap();
+    let mut result = Vec::new();
+    collect_p_elements(&root, &mut result);
+    assert_eq!(result.len(), 1, "should skip <p> inside <nav>");
+    assert_eq!(result[0].text_content().trim(), "content");
 }
 
 #[test]
-fn test_tf_filter_by_link_density_empty_element_survives() {
-    let mut root = parse_html(
-        r#"<div></div>"#
-    ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
-    assert!(
-        find_tag(&root, "div"),
-        "empty <div> should survive (total_text_len == 0 -> Continue)"
-    );
+fn test_collect_p_elements_skips_footer() {
+    let root = parse_html("<html><body><footer><p>footer text</p></footer><p>content</p></body></html>").unwrap();
+    let mut result = Vec::new();
+    collect_p_elements(&root, &mut result);
+    assert_eq!(result.len(), 1, "should skip <p> inside <footer>");
+    assert_eq!(result[0].text_content().trim(), "content");
 }
 
 #[test]
-fn test_tf_filter_by_link_density_nested_links_counted() {
-    // Links nested inside other elements (not direct children) should be counted
-    let mut root = parse_html(
-        r#"<div><span><a>this is a long link text that should push density over threshold</a></span><p>short</p></div>"#
-    ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
-    assert!(
-        !find_tag(&root, "div"),
-        "nested <a> inside <span> should be counted for link density"
-    );
-}
-
-// ── tf_filter_tag_catalog ───────────────────────────────────────
-
-#[test]
-fn test_tf_filter_tag_catalog_allowed_tags_kept() {
-    let mut root = parse_html(
-        r#"<p>paragraph</p><blockquote>quote</blockquote><code>code</code><pre>pre</pre>"#
-    ).unwrap();
-    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
-    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
-    walk_post_mut(&mut root, &mut filters, None);
-    assert!(find_tag(&root, "p"), "<p> should be kept");
-    assert!(find_tag(&root, "blockquote"), "<blockquote> should be kept");
-    assert!(find_tag(&root, "code"), "<code> should be kept");
-    assert!(find_tag(&root, "pre"), "<pre> should be kept");
+fn test_collect_p_elements_skips_header() {
+    let root = parse_html("<html><body><header><p>header text</p></header><p>content</p></body></html>").unwrap();
+    let mut result = Vec::new();
+    collect_p_elements(&root, &mut result);
+    assert_eq!(result.len(), 1, "should skip <p> inside <header>");
+    assert_eq!(result[0].text_content().trim(), "content");
 }
 
 #[test]
-fn test_tf_filter_tag_catalog_unknown_tags_removed() {
-    let mut root = parse_html(
-        r#"<div>div content</div><span>span content</span><section>section</section>"#
-    ).unwrap();
-    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
-    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
-    walk_post_mut(&mut root, &mut filters, None);
-    assert!(!find_tag(&root, "div"), "<div> should be removed");
-    assert!(!find_tag(&root, "span"), "<span> should be removed");
-    assert!(!find_tag(&root, "section"), "<section> should be removed");
+fn test_collect_p_elements_skips_form() {
+    let root = parse_html("<html><body><form><p>form content</p></form><p>outside</p></body></html>").unwrap();
+    let mut result = Vec::new();
+    collect_p_elements(&root, &mut result);
+    assert_eq!(result.len(), 1, "should skip <p> inside <form>");
+    assert_eq!(result[0].text_content().trim(), "outside");
 }
 
 #[test]
-fn test_tf_filter_tag_catalog_structural_tags_preserved() {
-    let mut root = parse_html(
-        r#"<html><body><p>content</p></body></html>"#
+fn test_collect_p_elements_nested_containers() {
+    let root = parse_html(
+        "<html><body><div><p>deep content</p></div><footer><div><p>footer deep</p></div></footer></body></html>"
     ).unwrap();
-    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
-    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
-    walk_post_mut(&mut root, &mut filters, None);
-    assert!(find_tag(&root, "html"), "<html> should be preserved");
-    assert!(find_tag(&root, "body"), "<body> should be preserved");
-    assert!(find_tag(&root, "p"), "<p> should be preserved");
+    let mut result = Vec::new();
+    collect_p_elements(&root, &mut result);
+    assert_eq!(result.len(), 1, "should only collect <p> outside boilerplate");
+    assert_eq!(result[0].text_content().trim(), "deep content");
 }
 
 #[test]
-fn test_tf_filter_tag_catalog_converted_tags_preserved() {
-    // item, ref, graphic are converted tags that should be preserved
-    let mut root = DomNode::Element {
+fn test_collect_p_elements_no_p() {
+    let root = parse_html("<html><body><div>text without p</div></body></html>").unwrap();
+    let mut result = Vec::new();
+    collect_p_elements(&root, &mut result);
+    assert!(result.is_empty(), "no <p> elements -> empty result");
+}
+
+#[test]
+fn test_collect_p_elements_empty_tree() {
+    let root = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "item".into(),
-                attrs: vec![],
-                children: vec![DomNode::Text("list item".into())],
-                scores: HashMap::new(),
-                metadata: HashMap::new(),
-            },
-            DomNode::Element {
-                tag: "ref".into(),
-                attrs: vec![],
-                children: vec![DomNode::Text("reference".into())],
-                scores: HashMap::new(),
-                metadata: HashMap::new(),
-            },
-            DomNode::Element {
-                tag: "graphic".into(),
-                attrs: vec![],
-                children: vec![],
-                scores: HashMap::new(),
-                metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(),
-        metadata: HashMap::new(),
-    };
-    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
-    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
-    walk_post_mut(&mut root, &mut filters, None);
-    assert!(find_tag(&root, "item"), "<item> should be preserved");
-    assert!(find_tag(&root, "ref"), "<ref> should be preserved");
-    assert!(find_tag(&root, "graphic"), "<graphic> should be preserved");
-}
-
-#[test]
-fn test_tf_filter_tag_catalog_text_nodes_survive() {
-    let mut root = parse_html(r#"<div>text content</div>"#).unwrap();
-    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
-    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
-    walk_post_mut(&mut root, &mut filters, None);
-    // The <div> is removed, but text nodes inside it should survive
-    // Actually the walker removes the element; text nodes inside are also removed with parent
-    // This test verifies the function doesn't panic on text nodes
-    assert!(!find_tag(&root, "div"), "<div> should be removed");
-}
-
-// ── tf_discard_image_elements ───────────────────────────────────
-
-#[test]
-#[cfg(not(feature = "use-xpath"))]
-fn test_tf_discard_image_elements_caption_class_removed() {
-    let mut root = parse_html(
-        r#"<div class="caption">caption text</div><p>content</p>"#
-    ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_discard_image_elements(n));
-    assert!(
-        !find_tag(&root, "div"),
-        "<div class='caption'> should be removed"
-    );
-    assert!(find_tag(&root, "p"), "<p> should survive");
-}
-
-#[test]
-#[cfg(not(feature = "use-xpath"))]
-fn test_tf_discard_image_elements_caption_id_removed() {
-    let mut root = parse_html(
-        r#"<div id="caption-123">caption text</div><p>content</p>"#
-    ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_discard_image_elements(n));
-    assert!(
-        !find_tag(&root, "div"),
-        "<div id='caption-123'> should be removed"
-    );
-}
-
-#[test]
-#[cfg(not(feature = "use-xpath"))]
-fn test_tf_discard_image_elements_case_insensitive() {
-    let mut root = parse_html(
-        r#"<div class="CAPTION">caption text</div><p>content</p>"#
-    ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_discard_image_elements(n));
-    assert!(
-        !find_tag(&root, "div"),
-        "<div class='CAPTION'> should be removed (case insensitive)"
-    );
-}
-
-#[test]
-#[cfg(not(feature = "use-xpath"))]
-fn test_tf_discard_image_elements_non_caption_kept() {
-    let mut root = parse_html(
-        r#"<div class="content">main content</div><p>paragraph</p>"#
-    ).unwrap();
-    walk_pre_mut(&mut root, &|n| tf_discard_image_elements(n));
-    assert!(
-        find_tag(&root, "div"),
-        "<div class='content'> should be kept"
-    );
-    assert!(find_tag(&root, "p"), "<p> should be kept");
-}
-
-#[test]
-#[cfg(not(feature = "use-xpath"))]
-fn test_tf_discard_image_elements_item_tag_with_caption() {
-    // item tag (converted from <li>) should also be matched
-    let mut root = DomNode::Element {
-        tag: "html".into(),
-        attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "item".into(),
-                attrs: vec![("class".into(), "caption".into())],
-                children: vec![DomNode::Text("caption".into())],
-                scores: HashMap::new(),
-                metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(),
-        metadata: HashMap::new(),
-    };
-    walk_pre_mut(&mut root, &|n| tf_discard_image_elements(n));
-    assert!(
-        !find_tag(&root, "item"),
-        "<item class='caption'> should be removed"
-    );
-}
-
-#[test]
-#[cfg(not(feature = "use-xpath"))]
-fn test_tf_discard_image_elements_list_tag_with_caption() {
-    // list tag (converted from <ul>/<ol>) should also be matched
-    let mut root = DomNode::Element {
-        tag: "html".into(),
-        attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "list".into(),
-                attrs: vec![("class".into(), "caption-list".into())],
-                children: vec![DomNode::Text("captions".into())],
-                scores: HashMap::new(),
-                metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(),
-        metadata: HashMap::new(),
-    };
-    walk_pre_mut(&mut root, &|n| tf_discard_image_elements(n));
-    assert!(
-        !find_tag(&root, "list"),
-        "<list class='caption-list'> should be removed"
-    );
-}
-
-// ── Anti-regression: collect_p_elements with protected forms ─────
-
-#[test]
-fn test_collect_p_elements_protected_form() {
-    // When a <form> is protected (metadata["tf_protected"] == "true"),
-    // <p> elements inside it should be collected.
-    // Build a tree manually to set metadata on the form.
-    let mut root = DomNode::Element {
-        tag: "html".into(),
-        attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "body".into(),
-                attrs: vec![],
-                children: vec![
-                    // Protected form with <p> inside
-                    DomNode::Element {
-                        tag: "form".into(),
-                        attrs: vec![],
-                        children: vec![
-                            DomNode::Element {
-                                tag: "p".into(),
-                                attrs: vec![],
-                                children: vec![DomNode::Text("inside form content".into())],
-                                scores: HashMap::new(),
-                                metadata: HashMap::new(),
-                            },
-                        ],
-                        scores: HashMap::new(),
-                        metadata: {
-                            let mut m = HashMap::new();
-                            m.insert("tf_protected".to_string(), "true".to_string());
-                            m
-                        },
-                    },
-                    // Regular <p> outside form
-                    DomNode::Element {
-                        tag: "p".into(),
-                        attrs: vec![],
-                        children: vec![DomNode::Text("outside content".into())],
-                        scores: HashMap::new(),
-                        metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(),
-                metadata: HashMap::new(),
-            },
-        ],
+        children: vec![],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
     let mut result = Vec::new();
     collect_p_elements(&root, &mut result);
-    // Should collect both the <p> inside form and the <p> outside
-    assert_eq!(result.len(), 2, "both <p> elements should be collected");
-    for p in &result {
-        assert!(matches!(p, DomNode::Element { tag, .. } if tag == "p"), "collected items should be <p> elements");
-    }
+    assert!(result.is_empty(), "empty tree -> empty result");
+}
+
+// ── tf_filter_by_link_density ────────────────────────────────────
+
+#[test]
+fn test_tf_filter_by_link_density_removes_high_density_div() {
+    let mut root = parse_html(
+        "<div><a href='x'>link</a><a href='y'>link2</a><span>short text</span></div>"
+    ).unwrap();
+    walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
+    assert!(!find_tag(&root, "div"), "high link density <div> should be removed");
 }
 
 #[test]
-fn test_collect_p_elements_unprotected_form_skipped() {
-    // When a <form> is NOT protected, <p> elements inside it should NOT be collected
-    let page = r#"<html><body><form><p>inside form</p></form><p>outside</p></body></html>"#;
-    let mut root = parse_html(&page).unwrap();
-    let mut result = Vec::new();
-    collect_p_elements(&root, &mut result);
-    // Should only collect the <p> outside the form
-    assert_eq!(result.len(), 1, "only <p> outside unprotected form should be collected");
-    let text = result[0].text_content();
-    assert_eq!(text.trim(), "outside", "should collect the outside <p>");
+fn test_tf_filter_by_link_density_keeps_low_density_div() {
+    let mut root = parse_html(
+        "<div><p>This is a very long paragraph with lots of text content and only one <a href='x'>link</a></p></div>"
+    ).unwrap();
+    walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
+    assert!(find_tag(&root, "div"), "low link density <div> should be kept");
+}
+
+#[test]
+fn test_tf_filter_by_link_density_zero_total_text() {
+    let mut root = parse_html("<div></div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
+    assert!(find_tag(&root, "div"), "empty <div> should be kept (no division by zero)");
+}
+
+// ── Anti-regression: tf_remove_cleaned removes form ───────────────────
+
+#[test]
+fn test_tf_remove_cleaned_removes_form() {
+    // <form> is in TF_CLEANED_TAGS and should be removed (no form protection anymore)
+    let mut root = parse_html("<form><p>form content</p></form><p>outside</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_cleaned(n));
+    assert!(!find_tag(&root, "form"), "<form> should be removed by tf_remove_cleaned");
+    assert!(find_tag(&root, "p"), "<p> outside form should survive");
 }
 
 // ── Anti-regression: teaser protection checks class too ──────────

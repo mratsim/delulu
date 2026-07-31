@@ -3,7 +3,6 @@ use regex::Regex;
 use std::collections::HashMap;
 
 use crate::pipelines::DomNode;
-use crate::pipelines::walk_pre_mut;
 use crate::pipelines::walkers::WalkerAction;
 
 // ---------------------------------------------------------------------------
@@ -139,12 +138,6 @@ pub fn tf_extract_script_templates(node: &mut DomNode) {
 /// Reference: Trafilatura `htmlprocessing.py:47-79` `tree_cleaning()`
 pub fn tf_remove_cleaned(node: &mut DomNode) -> WalkerAction {
     match node {
-        // Preserve <form> elements protected by tf_protect_content_forms (>90% page content).
-        DomNode::Element { tag, metadata, .. }
-            if tag == "form" && metadata.get("tf_protected").map(|v| v.as_str()) == Some("true") =>
-        {
-            WalkerAction::Continue
-        }
         // Preserve <head> elements with a rend attribute (converted headings like <head rend="h1">).
         // Use case-insensitive check for robustness.
         DomNode::Element { tag, attrs, .. }
@@ -523,11 +516,6 @@ pub fn tf_remove_empty_cut(node: &mut DomNode) -> WalkerAction {
 /// Pre-condition: MANUALLY_CLEANED tags have been removed by `tf_remove_cleaned`.
 /// Post-condition: Elements whose link density exceeds 0.5 are removed.
 ///
-/// NOTE: The form guard (skipping `<form>` elements that wrap >90% of page
-/// content) is implemented separately in `tf_protect_content_forms`,
-/// which runs before `tf_remove_cleaned` in the pipeline. This function does
-/// NOT need to handle the form case — protected forms are already preserved
-/// by the time this pass runs.
 /// Reference: Trafilatura `htmlprocessing.py:183-206` `delete_by_link_density()`
 pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
     match node {
@@ -556,53 +544,6 @@ pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
 
 
 // ---------------------------------------------------------------------------
-// FORM CONTENT PROTECTION -- guard against <form>-wrapped pages
-// ---------------------------------------------------------------------------
-
-/// Protect `<form>` elements that wrap >90% of the page's text content.
-///
-/// Some websites (especially ASP.NET-based) wrap their entire page content
-/// inside a `<form>` element. Since `<form>` is in `TF_CLEANED_TAGS`, the
-/// `tf_remove_cleaned` pass would remove it entirely, deleting 99%+ of content.
-///
-/// This function measures the total text content of the root node, then walks
-/// the tree to find `<form>` elements. For each `<form>`, it measures the text
-/// content inside it. If the form's text content is >90% of the total, it marks
-/// the form with `metadata["tf_protected"] = "true"`, which `tf_remove_cleaned`
-/// checks before removing.
-///
-/// Must run BEFORE `tf_remove_cleaned` in the pipeline.
-///
-/// Pre: DOM tree is fully parsed, no passes have removed content yet.
-/// Post: `<form>` elements wrapping >90% of page content have
-///       `metadata["tf_protected"] = "true"` set.
-/// Note: No direct Python trafilatura equivalent — Rust-specific.
-pub fn tf_protect_content_forms(node: &mut DomNode) {
-    // Measure visible text content (excluding script/style to avoid
-    // script inflation preventing form protection)
-    let total_text_len = node.visible_text_len();
-    if total_text_len == 0 {
-        return;
-    }
-
-    let threshold = (total_text_len as f64 * 0.9) as usize;
-
-    // Walk the tree to find <form> elements and protect those wrapping >90% content
-    walk_pre_mut(node, &|n: &mut DomNode| {
-        if let DomNode::Element { tag, children, metadata, .. } = n
-            && tag == "form"
-        {
-            let form_text_len: usize = children.iter().map(|c| c.text_len()).sum();
-            if form_text_len >= threshold {
-                metadata.insert("tf_protected".to_string(), "true".to_string());
-            }
-        }
-        WalkerAction::Continue
-    });
-}
-
-
-// ---------------------------------------------------------------------------
 // Utility: text collection helpers
 // ---------------------------------------------------------------------------
 
@@ -626,13 +567,8 @@ pub fn tf_protect_content_forms(node: &mut DomNode) {
 pub(crate) fn collect_p_elements(node: &DomNode, result: &mut Vec<DomNode>) {
     match node {
         // Skip boilerplate containers entirely
-        // Protected content forms (marked by tf_protect_content_forms) are
-        // descended into because they wrap >90% of page content.
-        // Unprotected <form> elements are still skipped as boilerplate.
-        DomNode::Element { tag, metadata, .. }
-            if matches!(tag.as_str(), "nav" | "footer" | "header")
-                || (tag == "form"
-                    && metadata.get("tf_protected").map(|v| v.as_str()) != Some("true")) =>
+        DomNode::Element { tag, .. }
+            if matches!(tag.as_str(), "nav" | "footer" | "header" | "form") =>
         {
             // Don't descend into boilerplate containers
         }
@@ -674,7 +610,6 @@ pub(crate) fn recover_wild_p_elements(node: &mut DomNode, backup: &DomNode, exis
         }
     }
 }
-
 
 
 
@@ -1099,10 +1034,6 @@ pub fn tf_discard_image_elements(node: &mut DomNode) -> WalkerAction {
 
 #[cfg(feature = "use-xpath")]
 use crate::pipelines::dom_xpath::XPath;
-
-
-
-
 
 
 

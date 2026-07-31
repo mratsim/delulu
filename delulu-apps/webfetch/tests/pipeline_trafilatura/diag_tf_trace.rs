@@ -49,13 +49,8 @@ fn diag_tf_trace() {
     // Measure initial state
     print_tree_stats(&nodes, "Initial (raw DOM)");
 
-    // Apply tf_protect_content_forms
-    // (it's in the pipeline but doesn't change output length directly)
-    let before = nodes.clone();
-
     // Run each pass manually with length measurement
     let names = [
-        "tf_protect_content_forms",
         "tf_extract_script_templates",
         "tf_remove_cleaned",
         "tf_remove_teaser",

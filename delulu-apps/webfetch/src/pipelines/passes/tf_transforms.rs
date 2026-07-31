@@ -201,10 +201,8 @@ pub fn tf_canonicalize_strip_non_content(node: &mut DomNode) {
     ];
     debug_assert!(!STRIPPED_TAGS.is_empty(), "strip list must not be empty");
     let mut filter = |n: &mut DomNode| -> WalkerAction {
-        if let DomNode::Element { tag, metadata, .. } = n
+        if let DomNode::Element { tag, .. } = n
             && STRIPPED_TAGS.contains(&tag.as_str())
-            && !(tag == "form"
-                && metadata.get("tf_protected").map(|v| v.as_str()) == Some("true"))
         {
             return WalkerAction::Remove;
         }
@@ -249,15 +247,10 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
         && metadata.iter().any(|(k, _)|
             k.eq_ignore_ascii_case("is_data_table")
         ));
-        let is_protected_form = matches!(n, DomNode::Element { tag, metadata, .. }
-            if tag == "form"
-                && metadata.get("tf_protected").map(|v| v.as_str()) == Some("true"));
 
         match n {
             DomNode::Element { tag, .. } => {
-                if is_protected_form {
-                    WalkerAction::ReplaceWithChildren
-                } else if is_data_table {
+                if is_data_table {
                     WalkerAction::Continue
                 } else if tag == "table" && has_is_data_table_key {
                     // Explicitly marked as layout (is_data_table set to non-true) — unwrap
