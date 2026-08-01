@@ -284,7 +284,7 @@ async fn test_mcp_webfetch_raw_tool() -> Result<()> {
         .as_str()
         .context("response should have text content")?;
     let inner: Value = serde_json::from_str(text).context("response text should be valid JSON")?;
-    let has_variant = match inner {
+    let has_variant = match &inner {
         Value::Object(obj) => {
             obj.contains_key("GenericHtml")
                 || obj.contains_key("Reddit")
@@ -298,6 +298,19 @@ async fn test_mcp_webfetch_raw_tool() -> Result<()> {
     assert!(
         has_variant,
         "Response should contain an ExtractionResult variant key (GenericHtml, Reddit, or Discourse)"
+    );
+
+    // webfetch_raw must add `page_status` as a SIBLING top-level key
+    // (not a `result` wrapper), and the ExtractionResult variant key must stay
+    // at top level.
+    let has_status = match &inner {
+        Value::Object(obj) => obj.contains_key("page_status") && !obj.contains_key("result"),
+        _ => false,
+    };
+    assert!(
+        has_status,
+        "Response should contain a sibling `page_status` key (and no `result` wrapper), got: {}",
+        serde_json::to_string_pretty(&inner).unwrap_or_default()
     );
 
     drop(stdin);

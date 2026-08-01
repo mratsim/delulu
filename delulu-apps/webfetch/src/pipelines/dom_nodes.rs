@@ -98,6 +98,31 @@ impl DomNode {
         }
     }
 
+    /// Total byte length of text inside descendant `<script>` elements.
+    /// Zero-allocation count of text nodes that live beneath a `<script>` tag.
+    /// Text outside a `<script>` contributes 0 (only the `script`-element branch
+    /// counts its subtree). Measured PRE-pipeline, while `<script>` content is
+    /// still present (post-pipeline passes strip `<script>`).
+    /// Panic-if: Never panics (infallible).
+    pub fn script_len(&self) -> usize {
+        self.script_len_inner(MAX_DEPTH)
+    }
+
+    fn script_len_inner(&self, depth: usize) -> usize {
+        if depth == 0 {
+            return 0;
+        }
+        match self {
+            DomNode::Text(_) => 0,
+            DomNode::Element { tag, children, .. }
+                if tag.eq_ignore_ascii_case("script") =>
+                children.iter().map(|c| c.text_len_inner(depth - 1)).sum(),
+            DomNode::Element { children, .. } =>
+                children.iter().map(|c| c.script_len_inner(depth - 1)).sum(),
+            DomNode::Comment(_) | DomNode::Doctype(_) => 0,
+        }
+    }
+
     /// Total byte length of text inside descendant <a> elements.
     /// Zero allocation. Matches `count_link_text(children)` on a single node.
     /// Panic-if: Never panics (infallible).

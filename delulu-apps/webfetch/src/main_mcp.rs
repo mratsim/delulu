@@ -31,7 +31,8 @@ use delulu_mcp_server_helper::{
     McpServerConfig, PeerAddr, impl_server_handler, run_http, run_stdio, setup_tracing,
 };
 use delulu_rate_limited_crawler::RateLimitedCrawler;
-use delulu_webfetch::{ExtractionResult, MAX_BODY_SIZE, RedditComment, fetch_and_extract};
+use delulu_webfetch::{ExtractionResult, MAX_BODY_SIZE, RedditComment, fetch_and_extract, fetch_and_extract_with_status};
+use delulu_webfetch::webfetch_raw_response;
 use delulu_webfetch::{is_private_ip, same_subnet_16};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
@@ -152,15 +153,17 @@ impl WebfetchServer {
             local_addr,
         )
         .await?;
-        match fetch_and_extract(
+        match fetch_and_extract_with_status(
             &input.url,
             &self.crawler,
             &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
         )
         .await
         {
-            Ok(result) => serde_json::to_string(&result)
-                .map_err(|e| format!("JSON serialization failed: {e}")),
+            // Serialize the ExtractionResult at top level plus a sibling
+            // `page_status` key. Never nested under a
+            // `result` wrapper.
+            Ok((result, status)) => Ok(webfetch_raw_response(&result, &status)),
             Err(e) => Ok(format!("{{\"error\": true, \"error_type\": \"{:?}\"}}", e)),
         }
     }
