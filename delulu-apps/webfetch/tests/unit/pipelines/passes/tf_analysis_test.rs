@@ -1,4 +1,3 @@
-use super::*;
 use crate::pipelines::parse_html;
 
 // ── Anti-regression: UTF-8 byte-slice panic in JSON-LD error path ─────────
@@ -67,7 +66,7 @@ fn test_extract_jsonld_unicode_malformed_no_panic_emoji() {
     //   - 47 × "😀"      (11..199) — 47 × 4 = 188 bytes
     //   - byte 199 = first byte of 48th 😀 (0xF0)
     // Byte 200 = second byte of 48th 😀 (0x9F, continuation byte) → would panic.
-    let emoji_block: String = std::iter::repeat("😀").take(49).collect();
+    let emoji_block: String = std::iter::repeat_n("😀", 49).collect();
     let unicode_payload = format!("articleBody{}ab中", emoji_block);
     assert!(
         unicode_payload.len() > 200,

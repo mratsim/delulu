@@ -19,8 +19,6 @@ use std::path::PathBuf;
 use delulu_webfetch::pipelines::{DomNode, parse_html};
 use serde::Deserialize;
 
-use once_cell::sync::Lazy;
-use regex::Regex;
 // ---------------------------------------------------------------------------
 // Fixture directory
 // ---------------------------------------------------------------------------
@@ -650,7 +648,7 @@ pub fn run_passes_with_retry(
     levels: &[&[&dyn Fn(&mut DomNode)]],
     min_output_chars: usize,
 ) -> (DomNode, usize, usize) {
-    use delulu_webfetch::pipelines::DomNode;
+    
 
     let original = parse_html(html).expect("parse_html failed");
     let mut best_tree = original.clone();

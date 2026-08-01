@@ -171,14 +171,12 @@ fn run_batch(fixtures_arg: &Option<PathBuf>) {
 
     // Print padded header
     println!(
-        "{name:width$}  {output:>10}  {expected:>10}  {ratio:>6}  {class:class_width$}  {prec:>7}  {rec:>7}  {f1:>7}  {trunc}  {dup}",
+        "{name:width$}  {output:>10}  {expected:>10}  {ratio:>6}  {class:class_width$}  {prec:>7}  {rec:>7}  {f1:>7}  truncated  dup_chars",
         name = "fixture", width = max_name_len,
         output = "output_len", expected = "expected_len",
         ratio = "ratio",
         class = "classification", class_width = max_class_len,
         prec = "precision", rec = "recall", f1 = "f1",
-        trunc = "truncated",
-        dup = "dup_chars",
     );
 
     for r in &results {

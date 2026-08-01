@@ -1,8 +1,6 @@
 use super::*;
 use crate::pipelines::parse_html;
 use crate::pipelines::walk_pre_mut;
-use crate::pipelines::walk_post_mut;
-use crate::pipelines::walkers::WalkerFilter;
 use std::collections::HashMap;
 
 // ── tf_remove_cleaned ────────────────────────────────────────────────

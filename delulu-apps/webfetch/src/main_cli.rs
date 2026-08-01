@@ -196,11 +196,10 @@ async fn main() -> Result<(), Error> {
         .init();
 
     // Try clap subcommand parsing first (for "doc" subcommand)
-    if let Ok(cli) = Cli::try_parse() {
-        if let Some(Command::Doc(doc_args)) = cli.command {
+    if let Ok(cli) = Cli::try_parse()
+        && let Some(Command::Doc(doc_args)) = cli.command {
             return run_doc(doc_args).await;
         }
-    }
 
     // Fallback to flat args (backward-compatible with prior versions)
     let args = Args::parse();

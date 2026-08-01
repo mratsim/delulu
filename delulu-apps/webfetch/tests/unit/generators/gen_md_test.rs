@@ -272,17 +272,16 @@ fn test_dom_nodes_to_html() {
 
 #[test]
 fn test_collect_text() {
-    let nodes = vec![
-        DomNode::Text("Hello ".into()),
+    let nodes = [DomNode::Text("Hello ".into()),
         DomNode::Element {
             tag: "b".into(),
             attrs: vec![],
             children: vec![DomNode::Text("World".into())],
             scores: std::collections::HashMap::new(),
             metadata: std::collections::HashMap::new(),
-        },
-    ];
-    assert_eq!(collect_text(&nodes), "Hello World");
+        }];
+    let text: String = nodes.iter().map(|n| n.text_content()).collect();
+    assert_eq!(text, "Hello World");
 }
 
 #[test]
