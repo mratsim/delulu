@@ -14,6 +14,8 @@ use crate::pipelines::DomNode;
 use crate::pipelines::PassFn;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use futures_util::StreamExt;
+
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use xberg::{ExtractInput, ExtractionConfig, OutputFormat, extract as xberg_extract};
 
@@ -69,14 +71,18 @@ pub async fn fetch_and_extract(
             let title = extract_title(&dom);
             pipelines::dl_arxiv::filter_arxiv(&mut dom);
             let content_md = generators::gen_md::MarkdownLowerer::lower(&dom, None);
+            let raw_html_len = body.len();
+            let filtered_html_len = content_md.len();
             return Ok(ExtractionResult::GenericHtml {
                 content_md: MarkdownDocument {
                     frontmatter: format!(
-                        "title: {}\nsource_type: generic_html\nsource_url: {}",
+                        "title: {}\nsource_type: generic_html\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
                         title, url
                     ),
                     body: content_md,
                 },
+                raw_html_len,
+                filtered_html_len,
             });
         }
         SourceType::Document => {
@@ -146,13 +152,20 @@ pub async fn fetch_and_extract(
             }
             body.extend_from_slice(&chunk);
         }
+        let raw_bytes_len = body.len();
         let html = doc_to_html(body, url).await?;
         let markdown = doc_html_to_markdown(&html, None)?;
+        let filtered_html_len = markdown.len();
         return Ok(ExtractionResult::GenericHtml {
             content_md: MarkdownDocument {
-                frontmatter: format!("title: {}\nsource_type: document\nsource_url: {}", "", url),
+                frontmatter: format!(
+                    "title: {}\nsource_type: document\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
+                    "", url
+                ),
                 body: markdown,
             },
+            raw_html_len: raw_bytes_len,
+            filtered_html_len,
         });
     }
 
@@ -170,13 +183,17 @@ pub async fn fetch_and_extract(
     // Step 5: If Reddit, dispatch immediately — no content detection needed
     if url_source_type == SourceType::Reddit {
         let data = sources::reddit::RedditExtractor::extract(&body)?;
+        let source_url = format!("https://reddit.com{}", data.permalink);
+        let comment_count = data.comments.len();
         return Ok(ExtractionResult::Reddit {
             title: data.title,
             selftext: data.selftext,
             author: data.author,
             score: data.score,
             permalink: data.permalink,
+            source_url,
             comments: data.comments,
+            comment_count,
         });
     }
 
@@ -200,10 +217,13 @@ pub async fn fetch_and_extract(
 
             // Step 6b: Parse Discourse JSON
             let data = sources::discourse::DiscourseExtractor::extract(&api_body)?;
+            let posts_returned = data.posts.len();
             Ok(ExtractionResult::Discourse {
                 title: data.title,
                 topic_id: data.topic_id,
                 posts: data.posts,
+                post_count: data.post_count,
+                posts_returned,
             })
         }
         // No Discourse detected — treat as GenericHtml
@@ -417,11 +437,17 @@ pub async fn fetch_doc(
 ) -> Result<ExtractionResult, WebfetchError> {
     let html = fetch_doc_as_html(url, crawler).await?;
     let markdown = doc_html_to_markdown(&html, None)?;
+    let filtered_html_len = markdown.len();
     Ok(ExtractionResult::GenericHtml {
         content_md: MarkdownDocument {
-            frontmatter: format!("title: {}\nsource_type: document\nsource_url: {}", "", url),
+            frontmatter: format!(
+                "title: {}\nsource_type: document\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
+                "", url
+            ),
             body: markdown,
         },
+        raw_html_len: html.len(),
+        filtered_html_len,
     })
 }
 
@@ -442,8 +468,6 @@ pub async fn fetch_doc(
 //
 // NOTE: Only use this for endpoints known to return text (arXiv HTML,
 // Discourse JSON). For arbitrary URLs, use fetch_and_extract which checks
-
-use std::net::{IpAddr, SocketAddr};
 // Content-Type before consuming the body.
 async fn fetch_url_text(
     url: &str,
@@ -519,21 +543,25 @@ fn fallback_to_generic_html(
     body: String,
     pipeline: &[PassFn],
 ) -> Result<ExtractionResult, WebfetchError> {
+    let raw_html_len = body.len();
     let mut dom = pipelines::parse_html(&body)?;
     for pass in pipeline {
         pass(&mut dom);
     }
     let content_md = generators::gen_md::MarkdownLowerer::lower(&dom, None);
     let title = extract_title(&dom);
+    let filtered_html_len = content_md.len();
 
     Ok(ExtractionResult::GenericHtml {
         content_md: MarkdownDocument {
             frontmatter: format!(
-                "title: {}\nsource_type: generic_html\nsource_url: {}",
+                "title: {}\nsource_type: generic_html\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
                 title, url
             ),
             body: content_md,
         },
+        raw_html_len,
+        filtered_html_len,
     })
 }
 
@@ -588,6 +616,8 @@ fn find_first_heading(node: &DomNode, tag: &str) -> Option<String> {
 
 /// Check if an IP address is in a private/internal range.
 /// Used for SSRF protection in the MCP server.
+
+
 pub fn is_private_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {

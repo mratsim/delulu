@@ -503,16 +503,16 @@ pub fn tf_remove_empty_cut(node: &mut DomNode) -> WalkerAction {
 ///
 /// For each element with tag "table", "ul", "div", "form", or "fieldset",
 /// computes `link_text_len / total_text_len` across its descendants.
-/// If the ratio exceeds 0.5, the element is removed.
+/// If the ratio exceeds 0.8, the element is removed.
 ///
 /// This is a port of Readability's `remove_high_link_density` adapted for
 /// the Trafilatura pipeline:
 /// - Uses `walk_pre_mut` instead of `walk_post_acc_mut` (no data table analysis)
 /// - No metadata scoring infrastructure
-/// - Simpler threshold (0.5 vs Readability's 0.333 with comma gate)
+/// - 0.8 link-density threshold (linklen > elemlen * 0.8), per Trafilatura `delete_by_link_density`
 ///
 /// Pre-condition: MANUALLY_CLEANED tags have been removed by `tf_remove_cleaned`.
-/// Post-condition: Elements whose link density exceeds 0.5 are removed.
+/// Post-condition: Elements whose link density exceeds 0.8 are removed.
 ///
 /// Reference: Trafilatura `htmlprocessing.py:183-206` `delete_by_link_density()`
 pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
@@ -529,7 +529,7 @@ pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
 
             let link_density = link_text_len as f64 / total_text_len as f64;
 
-            if link_density > 0.5 {
+            if link_density > 0.8 {
                 WalkerAction::Remove
             } else {
                 WalkerAction::Continue

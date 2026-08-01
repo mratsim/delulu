@@ -134,15 +134,23 @@ pub enum ExtractionResult {
         author: String,
         score: i64,
         permalink: String,
+        source_url: String,
         comments: Vec<RedditComment>,
+        comment_count: usize,
     },
     Discourse {
         title: String,
         topic_id: u64,
         posts: Vec<DiscoursePost>,
+        post_count: u64,
+        posts_returned: usize,
     },
     GenericHtml {
         content_md: MarkdownDocument,
+        /// Length of the raw HTML body (0 if not available, e.g. document paths).
+        raw_html_len: usize,
+        /// Length of the extracted/cleaned markdown body.
+        filtered_html_len: usize,
     },
 }
 

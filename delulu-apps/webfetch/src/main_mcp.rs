@@ -21,6 +21,7 @@
 //! Uses the shared `delulu-mcp-server-helper` for common infrastructure.
 
 use anyhow::{Context, Error, Result};
+use chrono::Utc;
 use delulu_mcp_server_helper::clap::Parser;
 use delulu_mcp_server_helper::rmcp::handler::server::tool::ToolRouter;
 use delulu_mcp_server_helper::rmcp::handler::server::wrapper::Parameters;
@@ -158,7 +159,8 @@ impl WebfetchServer {
         )
         .await
         {
-            Ok(result) => Ok(serde_json::to_string(&result).unwrap_or_default()),
+            Ok(result) => serde_json::to_string(&result)
+                .map_err(|e| format!("JSON serialization failed: {e}")),
             Err(e) => Ok(format!("{{\"error\": true, \"error_type\": \"{:?}\"}}", e)),
         }
     }
@@ -284,8 +286,9 @@ async fn validate_url(
 
 /// Convert an `ExtractionResult` into a Markdown string with YAML frontmatter.
 fn md_doc_to_string(result: ExtractionResult) -> String {
+    let now_iso = Utc::now().to_rfc3339();
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             let mut out = String::new();
             if !content_md.frontmatter.is_empty() {
                 out.push_str("---\n");
@@ -296,6 +299,7 @@ fn md_doc_to_string(result: ExtractionResult) -> String {
                 out.push_str("---\n\n");
             }
             out.push_str(&content_md.body);
+            enrich_date_of_retrieval(&mut out, &now_iso);
             out
         }
         ExtractionResult::Reddit {
@@ -304,11 +308,16 @@ fn md_doc_to_string(result: ExtractionResult) -> String {
             author,
             score,
             permalink,
+            source_url,
+            comment_count,
             comments,
+            ..
         } => {
+            // TODO: date_of_publication should be extracted from created_utc (thread
+            // it through ExtractionResult::Reddit) instead of hardcoded N/A.
             let frontmatter = format!(
-                "title: {}\nauthor: {}\nscore: {}\nsource_type: reddit\npermalink: {}",
-                title, author, score, permalink
+                "title: {}\nauthor: {}\nscore: {}\nsource_type: reddit\npermalink: {}\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A\ncomment_count: {}",
+                title, author, score, permalink, source_url, comment_count
             );
             let mut out = format!("---\n{frontmatter}\n---\n\n");
             out.push_str(&selftext);
@@ -316,16 +325,22 @@ fn md_doc_to_string(result: ExtractionResult) -> String {
             for comment in &comments {
                 format_reddit_comment(&mut out, comment, 0);
             }
+            enrich_date_of_retrieval(&mut out, &now_iso);
             out
         }
         ExtractionResult::Discourse {
             title,
             topic_id,
             posts,
+            post_count,
+            posts_returned,
+            ..
         } => {
+            // TODO: date_of_publication should be extracted from the first post's
+            // created_at (thread through ExtractionResult::Discourse) instead of N/A.
             let frontmatter = format!(
-                "title: {}\ntopic_id: {}\nsource_type: discourse",
-                title, topic_id
+                "title: {}\ntopic_id: {}\nsource_type: discourse\nsource_url: N/A\ndate_of_publication: N/A\ndate_of_retrieval: N/A\npost_count: {}\nposts_returned: {}",
+                title, topic_id, post_count, posts_returned
             );
             let mut out = format!("---\n{frontmatter}\n---\n\n");
             for post in &posts {
@@ -334,8 +349,31 @@ fn md_doc_to_string(result: ExtractionResult) -> String {
                     post.username, post.post_number, post.raw
                 ));
             }
+            enrich_date_of_retrieval(&mut out, &now_iso);
             out
         }
+    }
+}
+
+/// Replace `date_of_retrieval: N/A` with the actual ISO 8601 timestamp.
+/// If not present, appends it before the closing `---`.
+fn enrich_date_of_retrieval(out: &mut String, now_iso: &str) {
+    let placeholder = "date_of_retrieval: N/A";
+    let replacement = format!("date_of_retrieval: {}", now_iso);
+    if out.contains(placeholder) {
+        *out = out.replace(placeholder, &replacement);
+    } else if let Some(pos) = out.find("\n---") {
+        // Insert before the closing ---
+        out.insert_str(pos, &format!("\n{}", replacement));
+    } else {
+        // No placeholder and no `---` block to insert into (e.g. empty
+        // frontmatter). Append the field so date_of_retrieval is not
+        // silently dropped — ensure it sits on its own line.
+        if !out.is_empty() && !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(&replacement);
+        out.push('\n');
     }
 }
 
@@ -395,3 +433,45 @@ async fn main() -> Result<(), Error> {
 // ---------------------------------------------------------------------------
 // Anti-regression tests
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_enrich_date_of_retrieval_replaces_placeholder() {
+        let mut out = "---\ntitle: Test\ndate_of_retrieval: N/A\n---\n\nBody".to_string();
+        let now = "2026-01-15T10:00:00+00:00";
+        enrich_date_of_retrieval(&mut out, now);
+        assert!(out.contains(&format!("date_of_retrieval: {}", now)));
+        assert!(!out.contains("date_of_retrieval: N/A"));
+    }
+
+    #[test]
+    fn test_enrich_date_of_retrieval_appends_before_closing() {
+        let mut out = "---\ntitle: Test\n---\n\nBody".to_string();
+        let now = "2026-01-15T10:00:00+00:00";
+        enrich_date_of_retrieval(&mut out, now);
+        assert!(out.contains(&format!("date_of_retrieval: {}", now)));
+        assert!(out.starts_with("---"));
+    }
+
+    #[test]
+    fn test_enrich_date_of_retrieval_no_frontmatter() {
+        let mut out = "Just body text with no frontmatter".to_string();
+        let now = "2026-01-15T10:00:00+00:00";
+        enrich_date_of_retrieval(&mut out, now);
+        // No placeholder and no `---` delimiter — the field must be appended,
+        // not silently dropped.
+        assert!(out.contains(&format!("date_of_retrieval: {}", now)));
+    }
+
+    #[test]
+    fn test_enrich_date_of_retrieval_preserves_existing_timestamp() {
+        let mut out = "---\ntitle: Test\ndate_of_retrieval: 2025-12-01T00:00:00+00:00\n---\n\nBody".to_string();
+        let now = "2026-01-15T10:00:00+00:00";
+        enrich_date_of_retrieval(&mut out, now);
+        // Only replaces exact "N/A" placeholder, not existing timestamps
+        assert!(out.contains("date_of_retrieval: 2025-12-01T00:00:00+00:00"));
+    }
+}

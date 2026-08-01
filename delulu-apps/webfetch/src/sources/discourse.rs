@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::core::types::{DiscoursePost, MarkdownDocument, WebfetchError};
+use crate::core::types::{DiscoursePost, WebfetchError};
 
 // ---------------------------------------------------------------------------
 // DiscourseData
@@ -79,59 +79,6 @@ impl DiscourseExtractor {
             posts,
             post_count,
         })
-    }
-}
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// From<DiscourseData> for MarkdownDocument
-// ---------------------------------------------------------------------------
-
-impl From<DiscourseData> for MarkdownDocument {
-    fn from(data: DiscourseData) -> Self {
-        // Build YAML frontmatter
-        let frontmatter = format!(
-            "title: \"{}\"\nsource_type: \"discourse\"\ntopic_id: {}",
-            data.title, data.topic_id
-        );
-
-        // Build body: sequential numbered posts
-        let mut body = String::new();
-
-        for post in &data.posts {
-            // Post header
-            body.push_str(&format!("## Post #{}\n", post.post_number));
-
-            // Metadata line
-            body.push_str(&format!(
-                "**{}** — {} — Post #{}\n\n",
-                post.username, post.created_at, post.post_number,
-            ));
-
-            // Use raw Markdown from the API response
-            let content_md = post.raw.trim().to_string();
-            let trimmed = content_md.trim();
-            if !trimmed.is_empty() {
-                body.push_str(trimmed);
-                body.push('\n');
-            }
-
-            body.push('\n');
-        }
-
-        MarkdownDocument { frontmatter, body }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// From<DiscourseData> for serde_json::Value
-// ---------------------------------------------------------------------------
-
-impl TryFrom<DiscourseData> for serde_json::Value {
-    type Error = serde_json::Error;
-    fn try_from(data: DiscourseData) -> Result<Self, Self::Error> {
-        serde_json::to_value(&data)
     }
 }
 

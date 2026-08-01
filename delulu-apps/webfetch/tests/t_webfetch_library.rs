@@ -200,7 +200,7 @@ async fn test_fetch_and_extract_discourse_from_fixture() {
         ExtractionResult::Discourse {
             title,
             topic_id,
-            posts,
+            posts, ..
         } => {
             assert_eq!(
                 title,
@@ -293,7 +293,7 @@ async fn test_fetch_and_extract_generic_html_from_fixture() {
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.contains("PCS multiproofs"),
                 "body should contain the article's h1 heading, got: {}",
@@ -349,7 +349,7 @@ async fn test_fetch_and_extract_empty_body_returns_generic_html() {
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.trim().is_empty(),
                 "empty HTML body should produce empty markdown, got: {:?}",
@@ -383,7 +383,7 @@ async fn test_fetch_and_extract_generic_html_title_from_h1() {
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             // After readability converts h1→h2, the title comes from the
             // <title> tag fallback (not from an h1). Verify the pipeline
             // produced a valid GenericHtml result.
@@ -476,7 +476,7 @@ async fn test_fetch_and_extract_non_discourse_t_url_is_generic_html() {
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.frontmatter.contains("source_type: generic_html"),
                 "should be GenericHtml, got frontmatter: {}",
@@ -547,7 +547,7 @@ async fn test_fetch_and_extract_discourse_detected_from_html_content() {
         ExtractionResult::Discourse {
             title,
             topic_id,
-            posts,
+            posts, ..
         } => {
             assert_eq!(title, "Detected Discourse Topic");
             assert_eq!(topic_id, 54321);
@@ -603,7 +603,7 @@ async fn test_fetch_and_extract_discourse_with_simple_fixture() {
         ExtractionResult::Discourse {
             title,
             topic_id,
-            posts,
+            posts, ..
         } => {
             assert_eq!(
                 title,
@@ -660,7 +660,7 @@ async fn test_fetch_and_extract_stale_discourse_markers_falls_back_to_generic_ht
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.frontmatter.contains("source_type: generic_html"),
                 "should fall back to GenericHtml, got frontmatter: {}",

@@ -1981,9 +1981,9 @@ fn test_collect_p_elements_empty_tree() {
 
 #[test]
 fn test_tf_filter_by_link_density_removes_high_density_div() {
-    let mut root =
-        parse_html("<div><a href='x'>link</a><a href='y'>link2</a><span>short text</span></div>")
-            .unwrap();
+    let mut root = parse_html(
+        "<div><a href='x'>link</a><a href='y'>link2</a><a href='z'>link3</a><span>hi</span></div>"
+    ).unwrap();
     walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
     assert!(
         !find_tag(&root, "div"),

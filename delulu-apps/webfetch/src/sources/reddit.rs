@@ -1,4 +1,4 @@
-use crate::core::types::{MarkdownDocument, RedditComment, WebfetchError};
+use crate::core::types::{RedditComment, WebfetchError};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -247,92 +247,6 @@ impl RedditExtractor {
             );
         }
         Vec::new()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// From<RedditData> for MarkdownDocument
-// ---------------------------------------------------------------------------
-
-impl From<RedditData> for MarkdownDocument {
-    fn from(data: RedditData) -> Self {
-        let frontmatter = format!(
-            r#"---
-title: "{}"
-source_type: "reddit"
-author: "{}"
-score: {}
-comments_truncated: {}
----"#,
-            data.title.replace('"', r#"\""#),
-            data.author.replace('"', r#"\""#),
-            data.score,
-            data.comments_truncated,
-        );
-
-        let mut body = String::new();
-
-        // Selftext
-        if !data.selftext.is_empty() {
-            body.push_str(&data.selftext);
-            body.push('\n');
-            body.push('\n');
-        }
-
-        // Threaded comments
-        for comment in &data.comments {
-            format_comment(comment, 0, &mut body);
-        }
-
-        MarkdownDocument { frontmatter, body }
-    }
-}
-
-/// Append a threaded comment (and its replies) to the body string, using `>`
-/// indentation for nesting.
-fn format_comment(comment: &RedditComment, depth: u32, out: &mut String) {
-    // Build the prefix: depth 0 => ">", depth 1 => "> >", etc.
-    let prefix: String = (0..=depth).map(|_| "> ").collect::<String>();
-
-    // Trim trailing space from prefix so output looks clean.
-    let prefix = prefix.trim_end().to_string();
-
-    if !out.is_empty() && !out.ends_with('\n') {
-        out.push('\n');
-    }
-    out.push_str(&prefix);
-    out.push(' ');
-    out.push_str("**");
-    out.push_str(&comment.author);
-    out.push_str("** (");
-    // Push score as decimal string
-    out.push_str(&comment.score.to_string());
-    out.push_str("): ");
-    out.push_str(&comment.body);
-    out.push('\n');
-
-    // Recurse into replies
-    for reply in &comment.replies {
-        format_comment(reply, depth + 1, out);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// From<RedditData> for serde_json::Value
-// ---------------------------------------------------------------------------
-
-impl From<RedditData> for serde_json::Value {
-    fn from(data: RedditData) -> Self {
-        serde_json::json!({
-            "title": data.title,
-            "author": data.author,
-            "score": data.score,
-            "selftext": data.selftext,
-            "created_utc": data.created_utc,
-            "permalink": data.permalink,
-            "comments": data.comments,
-            "comments_truncated": data.comments_truncated,
-        })
     }
 }
 

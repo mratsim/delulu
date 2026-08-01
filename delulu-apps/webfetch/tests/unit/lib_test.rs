@@ -152,7 +152,7 @@ async fn test_fetch_and_extract_generic_html() {
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.contains("Hello") || content_md.body.contains("Test Page"),
                 "body should contain lowered content: {}",
@@ -186,7 +186,7 @@ async fn test_fetch_and_extract_non_2xx_status_returns_body() {
     // Non-2xx responses are now returned as Ok with the body content
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     match result.unwrap() {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.contains("Not Found"),
                 "body should contain the response text, got: {}",
