@@ -1,8 +1,6 @@
 use super::*;
 use crate::pipelines::{parse_html, walk_pre_mut};
 
-
-
 fn find_tag(node: &DomNode, tag: &str) -> bool {
     match node {
         DomNode::Element {
@@ -48,7 +46,6 @@ fn test_strip_unlikely_candidates() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
 
-
     assert!(
         !find_tag(&nodes, "div"),
         "<div class=\"sidebar\"> should be stripped"
@@ -62,7 +59,6 @@ fn test_strip_unlikely_candidates_keeps_likely_nested() {
     let html = r#"<div class="sidebar"><article>content</article></div>"#;
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
-
 
     assert!(
         find_tag(&nodes, "div"),
@@ -81,7 +77,6 @@ fn test_strip_unlikely_anchor_guard() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
 
-
     assert!(
         find_tag(&nodes, "a"),
         "<a> with unlikely class should survive (JS guard)"
@@ -98,7 +93,6 @@ fn test_strip_unlikely_role_removed() {
     let html = r#"<div role="navigation">nav</div>"#;
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
-
 
     assert!(
         !find_tag(&nodes, "div"),
@@ -151,7 +145,6 @@ fn test_remove_empty_structural_elements() {
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_empty_structural_elements(n));
 
-
     assert!(!find_tag(&nodes, "div"), "empty <div> should be removed");
     assert!(find_tag(&nodes, "p"), "<p> with text should remain");
 }
@@ -161,7 +154,6 @@ fn test_remove_empty_structural_protected_tags() {
     let html = "<table><td></td></table>";
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_empty_structural_elements(n));
-
 
     assert!(
         find_tag(&nodes, "td"),
@@ -179,7 +171,6 @@ fn test_remove_garbage_form() {
     let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_garbage_interactive_elements(n));
 
-
     assert!(
         find_tag(&nodes, "form"),
         "<form> should no longer be unconditionally removed (now handled by filter_low_density_elements)"
@@ -193,7 +184,6 @@ fn test_remove_garbage_embed() {
     let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_garbage_interactive_elements(n));
 
-
     assert!(!find_tag(&nodes, "embed"), "<embed> should be removed");
 }
 
@@ -203,7 +193,6 @@ fn test_remove_garbage_preserves_youtube() {
     let html = r#"<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>"#;
     let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| remove_garbage_interactive_elements(n));
-
 
     assert!(
         find_tag(&nodes, "iframe"),
@@ -219,7 +208,6 @@ fn test_clean_negative_headers_removes_negative() {
     let html = r#"<h1 class="sidebar">nav</h1><h2>content</h2>"#;
     let mut nodes = crate::pipelines::parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| clean_negative_headers(n));
-
 
     assert!(
         !find_tag(&nodes, "h1"),
@@ -283,7 +271,6 @@ fn test_strip_unlikely_ok_maybe_its_a_candidate() {
     let html = r#"<div class="MathJax CtxtMenu_Attached_0">math content</div>"#;
     let mut nodes = parse_html(html).expect("valid HTML");
     walk_pre_mut(&mut nodes, &|n| strip_unlikely_candidates(n));
-
 
     assert!(
         find_tag(&nodes, "div"),

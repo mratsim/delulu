@@ -516,11 +516,17 @@ fn test_isolate_container_article_content_underscore() {
     ))
     .unwrap();
     tf_isolate_content_container(&mut nodes);
-    assert!(find_tag(&nodes, "div"), "<div> should be kept (article_content matches Pattern 0)");
+    assert!(
+        find_tag(&nodes, "div"),
+        "<div> should be kept (article_content matches Pattern 0)"
+    );
     assert!(!find_tag(&nodes, "nav"), "<nav> should be removed");
     // Also verify the inner article_maincontent div is preserved
     let output_text = nodes.text_content();
-    assert!(output_text.contains("AAAA"), "article content text should survive container isolation");
+    assert!(
+        output_text.contains("AAAA"),
+        "article content text should survive container isolation"
+    );
 }
 
 #[test]
@@ -536,9 +542,15 @@ fn test_tf_remove_teaser_protects_content_container() {
     walk_pre_mut(&mut nodes, &|n| tf_remove_teaser(n));
     // The article_content div should survive
     let output_text = nodes.text_content();
-    assert!(output_text.contains("AAAA"), "article_content text should survive tf_remove_teaser");
+    assert!(
+        output_text.contains("AAAA"),
+        "article_content text should survive tf_remove_teaser"
+    );
     // The teaser_other text should be removed
-    assert!(!output_text.contains("should be removed"), "teaser_other text should be removed by tf_remove_teaser");
+    assert!(
+        !output_text.contains("should be removed"),
+        "teaser_other text should be removed by tf_remove_teaser"
+    );
 }
 
 #[test]
@@ -1268,46 +1280,55 @@ fn test_pattern2_preserves_pattern1_sidebar() {
 
 #[test]
 fn test_tf_extract_script_templates_replaces_template_script() {
-    let mut root = parse_html(
-        r#"<script type="text/template">template content here</script><p>keep</p>"#
-    ).unwrap();
+    let mut root =
+        parse_html(r#"<script type="text/template">template content here</script><p>keep</p>"#)
+            .unwrap();
     tf_extract_script_templates(&mut root);
     // Template script should be replaced with div
-    assert!(find_tag(&root, "div"), "<div> should replace template <script>");
+    assert!(
+        find_tag(&root, "div"),
+        "<div> should replace template <script>"
+    );
     // Original script should no longer exist
-    assert!(!find_tag(&root, "script"), "template <script> should be replaced");
+    assert!(
+        !find_tag(&root, "script"),
+        "template <script> should be replaced"
+    );
     // Non-template content should survive
     assert!(find_tag(&root, "p"), "<p> should survive");
 }
 
 #[test]
 fn test_tf_extract_script_templates_preserves_regular_script() {
-    let mut root = parse_html(
-        r#"<script>var x = 1;</script><p>keep</p>"#
-    ).unwrap();
+    let mut root = parse_html(r#"<script>var x = 1;</script><p>keep</p>"#).unwrap();
     tf_extract_script_templates(&mut root);
     // Regular script should be preserved (not replaced)
-    assert!(find_tag(&root, "script"), "regular <script> should be preserved");
+    assert!(
+        find_tag(&root, "script"),
+        "regular <script> should be preserved"
+    );
     assert!(find_tag(&root, "p"), "<p> should survive");
 }
 
 #[test]
 fn test_tf_extract_script_templates_case_insensitive_type() {
-    let mut root = parse_html(
-        r#"<script TYPE="text/template">case insensitive</script>"#
-    ).unwrap();
+    let mut root = parse_html(r#"<script TYPE="text/template">case insensitive</script>"#).unwrap();
     tf_extract_script_templates(&mut root);
     assert!(find_tag(&root, "div"), "case-insensitive type should match");
-    assert!(!find_tag(&root, "script"), "template script should be replaced");
+    assert!(
+        !find_tag(&root, "script"),
+        "template script should be replaced"
+    );
 }
 
 #[test]
 fn test_tf_extract_script_templates_no_type_attribute() {
-    let mut root = parse_html(
-        r#"<script src="app.js"></script>"#
-    ).unwrap();
+    let mut root = parse_html(r#"<script src="app.js"></script>"#).unwrap();
     tf_extract_script_templates(&mut root);
-    assert!(find_tag(&root, "script"), "script without type should be preserved");
+    assert!(
+        find_tag(&root, "script"),
+        "script without type should be preserved"
+    );
 }
 
 // ── tf_fallback_content_container ───────────────────────────────
@@ -1318,30 +1339,26 @@ fn test_tf_fallback_content_container_selects_most_p_text() {
         DomNode::Element {
             tag: "div".into(),
             attrs: vec![("class".into(), "sidebar".into())],
-            children: vec![
-                DomNode::Element {
-                    tag: "p".into(),
-                    attrs: vec![],
-                    children: vec![DomNode::Text("x".repeat(50))],
-                    scores: HashMap::new(),
-                    metadata: HashMap::new(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "p".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("x".repeat(50))],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            }],
             scores: HashMap::new(),
             metadata: HashMap::new(),
         },
         DomNode::Element {
             tag: "div".into(),
             attrs: vec![("class".into(), "content".into())],
-            children: vec![
-                DomNode::Element {
-                    tag: "p".into(),
-                    attrs: vec![],
-                    children: vec![DomNode::Text("x".repeat(300))],
-                    scores: HashMap::new(),
-                    metadata: HashMap::new(),
-                },
-            ],
+            children: vec![DomNode::Element {
+                tag: "p".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("x".repeat(300))],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            }],
             scores: HashMap::new(),
             metadata: HashMap::new(),
         },
@@ -1370,15 +1387,13 @@ fn test_tf_fallback_content_container_single_child_noop() {
     let mut root = DomNode::Element {
         tag: "html".into(),
         attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "div".into(),
-                attrs: vec![],
-                children: vec![],
-                scores: HashMap::new(),
-                metadata: HashMap::new(),
-            },
-        ],
+        children: vec![DomNode::Element {
+            tag: "div".into(),
+            attrs: vec![],
+            children: vec![],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
         scores: HashMap::new(),
         metadata: HashMap::new(),
     };
@@ -1448,7 +1463,11 @@ fn test_tf_fallback_content_container_secondary_fallback_text() {
     };
     tf_fallback_content_container(&mut root);
     if let DomNode::Element { children, .. } = &root {
-        assert_eq!(children.len(), 1, "should isolate one child via secondary fallback");
+        assert_eq!(
+            children.len(),
+            1,
+            "should isolate one child via secondary fallback"
+        );
         if let DomNode::Element { attrs, .. } = &children[0] {
             assert!(
                 attrs.iter().any(|(k, v)| k == "class" && v == "content"),
@@ -1470,7 +1489,8 @@ fn test_collect_p_elements_basic() {
 
 #[test]
 fn test_collect_p_elements_skips_nav() {
-    let root = parse_html("<html><body><nav><p>nav link</p></nav><p>content</p></body></html>").unwrap();
+    let root =
+        parse_html("<html><body><nav><p>nav link</p></nav><p>content</p></body></html>").unwrap();
     let mut result = Vec::new();
     collect_p_elements(&root, &mut result);
     assert_eq!(result.len(), 1, "should skip <p> inside <nav>");
@@ -1479,7 +1499,9 @@ fn test_collect_p_elements_skips_nav() {
 
 #[test]
 fn test_collect_p_elements_skips_footer() {
-    let root = parse_html("<html><body><footer><p>footer text</p></footer><p>content</p></body></html>").unwrap();
+    let root =
+        parse_html("<html><body><footer><p>footer text</p></footer><p>content</p></body></html>")
+            .unwrap();
     let mut result = Vec::new();
     collect_p_elements(&root, &mut result);
     assert_eq!(result.len(), 1, "should skip <p> inside <footer>");
@@ -1488,7 +1510,9 @@ fn test_collect_p_elements_skips_footer() {
 
 #[test]
 fn test_collect_p_elements_skips_header() {
-    let root = parse_html("<html><body><header><p>header text</p></header><p>content</p></body></html>").unwrap();
+    let root =
+        parse_html("<html><body><header><p>header text</p></header><p>content</p></body></html>")
+            .unwrap();
     let mut result = Vec::new();
     collect_p_elements(&root, &mut result);
     assert_eq!(result.len(), 1, "should skip <p> inside <header>");
@@ -1497,7 +1521,9 @@ fn test_collect_p_elements_skips_header() {
 
 #[test]
 fn test_collect_p_elements_skips_form() {
-    let root = parse_html("<html><body><form><p>form content</p></form><p>outside</p></body></html>").unwrap();
+    let root =
+        parse_html("<html><body><form><p>form content</p></form><p>outside</p></body></html>")
+            .unwrap();
     let mut result = Vec::new();
     collect_p_elements(&root, &mut result);
     assert_eq!(result.len(), 1, "should skip <p> inside <form>");
@@ -1511,7 +1537,11 @@ fn test_collect_p_elements_nested_containers() {
     ).unwrap();
     let mut result = Vec::new();
     collect_p_elements(&root, &mut result);
-    assert_eq!(result.len(), 1, "should only collect <p> outside boilerplate");
+    assert_eq!(
+        result.len(),
+        1,
+        "should only collect <p> outside boilerplate"
+    );
     assert_eq!(result[0].text_content().trim(), "deep content");
 }
 
@@ -1541,11 +1571,14 @@ fn test_collect_p_elements_empty_tree() {
 
 #[test]
 fn test_tf_filter_by_link_density_removes_high_density_div() {
-    let mut root = parse_html(
-        "<div><a href='x'>link</a><a href='y'>link2</a><span>short text</span></div>"
-    ).unwrap();
+    let mut root =
+        parse_html("<div><a href='x'>link</a><a href='y'>link2</a><span>short text</span></div>")
+            .unwrap();
     walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
-    assert!(!find_tag(&root, "div"), "high link density <div> should be removed");
+    assert!(
+        !find_tag(&root, "div"),
+        "high link density <div> should be removed"
+    );
 }
 
 #[test]
@@ -1554,14 +1587,20 @@ fn test_tf_filter_by_link_density_keeps_low_density_div() {
         "<div><p>This is a very long paragraph with lots of text content and only one <a href='x'>link</a></p></div>"
     ).unwrap();
     walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
-    assert!(find_tag(&root, "div"), "low link density <div> should be kept");
+    assert!(
+        find_tag(&root, "div"),
+        "low link density <div> should be kept"
+    );
 }
 
 #[test]
 fn test_tf_filter_by_link_density_zero_total_text() {
     let mut root = parse_html("<div></div>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
-    assert!(find_tag(&root, "div"), "empty <div> should be kept (no division by zero)");
+    assert!(
+        find_tag(&root, "div"),
+        "empty <div> should be kept (no division by zero)"
+    );
 }
 
 // ── Anti-regression: tf_remove_cleaned removes form ───────────────────
@@ -1571,7 +1610,10 @@ fn test_tf_remove_cleaned_removes_form() {
     // <form> is in TF_CLEANED_TAGS and should be removed (no form protection anymore)
     let mut root = parse_html("<form><p>form content</p></form><p>outside</p>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_remove_cleaned(n));
-    assert!(!find_tag(&root, "form"), "<form> should be removed by tf_remove_cleaned");
+    assert!(
+        !find_tag(&root, "form"),
+        "<form> should be removed by tf_remove_cleaned"
+    );
     assert!(find_tag(&root, "p"), "<p> outside form should survive");
 }
 
@@ -1588,8 +1630,14 @@ fn test_tf_remove_teaser_protects_content_container_via_class() {
     )).unwrap();
     walk_pre_mut(&mut nodes, &|n| tf_remove_teaser(n));
     let output_text = nodes.text_content();
-    assert!(output_text.contains("AAAA"), "article-content div should survive tf_remove_teaser via class match");
-    assert!(!output_text.contains("should be removed"), "teaser-only div should be removed");
+    assert!(
+        output_text.contains("AAAA"),
+        "article-content div should survive tf_remove_teaser via class match"
+    );
+    assert!(
+        !output_text.contains("should be removed"),
+        "teaser-only div should be removed"
+    );
 }
 
 // ── Anti-regression: TF_RECALL has tag catalog ───────────────────
@@ -1598,11 +1646,12 @@ fn test_tf_remove_teaser_protects_content_container_via_class() {
 fn test_tf_recall_has_tag_catalog() {
     // Verify TF_RECALL pipeline definition contains apply_tf_filter_tag_catalog
     let definition = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/pipelines/trafilatura.rs")
-    ).unwrap();
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/pipelines/trafilatura.rs"),
+    )
+    .unwrap();
     // Find the TF_RECALL definition section
-    let recall_section: Vec<&str> = definition.lines()
+    let recall_section: Vec<&str> = definition
+        .lines()
         .skip_while(|l| !l.contains("pub static TF_RECALL"))
         .collect();
     let recall_text = recall_section.join("\n");

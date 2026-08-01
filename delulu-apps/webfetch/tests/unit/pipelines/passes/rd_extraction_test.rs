@@ -1,8 +1,6 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
-
-
 fn find_tag(node: &DomNode, tag: &str) -> bool {
     match node {
         DomNode::Element { tag: t, .. } if t == tag => true,

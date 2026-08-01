@@ -8,15 +8,13 @@ fn make_doc(text_len: usize) -> DomNode {
     DomNode::Element {
         tag: "html".to_string(),
         attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "body".to_string(),
-                attrs: vec![],
-                children: vec![DomNode::Text(text)],
-                scores: std::collections::HashMap::new(),
-                metadata: std::collections::HashMap::new(),
-            },
-        ],
+        children: vec![DomNode::Element {
+            tag: "body".to_string(),
+            attrs: vec![],
+            children: vec![DomNode::Text(text)],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
         scores: std::collections::HashMap::new(),
         metadata: std::collections::HashMap::new(),
     }
@@ -46,7 +44,11 @@ fn test_with_backup_threshold_triggered() {
     let mut doc = make_doc(100);
     with_backup(&mut doc, remove_all_text, 5, full_restore);
     // Should be restored to original (backup)
-    assert_eq!(doc.text_len(), 100, "should be restored when threshold triggered");
+    assert_eq!(
+        doc.text_len(),
+        100,
+        "should be restored when threshold triggered"
+    );
 }
 
 #[test]
@@ -59,7 +61,11 @@ fn test_with_backup_threshold_not_triggered() {
     // Since we can't easily make a partial remover, use the noop
     with_backup(&mut doc, noop_pass, 5, full_restore);
     // Should NOT be restored (noop keeps same length)
-    assert_eq!(doc.text_len(), 100, "should NOT be restored when threshold not triggered");
+    assert_eq!(
+        doc.text_len(),
+        100,
+        "should NOT be restored when threshold not triggered"
+    );
 }
 
 #[test]
@@ -96,9 +102,18 @@ fn test_backup_restore_does_not_reintroduce_cleaned_tags() {
     walk_pre_mut(&mut doc, &|n| tf_remove_cleaned(n));
 
     // Verify cleaning worked
-    assert!(!doc.text_content().contains("sidebar"), "<aside> should be removed by tf_remove_cleaned");
-    assert!(!doc.text_content().contains("alert"), "<script> should be removed by tf_remove_cleaned");
-    assert!(doc.text_content().contains("main content here"), "content should survive cleaning");
+    assert!(
+        !doc.text_content().contains("sidebar"),
+        "<aside> should be removed by tf_remove_cleaned"
+    );
+    assert!(
+        !doc.text_content().contains("alert"),
+        "<script> should be removed by tf_remove_cleaned"
+    );
+    assert!(
+        doc.text_content().contains("main content here"),
+        "content should survive cleaning"
+    );
 
     // Destroy content (triggers threshold)
     let old_len = doc.text_len();
@@ -109,14 +124,23 @@ fn test_backup_restore_does_not_reintroduce_cleaned_tags() {
 
     // Restore from UNCLEANED backup + re-clean (matching actual wrappers)
     if new_len * 5 <= old_len {
-        doc = backup.clone();  // contains <script>, <aside>, etc.
+        doc = backup.clone(); // contains <script>, <aside>, etc.
         walk_pre_mut(&mut doc, &|n| tf_remove_cleaned(n));
     }
 
     // After restore + re-clean, cleaned tags must still be gone
-    assert!(!doc.text_content().contains("sidebar"), "cleaned tags must not reappear after restore");
-    assert!(!doc.text_content().contains("alert"), "script must not reappear after restore");
-    assert!(doc.text_content().contains("main content here"), "content should be preserved");
+    assert!(
+        !doc.text_content().contains("sidebar"),
+        "cleaned tags must not reappear after restore"
+    );
+    assert!(
+        !doc.text_content().contains("alert"),
+        "script must not reappear after restore"
+    );
+    assert!(
+        doc.text_content().contains("main content here"),
+        "content should be preserved"
+    );
 }
 
 // ── Anti-regression: JSON-LD error logging ─────────────────────
@@ -149,23 +173,19 @@ fn test_recover_wild_paragraphs_substring_not_dedupped() {
     let mut best_tree = DomNode::Element {
         tag: "html".to_string(),
         attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "body".to_string(),
+        children: vec![DomNode::Element {
+            tag: "body".to_string(),
+            attrs: vec![],
+            children: vec![DomNode::Element {
+                tag: "p".to_string(),
                 attrs: vec![],
-                children: vec![
-                    DomNode::Element {
-                        tag: "p".to_string(),
-                        attrs: vec![],
-                        children: vec![DomNode::Text("A".to_string())],
-                        scores: std::collections::HashMap::new(),
-                        metadata: std::collections::HashMap::new(),
-                    },
-                ],
+                children: vec![DomNode::Text("A".to_string())],
                 scores: std::collections::HashMap::new(),
                 metadata: std::collections::HashMap::new(),
-            },
-        ],
+            }],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
         scores: std::collections::HashMap::new(),
         metadata: std::collections::HashMap::new(),
     };
@@ -174,30 +194,28 @@ fn test_recover_wild_paragraphs_substring_not_dedupped() {
     let original = DomNode::Element {
         tag: "html".to_string(),
         attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "body".to_string(),
-                attrs: vec![],
-                children: vec![
-                    DomNode::Element {
-                        tag: "p".to_string(),
-                        attrs: vec![],
-                        children: vec![DomNode::Text("A".to_string())],
-                        scores: std::collections::HashMap::new(),
-                        metadata: std::collections::HashMap::new(),
-                    },
-                    DomNode::Element {
-                        tag: "p".to_string(),
-                        attrs: vec![],
-                        children: vec![DomNode::Text("A B".to_string())],
-                        scores: std::collections::HashMap::new(),
-                        metadata: std::collections::HashMap::new(),
-                    },
-                ],
-                scores: std::collections::HashMap::new(),
-                metadata: std::collections::HashMap::new(),
-            },
-        ],
+        children: vec![DomNode::Element {
+            tag: "body".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Element {
+                    tag: "p".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("A".to_string())],
+                    scores: std::collections::HashMap::new(),
+                    metadata: std::collections::HashMap::new(),
+                },
+                DomNode::Element {
+                    tag: "p".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("A B".to_string())],
+                    scores: std::collections::HashMap::new(),
+                    metadata: std::collections::HashMap::new(),
+                },
+            ],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
         scores: std::collections::HashMap::new(),
         metadata: std::collections::HashMap::new(),
     };
@@ -219,23 +237,19 @@ fn test_recover_wild_paragraphs_exact_duplicates_dedupped() {
     let mut best_tree = DomNode::Element {
         tag: "html".to_string(),
         attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "body".to_string(),
+        children: vec![DomNode::Element {
+            tag: "body".to_string(),
+            attrs: vec![],
+            children: vec![DomNode::Element {
+                tag: "p".to_string(),
                 attrs: vec![],
-                children: vec![
-                    DomNode::Element {
-                        tag: "p".to_string(),
-                        attrs: vec![],
-                        children: vec![DomNode::Text("hello".to_string())],
-                        scores: std::collections::HashMap::new(),
-                        metadata: std::collections::HashMap::new(),
-                    },
-                ],
+                children: vec![DomNode::Text("hello".to_string())],
                 scores: std::collections::HashMap::new(),
                 metadata: std::collections::HashMap::new(),
-            },
-        ],
+            }],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
         scores: std::collections::HashMap::new(),
         metadata: std::collections::HashMap::new(),
     };
@@ -244,30 +258,28 @@ fn test_recover_wild_paragraphs_exact_duplicates_dedupped() {
     let original = DomNode::Element {
         tag: "html".to_string(),
         attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "body".to_string(),
-                attrs: vec![],
-                children: vec![
-                    DomNode::Element {
-                        tag: "p".to_string(),
-                        attrs: vec![],
-                        children: vec![DomNode::Text("hello".to_string())],
-                        scores: std::collections::HashMap::new(),
-                        metadata: std::collections::HashMap::new(),
-                    },
-                    DomNode::Element {
-                        tag: "p".to_string(),
-                        attrs: vec![],
-                        children: vec![DomNode::Text("hello".to_string())],
-                        scores: std::collections::HashMap::new(),
-                        metadata: std::collections::HashMap::new(),
-                    },
-                ],
-                scores: std::collections::HashMap::new(),
-                metadata: std::collections::HashMap::new(),
-            },
-        ],
+        children: vec![DomNode::Element {
+            tag: "body".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Element {
+                    tag: "p".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("hello".to_string())],
+                    scores: std::collections::HashMap::new(),
+                    metadata: std::collections::HashMap::new(),
+                },
+                DomNode::Element {
+                    tag: "p".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("hello".to_string())],
+                    scores: std::collections::HashMap::new(),
+                    metadata: std::collections::HashMap::new(),
+                },
+            ],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
         scores: std::collections::HashMap::new(),
         metadata: std::collections::HashMap::new(),
     };

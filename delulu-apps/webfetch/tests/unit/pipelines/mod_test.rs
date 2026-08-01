@@ -1,8 +1,6 @@
 use super::*;
 use crate::pipelines::dom_convert::convert_tree;
 
-
-
 fn find_tag(node: &DomNode, tag: &str) -> bool {
     match node {
         DomNode::Element { tag: t, .. } if t == tag => true,
@@ -485,15 +483,20 @@ fn test_text_content_matches_get_inner_text() {
 #[test]
 fn test_visible_text_len_excludes_script() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec!
-            [DomNode::Text("visible ".to_string()),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("visible ".to_string()),
             DomNode::Element {
-                tag: "script".to_string(), attrs: vec![],
+                tag: "script".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("hidden".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            }],
-        scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+        ],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.visible_text_len(), 8); // "visible " = 8
 }
@@ -501,15 +504,20 @@ fn test_visible_text_len_excludes_script() {
 #[test]
 fn test_visible_text_len_excludes_style() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec!
-            [DomNode::Text("content ".to_string()),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("content ".to_string()),
             DomNode::Element {
-                tag: "style".to_string(), attrs: vec![],
+                tag: "style".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("css".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            }],
-        scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+        ],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.visible_text_len(), 8); // "content " = 8
 }
@@ -517,9 +525,11 @@ fn test_visible_text_len_excludes_style() {
 #[test]
 fn test_visible_text_len_all_text() {
     let node = DomNode::Element {
-        tag: "p".to_string(), attrs: vec![],
+        tag: "p".to_string(),
+        attrs: vec![],
         children: vec![DomNode::Text("hello".to_string())],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.visible_text_len(), 5);
 }
@@ -533,44 +543,51 @@ fn test_visible_text_len_comment_doctype_zero() {
 #[test]
 fn test_visible_text_len_deeply_nested() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "article".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("A".to_string()),
-                    DomNode::Element {
-                        tag: "script".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("SKIP".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                    DomNode::Text("B".to_string()),
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "article".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("A".to_string()),
+                DomNode::Element {
+                    tag: "script".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("SKIP".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+                DomNode::Text("B".to_string()),
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.visible_text_len(), 2); // "A" + "B" = 2
 }
-
 
 // ── DomNode::link_text_len ────────────────────────────────────────
 
 #[test]
 fn test_link_text_len_counts_only_a() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("before ".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("link".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text(" after".to_string()),
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.link_text_len(), 4); // only "link"
 }
@@ -579,22 +596,26 @@ fn test_link_text_len_counts_only_a() {
 fn test_link_text_len_nested_a() {
     // Malformed HTML: <a> inside <a>
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("outer ".to_string()),
-                    DomNode::Element {
-                        tag: "a".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("inner".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "a".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("outer ".to_string()),
+                DomNode::Element {
+                    tag: "a".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("inner".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     // outer <a> counts all text: "outer " + "inner" = 11
     // No non-<a> ancestors to recurse into, so total = 11
@@ -604,22 +625,26 @@ fn test_link_text_len_nested_a() {
 #[test]
 fn test_link_text_len_a_with_span() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("click ".to_string()),
-                    DomNode::Element {
-                        tag: "span".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("here".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "a".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("click ".to_string()),
+                DomNode::Element {
+                    tag: "span".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("here".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.link_text_len(), 10); // "click " + "here" = 10
 }
@@ -627,23 +652,29 @@ fn test_link_text_len_a_with_span() {
 #[test]
 fn test_link_text_len_mixed_content() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("ignore".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("link1".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text(" skip ".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("link2".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text("end".to_string()),
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.link_text_len(), 10); // "link1" + "link2" = 10
 }
@@ -651,25 +682,33 @@ fn test_link_text_len_mixed_content() {
 #[test]
 fn test_link_text_len_flat_a_siblings() {
     let node = DomNode::Element {
-        tag: "nav".to_string(), attrs: vec![],
+        tag: "nav".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("Home".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("About".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("Contact".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.link_text_len(), 16); // "Home" + "About" + "Contact" = 16
 }
@@ -685,88 +724,110 @@ fn test_link_text_len_matches_count_link_text() {
     use crate::pipelines::DomNode;
     // Flat <a> siblings
     let flat = DomNode::Element {
-        tag: "nav".to_string(), attrs: vec![],
+        tag: "nav".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("One".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("Two".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(flat.link_text_len(), 6);
     // Nested <a> (malformed HTML)
     let nested = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("outer ".to_string()),
-                    DomNode::Element {
-                        tag: "a".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("inner".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "a".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("outer ".to_string()),
+                DomNode::Element {
+                    tag: "a".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("inner".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(nested.link_text_len(), 11);
     // <a> with <span> children
     let with_span = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("click ".to_string()),
-                    DomNode::Element {
-                        tag: "span".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("here".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "a".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("click ".to_string()),
+                DomNode::Element {
+                    tag: "span".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("here".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(with_span.link_text_len(), 10);
     // Mixed content (text + <a> + text + <a>)
     let mixed = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("prefix ".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("L1".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text(" mid ".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("L2".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text(" suffix".to_string()),
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(mixed.link_text_len(), 4);
     // No <a> elements
     let no_links = DomNode::Element {
-        tag: "p".to_string(), attrs: vec![],
+        tag: "p".to_string(),
+        attrs: vec![],
         children: vec![DomNode::Text("plain".to_string())],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(no_links.link_text_len(), 0);
 }
@@ -776,41 +837,49 @@ fn test_link_text_len_matches_count_link_text() {
 #[test]
 fn test_text_stats_simple() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("before ".to_string()),
             DomNode::Element {
-                tag: "p".to_string(), attrs: vec![],
+                tag: "p".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("paragraph".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text(" after".to_string()),
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     let (p_text, total) = node.text_stats();
-    assert_eq!(p_text, 9);   // "paragraph"
-    assert_eq!(total, 22);   // "before paragraph after" = 7 + 9 + 6 = 22
+    assert_eq!(p_text, 9); // "paragraph"
+    assert_eq!(total, 22); // "before paragraph after" = 7 + 9 + 6 = 22
 }
 
 #[test]
 fn test_text_stats_no_p() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![DomNode::Text("just text".to_string())],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     let (p_text, total) = node.text_stats();
-    assert_eq!(p_text, 0);   // no <p> elements
-    assert_eq!(total, 9);   // "just text"
+    assert_eq!(p_text, 0); // no <p> elements
+    assert_eq!(total, 9); // "just text"
 }
 
 #[test]
 fn test_text_stats_empty() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.text_stats(), (0, 0));
 }
@@ -830,40 +899,46 @@ fn test_text_stats_comment_doctype_zero() {
 #[test]
 fn test_text_stats_nested_p() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "p".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("level1 ".to_string()),
-                    DomNode::Element {
-                        tag: "span".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("nested".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "p".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("level1 ".to_string()),
+                DomNode::Element {
+                    tag: "span".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("nested".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     let (p_text, total) = node.text_stats();
-    assert_eq!(p_text, 13);  // "level1 nested"
+    assert_eq!(p_text, 13); // "level1 nested"
     assert_eq!(total, 13);
 }
 
 #[test]
 fn test_text_stats_p_empty() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "p".to_string(), attrs: vec![],
-                children: vec![],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "p".to_string(),
+            attrs: vec![],
+            children: vec![],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.text_stats(), (0, 0));
 }
@@ -872,21 +947,25 @@ fn test_text_stats_p_empty() {
 fn test_text_stats_script_style_included() {
     // text_stats does NOT skip script/style — matches count_p_text/collect_text behavior.
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("visible ".to_string()),
             DomNode::Element {
-                tag: "script".to_string(), attrs: vec![],
+                tag: "script".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("code".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text(" more".to_string()),
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     let (p_text, total) = node.text_stats();
     assert_eq!(p_text, 0);
-    assert_eq!(total, 17);  // "visible code more" = 8 + 4 + 5 = 17
+    assert_eq!(total, 17); // "visible code more" = 8 + 4 + 5 = 17
 }
 
 #[test]
@@ -894,75 +973,93 @@ fn test_text_stats_matches_count_p_text_and_collect_text() {
     use crate::pipelines::DomNode;
     // Fragment 1: with <p>
     let with_p = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("lead ".to_string()),
             DomNode::Element {
-                tag: "p".to_string(), attrs: vec![],
+                tag: "p".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("content".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(with_p.text_stats(), (7, 12), "with_p");
     // Fragment 2: without <p>
     let no_p = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![DomNode::Text("plain".to_string())],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(no_p.text_stats(), (0, 5), "no_p");
     // Fragment 3: mixed nesting
     let mixed = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "p".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("A".to_string()),
-                    DomNode::Element {
-                        tag: "span".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("B".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "p".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("A".to_string()),
+                DomNode::Element {
+                    tag: "span".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("B".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(mixed.text_stats(), (2, 2), "mixed");
     // Fragment 4: script/style boundaries
     let with_script = DomNode::Element {
-        tag: "body".to_string(), attrs: vec![],
+        tag: "body".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("a".to_string()),
             DomNode::Element {
-                tag: "script".to_string(), attrs: vec![],
+                tag: "script".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("code".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text("b".to_string()),
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(with_script.text_stats(), (0, 6), "with_script");
     // Fragment 5: empty tree
     let empty = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(empty.text_stats(), (0, 0), "empty");
     // Fragment 6: Comment/Doctype-only
     let comment_only = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Comment("ignored".to_string()),
             DomNode::Doctype("html".to_string()),
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(comment_only.text_stats(), (0, 0), "comment_only");
     // Fragment 7: Text node directly
@@ -970,20 +1067,26 @@ fn test_text_stats_matches_count_p_text_and_collect_text() {
     assert_eq!(text_node.text_stats(), (0, 2), "text_node");
     // Fragment 8: multiple <p> siblings
     let multi_p = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Element {
-                tag: "p".to_string(), attrs: vec![],
+                tag: "p".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("first".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Element {
-                tag: "p".to_string(), attrs: vec![],
+                tag: "p".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("second".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(multi_p.text_stats(), (11, 11), "multi_p");
 }
@@ -993,16 +1096,20 @@ fn test_text_stats_single_traversal() {
     use std::sync::atomic::Ordering::Relaxed;
     let prev = crate::pipelines::TEXT_STATS_TRAVERSAL_COUNT.load(Relaxed);
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("a".to_string()),
             DomNode::Element {
-                tag: "p".to_string(), attrs: vec![],
+                tag: "p".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("b".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     node.text_stats();
     let after = crate::pipelines::TEXT_STATS_TRAVERSAL_COUNT.load(Relaxed);
@@ -1014,28 +1121,34 @@ fn test_text_stats_single_traversal() {
 #[test]
 fn test_link_density_stats_simple() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("text ".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("link".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     let (total, link) = node.link_density_stats();
-    assert_eq!(total, 9);   // "text link"
-    assert_eq!(link, 4);   // "link"
+    assert_eq!(total, 9); // "text link"
+    assert_eq!(link, 4); // "link"
 }
 
 #[test]
 fn test_link_density_stats_no_links() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![DomNode::Text("plain".to_string())],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.link_density_stats(), (5, 0));
 }
@@ -1043,9 +1156,11 @@ fn test_link_density_stats_no_links() {
 #[test]
 fn test_link_density_stats_empty() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(node.link_density_stats(), (0, 0));
 }
@@ -1058,30 +1173,40 @@ fn test_link_density_stats_text_node_direct() {
 
 #[test]
 fn test_link_density_stats_comment_doctype_zero() {
-    assert_eq!(DomNode::Comment("x".to_string()).link_density_stats(), (0, 0));
-    assert_eq!(DomNode::Doctype("html".to_string()).link_density_stats(), (0, 0));
+    assert_eq!(
+        DomNode::Comment("x".to_string()).link_density_stats(),
+        (0, 0)
+    );
+    assert_eq!(
+        DomNode::Doctype("html".to_string()).link_density_stats(),
+        (0, 0)
+    );
 }
 
 #[test]
 fn test_link_density_stats_nested_a() {
     // Malformed HTML: nested <a> elements
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("outer ".to_string()),
-                    DomNode::Element {
-                        tag: "a".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("inner".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "a".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("outer ".to_string()),
+                DomNode::Element {
+                    tag: "a".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("inner".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     // outer <a> counts all text: "outer " + "inner" = 11
     let (total, link) = node.link_density_stats();
@@ -1092,80 +1217,98 @@ fn test_link_density_stats_nested_a() {
 #[test]
 fn test_link_density_stats_a_with_span() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("click ".to_string()),
-                    DomNode::Element {
-                        tag: "span".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("here".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "a".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("click ".to_string()),
+                DomNode::Element {
+                    tag: "span".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("here".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     let (total, link) = node.link_density_stats();
-    assert_eq!(total, 10);   // "click here"
-    assert_eq!(link, 10);   // all inside <a>
+    assert_eq!(total, 10); // "click here"
+    assert_eq!(link, 10); // all inside <a>
 }
 
 #[test]
 fn test_link_density_stats_mixed_content() {
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("ignore".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("link1".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text(" skip ".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("link2".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text("end".to_string()),
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     let (total, link) = node.link_density_stats();
-    assert_eq!(total, 25);   // "ignorelink1 skip link2end" = 6 + 5 + 6 + 5 + 3 = 25
-    assert_eq!(link, 10);    // "link1" + "link2"
+    assert_eq!(total, 25); // "ignorelink1 skip link2end" = 6 + 5 + 6 + 5 + 3 = 25
+    assert_eq!(link, 10); // "link1" + "link2"
 }
 
 #[test]
 fn test_link_density_stats_flat_a_siblings() {
     let node = DomNode::Element {
-        tag: "nav".to_string(), attrs: vec![],
+        tag: "nav".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("Home".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("About".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("Contact".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     let (total, link) = node.link_density_stats();
-    assert_eq!(total, 16);   // "HomeAboutContact"
-    assert_eq!(link, 16);   // all inside <a>
+    assert_eq!(total, 16); // "HomeAboutContact"
+    assert_eq!(link, 16); // all inside <a>
 }
 
 #[test]
@@ -1173,80 +1316,98 @@ fn test_link_density_stats_matches_get_inner_text_and_count_link_text() {
     use crate::pipelines::DomNode;
     // Fragment 1: with <a>
     let with_a = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("text ".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("link".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(with_a.link_density_stats(), (9, 4), "with_a");
     // Fragment 2: without <a>
     let no_a = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![DomNode::Text("plain".to_string())],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(no_a.link_density_stats(), (5, 0), "no_a");
     // Fragment 3: nested <a> (malformed)
     let nested = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("outer ".to_string()),
-                    DomNode::Element {
-                        tag: "a".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("inner".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "a".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("outer ".to_string()),
+                DomNode::Element {
+                    tag: "a".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("inner".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(nested.link_density_stats(), (11, 11), "nested");
     // Fragment 4: <a> with <span> children
     let with_span = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
-        children: vec![
-            DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
-                children: vec![
-                    DomNode::Text("click ".to_string()),
-                    DomNode::Element {
-                        tag: "span".to_string(), attrs: vec![],
-                        children: vec![DomNode::Text("here".to_string())],
-                        scores: HashMap::new(), metadata: HashMap::new(),
-                    },
-                ],
-                scores: HashMap::new(), metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "a".to_string(),
+            attrs: vec![],
+            children: vec![
+                DomNode::Text("click ".to_string()),
+                DomNode::Element {
+                    tag: "span".to_string(),
+                    attrs: vec![],
+                    children: vec![DomNode::Text("here".to_string())],
+                    scores: HashMap::new(),
+                    metadata: HashMap::new(),
+                },
+            ],
+            scores: HashMap::new(),
+            metadata: HashMap::new(),
+        }],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(with_span.link_density_stats(), (10, 10), "with_span");
     // Fragment 5: empty tree
     let empty = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(empty.link_density_stats(), (0, 0), "empty");
     // Fragment 6: Comment/Doctype-only
     let comment_only = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Comment("ignored".to_string()),
             DomNode::Doctype("html".to_string()),
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(comment_only.link_density_stats(), (0, 0), "comment_only");
     // Fragment 7: Text node directly
@@ -1254,54 +1415,70 @@ fn test_link_density_stats_matches_get_inner_text_and_count_link_text() {
     assert_eq!(text_node.link_density_stats(), (2, 0), "text_node");
     // Fragment 8: flat <a> siblings
     let flat = DomNode::Element {
-        tag: "nav".to_string(), attrs: vec![],
+        tag: "nav".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("One".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("Two".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(flat.link_density_stats(), (6, 6), "flat");
     // Fragment 9: script/style boundaries
     let with_script = DomNode::Element {
-        tag: "body".to_string(), attrs: vec![],
+        tag: "body".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("a".to_string()),
             DomNode::Element {
-                tag: "script".to_string(), attrs: vec![],
+                tag: "script".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("code".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text("b".to_string()),
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(with_script.link_density_stats(), (6, 0), "with_script");
     // Fragment 10: multiple <a> with interleaved text
     let multi_a = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("A".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
             DomNode::Text(" between ".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("B".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     assert_eq!(multi_a.link_density_stats(), (11, 2), "multi_a");
 }
@@ -1311,18 +1488,26 @@ fn test_link_density_stats_single_traversal() {
     use std::sync::atomic::Ordering::Relaxed;
     let prev = crate::pipelines::LINK_DENSITY_STATS_TRAVERSAL_COUNT.load(Relaxed);
     let node = DomNode::Element {
-        tag: "div".to_string(), attrs: vec![],
+        tag: "div".to_string(),
+        attrs: vec![],
         children: vec![
             DomNode::Text("a".to_string()),
             DomNode::Element {
-                tag: "a".to_string(), attrs: vec![],
+                tag: "a".to_string(),
+                attrs: vec![],
                 children: vec![DomNode::Text("b".to_string())],
-                scores: HashMap::new(), metadata: HashMap::new(),
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
             },
         ],
-        scores: HashMap::new(), metadata: HashMap::new(),
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
     };
     node.link_density_stats();
     let after = crate::pipelines::LINK_DENSITY_STATS_TRAVERSAL_COUNT.load(Relaxed);
-    assert_eq!(after - prev, 1, "link_density_stats must do exactly 1 traversal");
+    assert_eq!(
+        after - prev,
+        1,
+        "link_density_stats must do exactly 1 traversal"
+    );
 }

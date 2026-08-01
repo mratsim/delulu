@@ -88,9 +88,12 @@ pub fn tf_extract_script_templates(node: &mut DomNode) {
         let mut i = 0;
         while i < nodes.len() {
             match &mut nodes[i] {
-                DomNode::Element { tag, attrs, children, .. }
-                    if tag == "script" =>
-                {
+                DomNode::Element {
+                    tag,
+                    attrs,
+                    children,
+                    ..
+                } if tag == "script" => {
                     // Check if type attribute contains "template" (case-insensitive)
                     let is_template = attrs.iter().any(|(k, v)| {
                         k.eq_ignore_ascii_case("type")
@@ -98,7 +101,8 @@ pub fn tf_extract_script_templates(node: &mut DomNode) {
                     });
                     if is_template {
                         // Extract text content from the script element's children
-                        let text_content: String = children.iter().map(DomNode::text_content).collect();
+                        let text_content: String =
+                            children.iter().map(DomNode::text_content).collect();
                         // Replace the <script> with a <div> containing the text
                         let new_div = DomNode::Element {
                             tag: "div".to_string(),
@@ -129,7 +133,6 @@ pub fn tf_extract_script_templates(node: &mut DomNode) {
         extract_inner(children);
     }
 }
-
 
 /// Remove elements whose tag is in the `MANUALLY_CLEANED` list.
 ///
@@ -188,7 +191,9 @@ pub fn tf_remove_teaser(node: &mut DomNode) -> WalkerAction {
                     && val.to_ascii_lowercase().contains("teaser")
             });
             // Protect content containers: skip removal if id matches article content patterns
-            let is_content = attrs.iter().any(|(k, v)| (k == "id" || k == "class") && BODY_XPATH_PATTERN_0_RE.is_match(v.as_str()));
+            let is_content = attrs.iter().any(|(k, v)| {
+                (k == "id" || k == "class") && BODY_XPATH_PATTERN_0_RE.is_match(v.as_str())
+            });
             if has_teaser && !is_content {
                 WalkerAction::Remove
             } else {
@@ -519,10 +524,9 @@ pub fn tf_remove_empty_cut(node: &mut DomNode) -> WalkerAction {
 /// Reference: Trafilatura `htmlprocessing.py:183-206` `delete_by_link_density()`
 pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
     match node {
-        DomNode::Element {
-            tag,
-            ..
-        } if matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") => {
+        DomNode::Element { tag, .. }
+            if matches!(tag.as_str(), "table" | "ul" | "div" | "form" | "fieldset") =>
+        {
             // Compute total and link text length in a single traversal
             let (total_text_len, link_text_len) = node.link_density_stats();
 
@@ -542,14 +546,9 @@ pub fn tf_filter_by_link_density(node: &mut DomNode) -> WalkerAction {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Utility: text collection helpers
 // ---------------------------------------------------------------------------
-
-
-
-
 
 // ---------------------------------------------------------------------------
 // Pass-level helpers: paragraph recovery, JSON-LD extraction, text measurement
@@ -610,8 +609,6 @@ pub(crate) fn recover_wild_p_elements(node: &mut DomNode, backup: &DomNode, exis
         }
     }
 }
-
-
 
 /// Minimum extracted content size in characters (in `<p>` text at any depth within a container).
 /// Matches Trafilatura's `min_extracted_size` default of 250 chars.
@@ -674,8 +671,9 @@ pub(crate) fn container_has_content(root_children: &[DomNode], path: &[usize]) -
 
 /// Regex for Pattern 0: specific class/id/role selectors.
 /// Maps to Trafilatura's BODY_XPATH Pattern 0 (specific class/id selectors).
-static BODY_XPATH_PATTERN_0_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
-    regex::Regex::new(
+static BODY_XPATH_PATTERN_0_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(
+    || {
+        regex::Regex::new(
         r#"(?ix)(?:
             post[-_]text|post-body|post-?entry|post[-_]?content|postContent|post_inner_wrapper|
             article-?text|articleText|article[-_]?content|article[-_]?maincontent|(?:entry|page|text|article|art)-content|article__content|
@@ -684,17 +682,18 @@ static BODY_XPATH_PATTERN_0_RE: once_cell::sync::Lazy<regex::Regex> = once_cell:
         )"#,
     )
     .expect("BODY_XPATH_PATTERN_0_RE: invalid regex")
-});
+    },
+);
 
 /// Regex for Pattern 2: content class/id patterns.
 /// Maps to Trafilatura's BODY_XPATH Pattern 2 (content class/id).
-pub static BODY_XPATH_PATTERN_2_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
-    regex::Regex::new(
+pub static BODY_XPATH_PATTERN_2_RE: once_cell::sync::Lazy<regex::Regex> =
+    once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(
         r#"(?i)^(?:content[-_]main|content(?:-|__)?body|contentBody|main-content|page-content)"#,
     )
     .expect("BODY_XPATH_PATTERN_2_RE: invalid regex")
-});
-
+    });
 
 /// Isolate the main content container using BODY_XPATH patterns.
 ///
@@ -715,44 +714,61 @@ pub static BODY_XPATH_PATTERN_2_RE: once_cell::sync::Lazy<regex::Regex> = once_c
 /// Reference: Trafilatura `main_extractor.py:597-647` `_extract()` (BODY_XPATH iteration)
 pub fn tf_isolate_content_container(node: &mut DomNode) {
     if let DomNode::Element { children, .. } = node {
-    let mut best_path: Option<Vec<usize>> = None;
-    const PATTERN_CHECKS: [fn(&str, &str, &str, &str, &str) -> bool; 5] = [
-        |_tag, cv, iv, rv, ipv| ipv == "articleBody" || iv == "articleContent"
-            || matches!(cv, "post" | "entry") || rv == "article"
-            || BODY_XPATH_PATTERN_0_RE.is_match(cv) || BODY_XPATH_PATTERN_0_RE.is_match(iv)
-            || cv.contains("p-body-pageContent") || iv.contains("p-body-pageContent"),
-        |tag, _, _, _, _| matches!(tag, "article" | "main"),
-        |_, cv, _iv, _, _| matches!(cv, "postarea" | "art-postcontent" | "text" | "cell" | "story"),
-        |_, cv, iv, _, _| iv == "content"
-            || cv == "content"
-            || BODY_XPATH_PATTERN_2_RE.is_match(cv) || BODY_XPATH_PATTERN_2_RE.is_match(iv)
-            || cv.contains("main-content") || cv.contains("page-content"),
-        |tag, cv, iv, rv, _| tag == "main" || cv.starts_with("main")
-            || iv.starts_with("main") || rv.starts_with("main"),
-    ];
-    for check in PATTERN_CHECKS {
-        // Collect ALL matches for this pattern (all siblings, all depths)
-        let mut all_paths: Vec<Vec<usize>> = Vec::new();
-        find_all_matches(children, &check, &mut all_paths, &mut Vec::new());
-        // Try each match in document order; accept the first with enough content
-        for path in &all_paths {
-            if container_has_content(children, path) {
-                best_path = Some(path.clone());
+        let mut best_path: Option<Vec<usize>> = None;
+        const PATTERN_CHECKS: [fn(&str, &str, &str, &str, &str) -> bool; 5] = [
+            |_tag, cv, iv, rv, ipv| {
+                ipv == "articleBody"
+                    || iv == "articleContent"
+                    || matches!(cv, "post" | "entry")
+                    || rv == "article"
+                    || BODY_XPATH_PATTERN_0_RE.is_match(cv)
+                    || BODY_XPATH_PATTERN_0_RE.is_match(iv)
+                    || cv.contains("p-body-pageContent")
+                    || iv.contains("p-body-pageContent")
+            },
+            |tag, _, _, _, _| matches!(tag, "article" | "main"),
+            |_, cv, _iv, _, _| {
+                matches!(
+                    cv,
+                    "postarea" | "art-postcontent" | "text" | "cell" | "story"
+                )
+            },
+            |_, cv, iv, _, _| {
+                iv == "content"
+                    || cv == "content"
+                    || BODY_XPATH_PATTERN_2_RE.is_match(cv)
+                    || BODY_XPATH_PATTERN_2_RE.is_match(iv)
+                    || cv.contains("main-content")
+                    || cv.contains("page-content")
+            },
+            |tag, cv, iv, rv, _| {
+                tag == "main"
+                    || cv.starts_with("main")
+                    || iv.starts_with("main")
+                    || rv.starts_with("main")
+            },
+        ];
+        for check in PATTERN_CHECKS {
+            // Collect ALL matches for this pattern (all siblings, all depths)
+            let mut all_paths: Vec<Vec<usize>> = Vec::new();
+            find_all_matches(children, &check, &mut all_paths, &mut Vec::new());
+            // Try each match in document order; accept the first with enough content
+            for path in &all_paths {
+                if container_has_content(children, path) {
+                    best_path = Some(path.clone());
+                    break;
+                }
+            }
+            if best_path.is_some() {
                 break;
             }
+            // No match with enough content → try next pattern
         }
-        if best_path.is_some() {
-            break;
+        if let Some(path) = best_path {
+            apply_path(children, &path);
         }
-        // No match with enough content → try next pattern
-    }
-    if let Some(path) = best_path {
-        apply_path(children, &path);
-    }
     }
 }
-
-
 
 /// Find the FIRST element matching a BODY_XPATH pattern in document order.
 /// Unlike the original implementation, this does NOT check the content threshold —
@@ -765,13 +781,34 @@ fn find_first_match(
     path: &mut Vec<usize>,
 ) -> bool {
     for (i, node) in nodes.iter().enumerate() {
-        if let DomNode::Element { tag, attrs, children, .. } = node
+        if let DomNode::Element {
+            tag,
+            attrs,
+            children,
+            ..
+        } = node
             && matches!(tag.as_str(), "article" | "div" | "main" | "section")
         {
-            let cv = attrs.iter().find(|(k, _)| k == "class").map(|(_, v)| v.as_str()).unwrap_or("");
-            let iv = attrs.iter().find(|(k, _)| k == "id").map(|(_, v)| v.as_str()).unwrap_or("");
-            let rv = attrs.iter().find(|(k, _)| k == "role").map(|(_, v)| v.as_str()).unwrap_or("");
-            let ipv = attrs.iter().find(|(k, _)| k == "itemprop").map(|(_, v)| v.as_str()).unwrap_or("");
+            let cv = attrs
+                .iter()
+                .find(|(k, _)| k == "class")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+            let iv = attrs
+                .iter()
+                .find(|(k, _)| k == "id")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+            let rv = attrs
+                .iter()
+                .find(|(k, _)| k == "role")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+            let ipv = attrs
+                .iter()
+                .find(|(k, _)| k == "itemprop")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
             if check(tag.as_str(), cv, iv, rv, ipv) {
                 path.push(i);
                 return true;
@@ -807,13 +844,34 @@ fn find_all_matches(
 ) {
     for (i, node) in nodes.iter().enumerate() {
         current_path.push(i);
-        if let DomNode::Element { tag, attrs, children, .. } = node
+        if let DomNode::Element {
+            tag,
+            attrs,
+            children,
+            ..
+        } = node
             && matches!(tag.as_str(), "article" | "div" | "main" | "section")
         {
-            let cv = attrs.iter().find(|(k, _)| k == "class").map(|(_, v)| v.as_str()).unwrap_or("");
-            let iv = attrs.iter().find(|(k, _)| k == "id").map(|(_, v)| v.as_str()).unwrap_or("");
-            let rv = attrs.iter().find(|(k, _)| k == "role").map(|(_, v)| v.as_str()).unwrap_or("");
-            let ipv = attrs.iter().find(|(k, _)| k == "itemprop").map(|(_, v)| v.as_str()).unwrap_or("");
+            let cv = attrs
+                .iter()
+                .find(|(k, _)| k == "class")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+            let iv = attrs
+                .iter()
+                .find(|(k, _)| k == "id")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+            let rv = attrs
+                .iter()
+                .find(|(k, _)| k == "role")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
+            let ipv = attrs
+                .iter()
+                .find(|(k, _)| k == "itemprop")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("");
             if check(tag.as_str(), cv, iv, rv, ipv) {
                 results.push(current_path.clone());
             }
@@ -830,7 +888,9 @@ fn apply_path(nodes: &mut Vec<DomNode>, path: &[usize]) {
     // from the root down to the parent of the matched container.
     // At the deepest level (path.len() == 1): remove siblings of the matched container.
     // At intermediate levels: remove siblings of the path container.
-    if path.is_empty() { return; }
+    if path.is_empty() {
+        return;
+    }
     let idx = path[0];
     if path.len() == 1 {
         let matched = nodes.remove(idx);
@@ -964,14 +1024,33 @@ pub fn tf_filter_tag_catalog(node: &mut DomNode) -> WalkerAction {
             // Tags in TAG_CATALOG — allowed
             if matches!(
                 tag.as_str(),
-                "blockquote" | "code" | "del" | "head" | "hi" | "lb" | "list" | "p" | "pre" | "quote"
+                "blockquote"
+                    | "code"
+                    | "del"
+                    | "head"
+                    | "hi"
+                    | "lb"
+                    | "list"
+                    | "p"
+                    | "pre"
+                    | "quote"
             ) {
                 return WalkerAction::Continue;
             }
             // Additional preserved tags (converted or structural)
             if matches!(
                 tag.as_str(),
-                "item" | "ref" | "graphic" | "html" | "body" | "table" | "tr" | "td" | "th" | "row" | "cell"
+                "item"
+                    | "ref"
+                    | "graphic"
+                    | "html"
+                    | "body"
+                    | "table"
+                    | "tr"
+                    | "td"
+                    | "th"
+                    | "row"
+                    | "cell"
             ) {
                 return WalkerAction::Continue;
             }
@@ -1013,7 +1092,10 @@ pub fn tf_filter_tag_catalog(node: &mut DomNode) -> WalkerAction {
 pub fn tf_discard_image_elements(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. }
-            if matches!(tag.as_str(), "div" | "p" | "section" | "span" | "item" | "list") =>
+            if matches!(
+                tag.as_str(),
+                "div" | "p" | "section" | "span" | "item" | "list"
+            ) =>
         {
             let has_caption = attrs.iter().any(|(key, val)| {
                 matches!(key.as_str(), "class" | "id")
@@ -1035,8 +1117,6 @@ pub fn tf_discard_image_elements(node: &mut DomNode) -> WalkerAction {
 #[cfg(feature = "use-xpath")]
 use crate::pipelines::dom_xpath::XPath;
 
-
-
 /// Remove teaser elements using XPath (use-xpath feature).
 ///
 /// Pre: DOM tree is fully parsed, cleaned tags already removed.
@@ -1045,15 +1125,21 @@ use crate::pipelines::dom_xpath::XPath;
 #[cfg(feature = "use-xpath")]
 pub fn tf_remove_teaser_xpath(node: &mut DomNode) -> WalkerAction {
     match node {
-        DomNode::Element { tag, .. } if matches!(
-            tag.as_str(),
-            "div" | "item" | "list" | "p" | "section" | "span"
-        ) => {
-            let has_teaser = node.attr("class").or(node.attr("id")).map_or(false, |v| {
-                v.to_ascii_lowercase().contains("teaser")
-            });
+        DomNode::Element { tag, .. }
+            if matches!(
+                tag.as_str(),
+                "div" | "item" | "list" | "p" | "section" | "span"
+            ) =>
+        {
+            let has_teaser = node
+                .attr("class")
+                .or(node.attr("id"))
+                .map_or(false, |v| v.to_ascii_lowercase().contains("teaser"));
             // Protect content containers: skip removal if id matches article content patterns
-            let is_content = node.attr("id").or(node.attr("class")).map_or(false, |v| BODY_XPATH_PATTERN_0_RE.is_match(v));
+            let is_content = node
+                .attr("id")
+                .or(node.attr("class"))
+                .map_or(false, |v| BODY_XPATH_PATTERN_0_RE.is_match(v));
             if has_teaser && !is_content {
                 WalkerAction::Remove
             } else {
@@ -1170,7 +1256,6 @@ pub fn tf_remove_unlikely_candidates_xpath(node: &mut DomNode) -> WalkerAction {
     }
 }
 
-
 /// Discard image elements using direct attribute checks (use-xpath feature).
 ///
 /// Uses the same attribute-checking logic as the manual `tf_discard_image_elements`
@@ -1183,7 +1268,10 @@ pub fn tf_remove_unlikely_candidates_xpath(node: &mut DomNode) -> WalkerAction {
 pub fn tf_discard_image_elements_xpath(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. }
-            if matches!(tag.as_str(), "div" | "p" | "section" | "span" | "item" | "list") =>
+            if matches!(
+                tag.as_str(),
+                "div" | "p" | "section" | "span" | "item" | "list"
+            ) =>
         {
             let has_caption = attrs.iter().any(|(key, val)| {
                 matches!(key.as_str(), "class" | "id")
@@ -1198,7 +1286,6 @@ pub fn tf_discard_image_elements_xpath(node: &mut DomNode) -> WalkerAction {
         _ => WalkerAction::Continue,
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // BODY_XPATH container isolation (Phase 3) — gated behind use-xpath feature
@@ -1238,7 +1325,6 @@ static BODY_XPATH_3: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|
 static BODY_XPATH_4: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|| {
     XPath::compile("(.//*[self::article or self::div or self::section][starts-with(@class, 'main') or starts-with(@id, 'main') or starts-with(@role, 'main')])[1]|(.//main)[1]").expect("BODY_XPATH_4: hardcoded expression must compile")
 });
-
 
 /// Isolate content container using XPath BODY_XPATH patterns (use-xpath feature).
 ///
@@ -1287,8 +1373,6 @@ pub fn tf_isolate_content_container_xpath(node: &mut DomNode) {
         }
     }
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Tests

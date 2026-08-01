@@ -36,11 +36,10 @@ use delulu_webfetch::pipelines::trafilatura::filter_trafilatura;
 #[path = "test_utils.rs"]
 mod test_utils;
 
-
 use test_utils::{
-    classify_output, compute_confusion_matrix, detect_backup_restore,
+    Classification, classify_output, compute_confusion_matrix, detect_backup_restore,
     detect_body_xpath_pattern, detect_retry_level, first_diff_position, fixture_dir,
-    normalize_output, tf_count_text_chars, Classification,
+    normalize_output, tf_count_text_chars,
 };
 
 #[cfg(feature = "diagnostic")]
@@ -172,22 +171,32 @@ fn run_batch(fixtures_arg: &Option<PathBuf>) {
     // Print padded header
     println!(
         "{name:width$}  {output:>10}  {expected:>10}  {ratio:>6}  {class:class_width$}  {prec:>7}  {rec:>7}  {f1:>7}  truncated  dup_chars",
-        name = "fixture", width = max_name_len,
-        output = "output_len", expected = "expected_len",
+        name = "fixture",
+        width = max_name_len,
+        output = "output_len",
+        expected = "expected_len",
         ratio = "ratio",
-        class = "classification", class_width = max_class_len,
-        prec = "precision", rec = "recall", f1 = "f1",
+        class = "classification",
+        class_width = max_class_len,
+        prec = "precision",
+        rec = "recall",
+        f1 = "f1",
     );
 
     for r in &results {
         let cl = format!("{}", r.classification);
         println!(
             "{name:width$}  {output:>10}  {expected:>10}  {ratio:>6.4}  {class:class_width$}  {prec:>7.4}  {rec:>7.4}  {f1:>7.4}  {trunc}  {dup}",
-            name = r.name, width = max_name_len,
-            output = r.output_len, expected = r.expected_len,
+            name = r.name,
+            width = max_name_len,
+            output = r.output_len,
+            expected = r.expected_len,
             ratio = r.ratio,
-            class = cl, class_width = max_class_len,
-            prec = r.precision, rec = r.recall, f1 = r.f1,
+            class = cl,
+            class_width = max_class_len,
+            prec = r.precision,
+            rec = r.recall,
+            f1 = r.f1,
             trunc = if r.truncated { "true" } else { "false" },
             dup = r.dup_chars,
         );
@@ -361,11 +370,19 @@ fn run_deep_dive(case_name: &str, fixtures_arg: &Option<PathBuf>) {
     {
         let pattern = detect_body_xpath_pattern(&source_html);
         match pattern {
-            Some(0) => eprintln!("    Match: Pattern 0 (specific class/id selectors) — strong signal"),
-            Some(1) => eprintln!("    Match: Pattern 1 (bare <article>/<main> tag) — moderate signal"),
+            Some(0) => {
+                eprintln!("    Match: Pattern 0 (specific class/id selectors) — strong signal")
+            }
+            Some(1) => {
+                eprintln!("    Match: Pattern 1 (bare <article>/<main> tag) — moderate signal")
+            }
             Some(2) => eprintln!("    Match: Pattern 2 (content class/id) — moderate signal"),
-            Some(3) => eprintln!("    Match: Pattern 3 (starts-with 'main') — weak signal, page may have unusual structure"),
-            None => eprintln!("    No container isolated — page structure may not match Trafilatura expectations"),
+            Some(3) => eprintln!(
+                "    Match: Pattern 3 (starts-with 'main') — weak signal, page may have unusual structure"
+            ),
+            None => eprintln!(
+                "    No container isolated — page structure may not match Trafilatura expectations"
+            ),
             _ => eprintln!("    Unexpected pattern index: {:?}", pattern),
         }
     }
@@ -379,8 +396,12 @@ fn run_deep_dive(case_name: &str, fixtures_arg: &Option<PathBuf>) {
     {
         let level = detect_retry_level(&source_html);
         match level {
-            0 => eprintln!("    Level: Balanced (standard filtering) — page content extracted normally"),
-            1 => eprintln!("    Level: Recall (relaxed filtering) — Balanced was too aggressive (<500 chars)"),
+            0 => eprintln!(
+                "    Level: Balanced (standard filtering) — page content extracted normally"
+            ),
+            1 => eprintln!(
+                "    Level: Recall (relaxed filtering) — Balanced was too aggressive (<500 chars)"
+            ),
             _ => eprintln!("    Level: unknown ({level})"),
         }
     }

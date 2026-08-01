@@ -83,12 +83,17 @@ impl DomNode {
         match self {
             DomNode::Text(t) => t.len(),
             DomNode::Element { tag, children, .. }
-                if matches!(tag.as_str(),
+                if matches!(
+                    tag.as_str(),
                     "script" | "style" | "svg" | "canvas" | "template" | "noscript"
-                ) => 0,
-            DomNode::Element { children, .. } => {
-                children.iter().map(|c| c.visible_text_len_inner(depth - 1)).sum()
+                ) =>
+            {
+                0
             }
+            DomNode::Element { children, .. } => children
+                .iter()
+                .map(|c| c.visible_text_len_inner(depth - 1))
+                .sum(),
             DomNode::Comment(_) | DomNode::Doctype(_) => 0,
         }
     }
@@ -109,9 +114,10 @@ impl DomNode {
             DomNode::Element { tag, children, .. } if tag == "a" => {
                 children.iter().map(|c| c.text_len_inner(depth - 1)).sum()
             }
-            DomNode::Element { children, .. } => {
-                children.iter().map(|c| c.link_text_len_inner(depth - 1)).sum()
-            }
+            DomNode::Element { children, .. } => children
+                .iter()
+                .map(|c| c.link_text_len_inner(depth - 1))
+                .sum(),
             DomNode::Comment(_) | DomNode::Doctype(_) => 0,
         }
     }
@@ -126,7 +132,8 @@ impl DomNode {
     /// Panic-if: Never panics (infallible).
     pub fn text_stats(&self) -> (usize, usize) {
         #[cfg(test)]
-        crate::pipelines::TEXT_STATS_TRAVERSAL_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        crate::pipelines::TEXT_STATS_TRAVERSAL_COUNT
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.text_stats_inner(false, MAX_DEPTH)
     }
 
@@ -164,7 +171,8 @@ impl DomNode {
     /// Panic-if: Never panics (infallible).
     pub fn link_density_stats(&self) -> (usize, usize) {
         #[cfg(test)]
-        crate::pipelines::LINK_DENSITY_STATS_TRAVERSAL_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        crate::pipelines::LINK_DENSITY_STATS_TRAVERSAL_COUNT
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.link_density_stats_inner(false, MAX_DEPTH)
     }
 
@@ -201,9 +209,10 @@ impl DomNode {
     /// Returns `None` if the node is not an Element or the attribute doesn't exist.
     pub fn attr(&self, name: &str) -> Option<&str> {
         match self {
-            DomNode::Element { attrs, .. } => {
-                attrs.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
-            }
+            DomNode::Element { attrs, .. } => attrs
+                .iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.as_str()),
             _ => None,
         }
     }
@@ -255,7 +264,10 @@ impl DomNode {
     /// Post: Returns matching nodes in document order.
     #[cfg(test)]
     #[cfg(feature = "use-xpath")]
-    pub fn xpath(&self, expr: &str) -> Result<Vec<&DomNode>, crate::pipelines::dom_xpath::XPathError> {
+    pub fn xpath(
+        &self,
+        expr: &str,
+    ) -> Result<Vec<&DomNode>, crate::pipelines::dom_xpath::XPathError> {
         use crate::pipelines::dom_xpath::XPath;
         let compiled = XPath::compile(expr)?;
         compiled.eval(self)

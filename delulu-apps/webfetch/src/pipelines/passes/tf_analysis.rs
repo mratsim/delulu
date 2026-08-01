@@ -13,9 +13,8 @@ use crate::pipelines::DomNode;
 
 // Regex for detecting any HTML tag in a string (case-insensitive).
 // Used by `extract_jsonld_article_body` to determine if articleBody contains HTML markup.
-static HTML_TAG_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?i)<[a-z][a-z0-9]*\b[^>]*>"#).expect("invalid HTML_TAG_RE")
-});
+static HTML_TAG_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)<[a-z][a-z0-9]*\b[^>]*>"#).expect("invalid HTML_TAG_RE"));
 
 /// Extract `articleBody` from JSON-LD scripts in the DOM tree.
 /// Returns `None` if no JSON-LD script with `articleBody` is found.
@@ -30,14 +29,21 @@ static HTML_TAG_RE: Lazy<Regex> = Lazy::new(|| {
 pub(crate) fn extract_jsonld_article_body(node: &DomNode) -> Option<String> {
     match node {
         DomNode::Text(_) => None,
-        DomNode::Element { tag, attrs, children, .. } if tag == "script" => {
+        DomNode::Element {
+            tag,
+            attrs,
+            children,
+            ..
+        } if tag == "script" => {
             // Check if type attribute is exactly "application/ld+json"
-            let is_jsonld = attrs.iter().any(|(k, v)| {
-                k.eq_ignore_ascii_case("type")
-                    && v == "application/ld+json"
-            });
+            let is_jsonld = attrs
+                .iter()
+                .any(|(k, v)| k.eq_ignore_ascii_case("type") && v == "application/ld+json");
             if is_jsonld {
-                let text = children.iter().map(DomNode::text_content).collect::<String>();
+                let text = children
+                    .iter()
+                    .map(DomNode::text_content)
+                    .collect::<String>();
                 if text.contains("articleBody") {
                     match serde_json::from_str::<serde_json::Value>(&text) {
                         Ok(val) => {
@@ -47,7 +53,12 @@ pub(crate) fn extract_jsonld_article_body(node: &DomNode) -> Option<String> {
                                 if trimmed.len() >= 100 {
                                     let text = if HTML_TAG_RE.is_match(trimmed) {
                                         let fragment = scraper::Html::parse_fragment(trimmed);
-                                        fragment.root_element().text().collect::<String>().trim().to_string()
+                                        fragment
+                                            .root_element()
+                                            .text()
+                                            .collect::<String>()
+                                            .trim()
+                                            .to_string()
                                     } else {
                                         trimmed.to_string()
                                     };
@@ -83,7 +94,6 @@ pub(crate) fn extract_jsonld_article_body(node: &DomNode) -> Option<String> {
         _ => None,
     }
 }
-
 
 /// Count non-whitespace text characters in a DOM tree recursively.
 /// This gives a better estimate of actual useful content than raw text length,

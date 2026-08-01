@@ -272,20 +272,22 @@ fn test_dom_nodes_to_html() {
 
 #[test]
 fn test_collect_text() {
-    let nodes = [DomNode::Text("Hello ".into()),
+    let nodes = [
+        DomNode::Text("Hello ".into()),
         DomNode::Element {
             tag: "b".into(),
             attrs: vec![],
             children: vec![DomNode::Text("World".into())],
             scores: std::collections::HashMap::new(),
             metadata: std::collections::HashMap::new(),
-        }];
+        },
+    ];
     let text: String = nodes.iter().map(|n| n.text_content()).collect();
     assert_eq!(text, "Hello World");
 }
 
 #[test]
-    fn test_get_attr() {
+fn test_get_attr() {
     let node = DomNode::Element {
         tag: "a".to_string(),
         attrs: vec![

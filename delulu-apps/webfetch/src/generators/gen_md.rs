@@ -8,25 +8,30 @@ const MAX_OUTPUT_SIZE: usize = 500 * 1024; // 500 KiB
 // Helpers
 // ---------------------------------------------------------------------------
 
-
 /// Extract the code language and content from a <pre><code> block.
 fn extract_code_block(nodes: &[DomNode]) -> (String, String) {
     for node in nodes {
-        if let DomNode::Element {
-            tag,
-            children,
-            ..
-        } = node
+        if let DomNode::Element { tag, children, .. } = node
             && tag == "code"
         {
-            let language = node.attr("class")
+            let language = node
+                .attr("class")
                 .and_then(|c| c.strip_prefix("language-"))
                 .unwrap_or_default()
                 .to_string();
-            return (language, children.iter().map(|c| c.text_content()).collect::<String>());
+            return (
+                language,
+                children
+                    .iter()
+                    .map(|c| c.text_content())
+                    .collect::<String>(),
+            );
         }
     }
-    (String::new(), nodes.iter().map(|c| c.text_content()).collect::<String>())
+    (
+        String::new(),
+        nodes.iter().map(|c| c.text_content()).collect::<String>(),
+    )
 }
 
 /// Collect rows from a <table> element.
@@ -76,12 +81,7 @@ fn collect_cells(nodes: &[DomNode]) -> Vec<DomNode> {
 /// Check if a table element has colspan, rowspan, or block content in any cell.
 /// Such tables cannot be represented as GFM pipe tables and must be emitted as raw HTML.
 fn table_is_complex(node: &DomNode) -> bool {
-    if let DomNode::Element {
-        tag,
-        children,
-        ..
-    } = node
-    {
+    if let DomNode::Element { tag, children, .. } = node {
         if tag == "td" || tag == "th" {
             // Check for colspan/rowspan
             if let Some(v) = node.attr("colspan")
@@ -295,12 +295,7 @@ impl MarkdownLowerer {
     /// Lower an element node.
     #[allow(clippy::too_many_lines)]
     fn lower_element(node: &DomNode, base_url: Option<&str>, out: &mut String, indent: usize) {
-        let DomNode::Element {
-            tag,
-            children,
-            ..
-        } = node
-        else {
+        let DomNode::Element { tag, children, .. } = node else {
             return;
         };
         match tag.as_str() {
@@ -308,7 +303,10 @@ impl MarkdownLowerer {
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 let level = tag[1..].parse::<usize>().unwrap_or(1);
                 let prefix = "#".repeat(level);
-                let text = children.iter().map(|c| c.text_content()).collect::<String>();
+                let text = children
+                    .iter()
+                    .map(|c| c.text_content())
+                    .collect::<String>();
                 out.push_str(&prefix);
                 out.push(' ');
                 out.push_str(&text);
@@ -415,7 +413,10 @@ impl MarkdownLowerer {
 
             // ── Inline code ────────────────────────────────────────────
             "code" => {
-                let text = children.iter().map(|c| c.text_content()).collect::<String>();
+                let text = children
+                    .iter()
+                    .map(|c| c.text_content())
+                    .collect::<String>();
                 out.push('`');
                 out.push_str(&text);
                 out.push('`');
@@ -429,7 +430,10 @@ impl MarkdownLowerer {
                     out.push_str(&latex);
                 } else {
                     // Fallback: render text content
-                    let text = children.iter().map(|c| c.text_content()).collect::<String>();
+                    let text = children
+                        .iter()
+                        .map(|c| c.text_content())
+                        .collect::<String>();
                     out.push_str(&text);
                 }
             }
@@ -563,7 +567,7 @@ impl MarkdownLowerer {
 
         if md_rows.is_empty() {
             return;
-       }
+        }
 
         // Determine column count
         let col_count = md_rows.iter().map(|r| r.len()).max().unwrap_or(0);

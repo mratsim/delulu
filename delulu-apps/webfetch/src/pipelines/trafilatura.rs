@@ -5,27 +5,17 @@ use std::collections::HashSet;
 use crate::pipelines::walkers::PassFn;
 use crate::pipelines::{DomNode, WalkerAction, walk_post_mut, walk_pre_mut};
 
-use super::passes::tf_analysis::{
-    count_non_ws_chars,
-    extract_jsonld_article_body,
-};
+use super::passes::tf_analysis::{count_non_ws_chars, extract_jsonld_article_body};
 use super::passes::tf_filters::{
-    collect_p_elements,
-    tf_extract_script_templates, tf_fallback_content_container, tf_filter_by_link_density,
-    tf_filter_tag_catalog, tf_isolate_content_container,
-    tf_remove_cleaned, tf_remove_empty_cut, tf_remove_teaser,
-    tf_strip_unwrapped,
+    collect_p_elements, tf_extract_script_templates, tf_fallback_content_container,
+    tf_filter_by_link_density, tf_filter_tag_catalog, tf_isolate_content_container,
+    tf_remove_cleaned, tf_remove_empty_cut, tf_remove_teaser, tf_strip_unwrapped,
 };
 #[cfg(not(feature = "use-xpath"))]
-use super::passes::tf_filters::{
-    tf_discard_image_elements,
-    tf_remove_unlikely_candidates,
-};
+use super::passes::tf_filters::{tf_discard_image_elements, tf_remove_unlikely_candidates};
 #[cfg(feature = "use-xpath")]
 use super::passes::tf_filters::{
-    tf_discard_image_elements_xpath,
-    tf_isolate_content_container_xpath,
-    tf_remove_teaser_xpath,
+    tf_discard_image_elements_xpath, tf_isolate_content_container_xpath, tf_remove_teaser_xpath,
     tf_remove_unlikely_candidates_xpath,
 };
 use super::passes::tf_transforms::{
@@ -65,7 +55,12 @@ macro_rules! wrap_pass {
 #[macro_export]
 macro_rules! wrap_pass_void {
     ($f:expr) => {
-        (|node| walk_pre_mut(node, &|n| { $f(n); WalkerAction::Continue })) as fn(&mut DomNode)
+        (|node| {
+            walk_pre_mut(node, &|n| {
+                $f(n);
+                WalkerAction::Continue
+            })
+        }) as fn(&mut DomNode)
     };
 }
 
@@ -142,7 +137,6 @@ macro_rules! with_backup_wrapper {
         }
     };
 }
-
 
 /// Remove unlikely candidates with backup/restore safety net.
 ///
@@ -394,14 +388,16 @@ fn recover_wild_paragraphs(best_tree: &mut DomNode, original: &DomNode, min_p_le
     // Apply cleaning passes to remove boilerplate
     walk_pre_mut(&mut recovery_tree, &|n| tf_remove_teaser(n));
     // Also remove script, style, svg, template, iframe, canvas
-    walk_pre_mut(&mut recovery_tree, &|n| {
-        match n {
-            DomNode::Element { tag, .. } if matches!(
+    walk_pre_mut(&mut recovery_tree, &|n| match n {
+        DomNode::Element { tag, .. }
+            if matches!(
                 tag.as_str(),
                 "script" | "style" | "svg" | "template" | "iframe" | "canvas"
-            ) => WalkerAction::Remove,
-            _ => WalkerAction::Continue,
+            ) =>
+        {
+            WalkerAction::Remove
         }
+        _ => WalkerAction::Continue,
     });
     // Collect <p> elements from the cleaned tree (boilerplate already removed)
     let mut recovered_ps: Vec<DomNode> = Vec::new();
@@ -421,7 +417,10 @@ fn recover_wild_paragraphs(best_tree: &mut DomNode, original: &DomNode, min_p_le
         for p_node in &recovered_ps {
             let p_text = p_node.text_content();
             let trimmed = p_text.trim();
-            if trimmed.len() >= min_p_len && !trimmed.is_empty() && paragraph_set.insert(p_text.clone()) {
+            if trimmed.len() >= min_p_len
+                && !trimmed.is_empty()
+                && paragraph_set.insert(p_text.clone())
+            {
                 children.push(p_node.clone());
                 appended += 1;
             }
@@ -504,7 +503,10 @@ pub fn filter_trafilatura(node: &mut DomNode) {
                 100
             );
         } else {
-            tracing::debug!("recover_wild_text (filtered): no improvement ({} chars)", best_len);
+            tracing::debug!(
+                "recover_wild_text (filtered): no improvement ({} chars)",
+                best_len
+            );
         }
     }
 
@@ -562,7 +564,6 @@ pub fn filter_trafilatura(node: &mut DomNode) {
         *node = best_tree;
     }
 }
-
 
 #[cfg(test)]
 #[path = "../../tests/unit/pipelines/trafilatura_test.rs"]

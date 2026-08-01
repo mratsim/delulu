@@ -561,7 +561,10 @@ fn find_first_heading(node: &DomNode, tag: &str) -> Option<String> {
         DomNode::Element {
             tag: t, children, ..
         } if t == tag => {
-            let text = children.iter().map(|c| c.text_content()).collect::<String>();
+            let text = children
+                .iter()
+                .map(|c| c.text_content())
+                .collect::<String>();
             let trimmed = text.trim().to_string();
             if !trimmed.is_empty() {
                 return Some(trimmed);
@@ -578,7 +581,6 @@ fn find_first_heading(node: &DomNode, tag: &str) -> Option<String> {
     }
     None
 }
-
 
 // ---------------------------------------------------------------------------
 // Tests

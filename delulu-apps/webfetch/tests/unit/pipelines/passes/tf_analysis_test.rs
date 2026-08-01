@@ -41,8 +41,7 @@ fn test_extract_jsonld_unicode_malformed_no_panic_chinese() {
         unicode_payload
     );
     let root = parse_html(&html).unwrap();
-    let result =
-        crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
+    let result = crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
     assert!(
         result.is_none(),
         "malformed JSON-LD with multi-byte Chinese should return None (not panic)"
@@ -79,8 +78,7 @@ fn test_extract_jsonld_unicode_malformed_no_panic_emoji() {
         unicode_payload
     );
     let root = parse_html(&html).unwrap();
-    let result =
-        crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
+    let result = crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
     assert!(
         result.is_none(),
         "malformed JSON-LD with emoji should return None (not panic)"
@@ -116,8 +114,7 @@ fn test_extract_jsonld_unicode_malformed_no_panic_accented() {
         unicode_payload
     );
     let root = parse_html(&html).unwrap();
-    let result =
-        crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
+    let result = crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
     assert!(
         result.is_none(),
         "malformed JSON-LD with accented chars should return None (not panic)"
@@ -153,8 +150,7 @@ fn test_extract_jsonld_unicode_malformed_no_panic_smart_quotes() {
         unicode_payload
     );
     let root = parse_html(&html).unwrap();
-    let result =
-        crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
+    let result = crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
     assert!(
         result.is_none(),
         "malformed JSON-LD with smart quotes should return None (not panic)"
@@ -174,8 +170,7 @@ fn test_extract_jsonld_ascii_malformed_returns_none() {
         malformed_json
     );
     let root = parse_html(&html).unwrap();
-    let result =
-        crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
+    let result = crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
     assert!(
         result.is_none(),
         "malformed JSON-LD should return None (not panic)"
@@ -195,8 +190,7 @@ fn test_extract_jsonld_valid_article_body_returns_some() {
         valid_json
     );
     let root = parse_html(&html).unwrap();
-    let result =
-        crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
+    let result = crate::pipelines::passes::tf_analysis::extract_jsonld_article_body(&root);
     assert!(
         result.is_some(),
         "valid JSON-LD with articleBody should return Some"

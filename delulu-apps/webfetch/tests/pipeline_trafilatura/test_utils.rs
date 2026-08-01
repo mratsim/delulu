@@ -44,8 +44,7 @@ pub fn try_decompress_zst(path: &std::path::Path) -> Result<String, String> {
         std::fs::read(path).map_err(|e| format!("failed to read '{}': {e}", path.display()))?;
     let decoded = zstd::decode_all(&compressed[..])
         .map_err(|e| format!("failed to decompress '{}': {e}", path.display()))?;
-    String::from_utf8(decoded)
-        .map_err(|e| format!("invalid UTF-8 in '{}': {e}", path.display()))
+    String::from_utf8(decoded).map_err(|e| format!("invalid UTF-8 in '{}': {e}", path.display()))
 }
 
 /// Decompress a zstd-compressed file into a `String`.
@@ -55,8 +54,7 @@ pub fn try_decompress_zst(path: &std::path::Path) -> Result<String, String> {
 /// - If the file cannot be read
 /// - If the decompressed bytes are not valid UTF-8
 pub fn decompress_zst(path: &std::path::Path) -> String {
-    try_decompress_zst(path)
-        .unwrap_or_else(|e| panic!("{e}"))
+    try_decompress_zst(path).unwrap_or_else(|e| panic!("{e}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -271,14 +269,17 @@ pub fn load_test_case_tf(name: &str) -> (DomNode, String, Option<Annotations>) {
     let root = parse_html(&source_html)
         .unwrap_or_else(|e| panic!("Failed to parse HTML for '{name}': {e}"));
 
-    let annotations = if annotations_path.exists() {
-        let content = try_decompress_zst(&annotations_path)
-            .unwrap_or_else(|e| panic!("Failed to decompress annotations.json.zst for '{name}': {e}"));
-        Some(serde_json::from_str(&content)
-            .unwrap_or_else(|e| panic!("Failed to parse annotations.json.zst for '{name}': {e}")))
-    } else {
-        None
-    };
+    let annotations =
+        if annotations_path.exists() {
+            let content = try_decompress_zst(&annotations_path).unwrap_or_else(|e| {
+                panic!("Failed to decompress annotations.json.zst for '{name}': {e}")
+            });
+            Some(serde_json::from_str(&content).unwrap_or_else(|e| {
+                panic!("Failed to parse annotations.json.zst for '{name}': {e}")
+            }))
+        } else {
+            None
+        };
 
     (root, expected_md, annotations)
 }
@@ -328,7 +329,6 @@ pub fn normalize_output(text: &str) -> String {
     result.trim().to_string()
 }
 
-
 /// Find the first character position where two strings differ,
 /// with surrounding context window.
 /// Returns `(pos, context_before, context_after)` where pos is the
@@ -353,7 +353,11 @@ pub fn first_diff_position(a: &str, b: &str) -> Option<(usize, String, String)> 
         let pos = min_len;
         let ctx_start = pos.saturating_sub(40);
         let ctx_end = (pos + 40).min(a_chars.len().max(b_chars.len()));
-        let longer = if a_chars.len() > b_chars.len() { &a_chars } else { &b_chars };
+        let longer = if a_chars.len() > b_chars.len() {
+            &a_chars
+        } else {
+            &b_chars
+        };
         let before: String = longer[ctx_start..pos].iter().collect();
         let after: String = longer[pos..ctx_end].iter().collect();
         return Some((pos, before, after));
@@ -400,11 +404,11 @@ pub fn first_diff_position(a: &str, b: &str) -> Option<(usize, String, String)> 
 /// - `items_removed_count`: how many elements `tf_remove_unlikely_candidates`
 ///    removed (before any restore) — 0 means nothing matched
 pub fn detect_backup_restore(html: &str) -> (bool, u32) {
-    use delulu_webfetch::pipelines::walk_pre_mut;
     #[cfg(not(feature = "use-xpath"))]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_unlikely_candidates;
     #[cfg(feature = "use-xpath")]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_unlikely_candidates_xpath as tf_remove_unlikely_candidates;
+    use delulu_webfetch::pipelines::walk_pre_mut;
 
     let root = parse_html(html).expect("parse_html failed");
     let original_len = tf_count_text_chars(&root);
@@ -438,9 +442,7 @@ pub fn detect_backup_restore(html: &str) -> (bool, u32) {
 /// Count element nodes in a DOM tree (recursive).
 fn count_elements(node: &DomNode) -> u32 {
     match node {
-        DomNode::Element { children, .. } => {
-            1 + children.iter().map(count_elements).sum::<u32>()
-        }
+        DomNode::Element { children, .. } => 1 + children.iter().map(count_elements).sum::<u32>(),
         _ => 0,
     }
 }
@@ -486,7 +488,12 @@ pub fn detect_body_xpath_pattern(html: &str) -> Option<usize> {
 /// surviving container after `tf_isolate_content_container`.
 fn find_matching_pattern(node: &DomNode) -> Option<usize> {
     match node {
-        DomNode::Element { tag, attrs, children, .. } => {
+        DomNode::Element {
+            tag,
+            attrs,
+            children,
+            ..
+        } => {
             let class_val = get_attr(attrs, "class").unwrap_or("");
             let id_val = get_attr(attrs, "id").unwrap_or("");
             let role_val = get_attr(attrs, "role").unwrap_or("");
@@ -497,8 +504,7 @@ fn find_matching_pattern(node: &DomNode) -> Option<usize> {
                 || id_val == "articleContent"
                 || matches!(
                     class_val,
-                    "post" | "entry" | "text" | "cell" | "story" | "postarea"
-                        | "art-postcontent"
+                    "post" | "entry" | "text" | "cell" | "story" | "postarea" | "art-postcontent"
                 )
                 || role_val == "article"
             {
@@ -511,9 +517,7 @@ fn find_matching_pattern(node: &DomNode) -> Option<usize> {
             }
 
             // Pattern 2: content class/id (reduced — "content" and P2_RE moved to Pattern 3)
-            if class_val.contains("main-content")
-                || class_val.contains("page-content")
-            {
+            if class_val.contains("main-content") || class_val.contains("page-content") {
                 return Some(2);
             }
 
@@ -552,7 +556,8 @@ fn find_matching_pattern(node: &DomNode) -> Option<usize> {
 
 /// Get an attribute value by name from an attribute list.
 fn get_attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
-    attrs.iter()
+    attrs
+        .iter()
         .find(|(k, _)| k == name)
         .map(|(_, v)| v.as_str())
 }
@@ -588,11 +593,7 @@ pub fn detect_retry_level(html: &str) -> usize {
     filter_trafilatura(&mut full_tree);
     let full_len = tf_count_text_chars(&full_tree);
 
-    if full_len > balanced_len {
-        1
-    } else {
-        0
-    }
+    if full_len > balanced_len { 1 } else { 0 }
 }
 
 // ---------------------------------------------------------------------------
@@ -609,8 +610,8 @@ pub fn detect_retry_level(html: &str) -> usize {
 /// `(pass_name, duration)` pairs. Only available with the `diagnostic` feature.
 #[cfg(feature = "diagnostic")]
 pub fn time_passes(html: &str) -> Vec<(String, std::time::Duration)> {
-    use std::time::Instant;
     use delulu_webfetch::pipelines::trafilatura::TF_BALANCED;
+    use std::time::Instant;
 
     let mut tree = parse_html(html).expect("parse_html failed");
     let mut timings = Vec::new();
@@ -648,8 +649,6 @@ pub fn run_passes_with_retry(
     levels: &[&[&dyn Fn(&mut DomNode)]],
     min_output_chars: usize,
 ) -> (DomNode, usize, usize) {
-    
-
     let original = parse_html(html).expect("parse_html failed");
     let mut best_tree = original.clone();
     let mut best_len = 0usize;
@@ -853,7 +852,10 @@ mod tests {
             }
             _ => panic!("expected DomNode::Element root"),
         }
-        assert!(!expected.is_empty(), "expected markdown should not be empty");
+        assert!(
+            !expected.is_empty(),
+            "expected markdown should not be empty"
+        );
         let ann = annotations.expect("fixture should have annotations.json.zst");
         assert!(!ann.with.is_empty(), "should have with[] annotations");
         assert!(!ann.without.is_empty(), "should have without[] annotations");
