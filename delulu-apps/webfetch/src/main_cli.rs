@@ -103,14 +103,15 @@ fn md_doc_to_string(result: ExtractionResult) -> String {
     match result {
         ExtractionResult::GenericHtml { content_md, .. } => {
             let mut out = String::new();
-            if !content_md.frontmatter.is_empty() {
-                out.push_str("---\n");
-                out.push_str(&content_md.frontmatter);
-                if !content_md.frontmatter.ends_with('\n') {
-                    out.push('\n');
-                }
-                out.push_str("---\n\n");
+            // Always emit a YAML frontmatter block so `date_of_retrieval`
+            // always has a home, even when the source produced an empty
+            // frontmatter string.
+            out.push_str("---\n");
+            out.push_str(&content_md.frontmatter);
+            if !content_md.frontmatter.is_empty() && !content_md.frontmatter.ends_with('\n') {
+                out.push('\n');
             }
+            out.push_str("---\n\n");
             out.push_str(&content_md.body);
             enrich_date_of_retrieval(&mut out, &now_iso);
             out
@@ -172,25 +173,38 @@ fn md_doc_to_string(result: ExtractionResult) -> String {
 }
 
 /// Replace `date_of_retrieval: N/A` with the actual ISO 8601 timestamp.
-/// If not present, appends it before the closing `---`.
+///
+/// Operates ONLY on the YAML frontmatter block at the top of the document.
+/// Guarantees the output always has a proper `---` frontmatter containing a
+/// `date_of_retrieval` field: if the document has no frontmatter, one is
+/// created; if the frontmatter lacks the field, it is inserted inside the
+/// block — never appended to the body and never spliced at an arbitrary
+/// `---` mid-document.
 fn enrich_date_of_retrieval(out: &mut String, now_iso: &str) {
-    let placeholder = "date_of_retrieval: N/A";
     let replacement = format!("date_of_retrieval: {}", now_iso);
-    if out.contains(placeholder) {
-        *out = out.replace(placeholder, &replacement);
-    } else if let Some(pos) = out.find("\n---") {
-        // Insert before the closing ---
-        out.insert_str(pos, &format!("\n{}", replacement));
-    } else {
-        // No placeholder and no `---` block to insert into (e.g. empty
-        // frontmatter). Append the field so date_of_retrieval is not
-        // silently dropped — ensure it sits on its own line.
-        if !out.is_empty() && !out.ends_with('\n') {
-            out.push('\n');
-        }
-        out.push_str(&replacement);
-        out.push('\n');
+
+    // The frontmatter block is at the very start: opening `---\n`, then its
+    // closing `\n---` (the first `---` delimiter). The body (and any
+    // `\n---` horizontal rules / fenced-code delimiters in it) only ever
+    // follows the closing delimiter, so the first `\n---` is the frontmatter's.
+    let fm_end = out.find("\n---").unwrap_or(out.len());
+    let fm_region = &out[..fm_end];
+
+    if fm_region.contains("date_of_retrieval:") {
+        // Field already present — only rewrite the exact `N/A` placeholder.
+        *out = out.replace("date_of_retrieval: N/A", &replacement);
+        return;
     }
+
+    if fm_region.starts_with("---") {
+        // Frontmatter exists but lacks the field: insert it inside the block,
+        // just before the closing `---` delimiter.
+        out.insert_str(fm_end, &format!("\n{}", replacement));
+        return;
+    }
+
+    // No frontmatter at all: create one that carries the field.
+    *out = format!("---\n{}\n---\n\n{}", replacement, out);
 }
 
 /// Format a reddit comment recursively into markdown.
@@ -436,9 +450,29 @@ mod tests {
         let mut out = "Just body text with no frontmatter".to_string();
         let now = "2026-01-15T10:00:00+00:00";
         enrich_date_of_retrieval(&mut out, now);
-        // No placeholder and no `---` delimiter — the field must be appended,
-        // not silently dropped.
+        // A `---` frontmatter must always be created, with the field inside it.
+        assert!(out.starts_with("---\n"));
         assert!(out.contains(&format!("date_of_retrieval: {}", now)));
+        // The body must not carry a stray date_of_retrieval line.
+        let body_start = out.find("Just body text").unwrap();
+        let body = &out[body_start..];
+        assert!(!body.contains("date_of_retrieval:"));
+        assert!(body.ends_with("text with no frontmatter"));
+    }
+
+    #[test]
+    fn test_enrich_date_of_retrieval_body_horizontal_rule_not_spliced() {
+        // A `\n---` in the BODY (horizontal rule / fenced code) must not be
+        // used as the frontmatter's closing delimiter.
+        let mut out = "Some intro.\n\n---\n\nMore text after a horizontal rule.".to_string();
+        let now = "2026-01-15T10:00:00+00:00";
+        enrich_date_of_retrieval(&mut out, now);
+        assert!(out.starts_with("---\n"));
+        assert!(out.contains(&format!("date_of_retrieval: {}", now)));
+        assert!(out.contains("\n\n---\n\nMore text after a horizontal rule."));
+        let body_start = out.find("Some intro.").unwrap();
+        let body = &out[body_start..];
+        assert!(!body.contains("date_of_retrieval:"));
     }
 
     #[test]

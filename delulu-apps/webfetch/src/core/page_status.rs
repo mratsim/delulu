@@ -79,16 +79,17 @@ pub enum PageStatus {
 
 /// The cause of a `PageStatus::Blocked` classification.
 ///
-/// Exactly four variants this release. `CloudflareTurnstile` doubles as the
-/// "unknown/unclassified" default catch-all: a future
-/// non-Cloudflare `BOT_DETECTION_PATTERNS` entry would be mislabeled here — a
-/// documented, latent time-bomb, not a live bug (all 6 current patterns are
-/// Cloudflare-family). Do not branch a Cloudflare-specific retry on it.
+/// Five variants this release. `Unknown` is the catch-all for unrecognized
+/// anti-bot patterns: a future non-Cloudflare `BOT_DETECTION_PATTERNS` entry
+/// (generic CAPTCHA, Anubis, etc.) that is not matched by a specific vendor
+/// check lands here instead of being mislabeled as a Cloudflare-specific cause.
+/// Do not branch a Cloudflare-specific retry on `Unknown`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BlockedBy {
-    /// Cloudflare-turnstile family (and the legacy "unknown/unclassified"
-    /// default catch-all for unrecognized `BOT_DETECTION_PATTERNS` matches).
+    /// Cloudflare-turnstile family (cf-turnstile, cf-browser-verification,
+    /// data-sitekey, challenge-platform, "just a moment...", and bare `turnstile`
+    /// anchored to Cloudflare context).
     CloudflareTurnstile,
     /// A CAPTCHA challenge (reCAPTCHA/hCaptcha).
     Captcha,
@@ -98,6 +99,9 @@ pub enum BlockedBy {
     /// interstitial). Approximation note: the marker set is also present in
     /// ordinary footer banners; the variant fires only when content is missing.
     CookieConsent,
+    /// Catch-all for unrecognized anti-bot patterns: `is_bot_detected` matched
+    /// but no specific vendor (Cloudflare/CAPTCHA/Anubis) check fired.
+    Unknown,
 }
 
 // ---------------------------------------------------------------------------
@@ -106,23 +110,25 @@ pub enum BlockedBy {
 
 /// Detect an anti-bot blocking cause from a raw HTML body.
 ///
-/// Returns one of the **three anti-bot** causes (`CloudflareTurnstile` /
-/// `Captcha` / `Anubis`) and **never** `CookieConsent` (consent is the separate
-/// concern of [`detect_cookie_consent`]). Reuses `BOT_DETECTION_PATTERNS` /
-/// `is_bot_detected` as the single source of truth and is a **superset** of it:
-/// for every input where `is_bot_detected(html)` is true, this returns
-/// `Some(...)`. Matching is case-insensitive and first-match-in-document wins.
+/// Returns one of the **four anti-bot** causes (`CloudflareTurnstile` /
+/// `Captcha` / `Anubis` / `Unknown`) and **never** `CookieConsent` (consent is
+/// the separate concern of [`detect_cookie_consent`]). Reuses
+/// `BOT_DETECTION_PATTERNS` / `is_bot_detected` as the single source of truth
+/// and is a **superset** of it: for every input where `is_bot_detected(html)`
+/// is true, this returns `Some(...)`. Matching is case-insensitive and
+/// first-match-in-document wins.
 ///
 /// Vendor classification order:
 /// 1. `Captcha` ← token-anchored `g-recaptcha`, `h-captcha`, `recaptcha`.
 /// 2. `CloudflareTurnstile` ← `cf-turnstile`, `cf-browser-verification`,
 ///    `cf-challenge`, `__cf_chl_opt`, `challenge-platform`, `data-sitekey`,
-///    bare `turnstile`, and `just a moment...` (the last group covers the
-///    legacy `BOT_DETECTION_PATTERNS` entries and must remain a superset).
+///    and `just a moment...`. Bare `turnstile` counts only when anchored to
+///    Cloudflare context (e.g. `cf-turnstile` / `data-sitekey`); a bare
+///    `turnstile` in prose does NOT match here.
 /// 3. `Anubis` ← token-anchored only: `id="anubis"`, `class="anubis"`,
 ///    `data-anubis`, `anubis.js`. Bare `anubis` in prose does NOT match.
-/// 4. **Superset safety net:** if none of the above matched but
-///    `is_bot_detected(html)` is true, return `Some(CloudflareTurnstile)`.
+/// 4. **Unknown catch-all:** if none of the above matched but
+///    `is_bot_detected(html)` is true, return `Some(BlockedBy::Unknown)`.
 pub fn detect_anti_bot(html: &str) -> Option<BlockedBy> {
     let lower = html.to_lowercase();
 
@@ -131,14 +137,16 @@ pub fn detect_anti_bot(html: &str) -> Option<BlockedBy> {
         return Some(BlockedBy::Captcha);
     }
 
-    // 2. Cloudflare-turnstile family (including legacy superset markers).
+    // 2. Cloudflare-turnstile family. Bare `turnstile` is deliberately NOT
+    //    matched here (it must be anchored to a Cloudflare marker such as
+    //    `cf-turnstile`); an unanchored `turnstile` falls through to the
+    //    `is_bot_detected` catch-all below as `BlockedBy::Unknown`.
     if lower.contains("cf-turnstile")
         || lower.contains("cf-browser-verification")
         || lower.contains("cf-challenge")
         || lower.contains("__cf_chl_opt")
         || lower.contains("challenge-platform")
         || lower.contains("data-sitekey")
-        || lower.contains("turnstile")
         || lower.contains("just a moment...")
     {
         return Some(BlockedBy::CloudflareTurnstile);
@@ -153,9 +161,9 @@ pub fn detect_anti_bot(html: &str) -> Option<BlockedBy> {
         return Some(BlockedBy::Anubis);
     }
 
-    // 4. Superset safety net: any legacy pattern that wasn't matched above.
+    // 4. Unknown catch-all: any legacy pattern not matched by a vendor check.
     if is_bot_detected(html) {
-        return Some(BlockedBy::CloudflareTurnstile);
+        return Some(BlockedBy::Unknown);
     }
 
     None

@@ -147,9 +147,11 @@ pub enum ExtractionResult {
     },
     GenericHtml {
         content_md: MarkdownDocument,
-        /// Length of the raw HTML body (0 if not available, e.g. document paths).
+        /// Length in bytes of the raw HTML body (set at every construction site;
+        /// surfaced in the `webfetch_raw` JSON report via serde derive).
         raw_html_len: usize,
-        /// Length of the extracted/cleaned markdown body.
+        /// Length in bytes of the extracted markdown body (post-pipeline;
+        /// surfaced in the `webfetch_raw` JSON report via serde derive).
         filtered_html_len: usize,
     },
 }

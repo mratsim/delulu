@@ -90,13 +90,14 @@ fn page_status_blocked_cookie_consent_serializes_exact() {
 }
 
 #[test]
-fn blocked_by_has_exactly_four_variants() {
-    // Compile-time assertion via a non-exhaustive match over all four variants.
+fn blocked_by_has_five_variants() {
+    // Compile-time assertion via a non-exhaustive match over all five variants.
     let all = [
         BlockedBy::CloudflareTurnstile,
         BlockedBy::Captcha,
         BlockedBy::Anubis,
         BlockedBy::CookieConsent,
+        BlockedBy::Unknown,
     ];
     for b in all {
         let _ = match b {
@@ -104,6 +105,7 @@ fn blocked_by_has_exactly_four_variants() {
             BlockedBy::Captcha => 1,
             BlockedBy::Anubis => 2,
             BlockedBy::CookieConsent => 3,
+            BlockedBy::Unknown => 4,
         };
     }
 }
@@ -182,11 +184,16 @@ fn detect_anti_bot_vendor_determinism_captcha_wins() {
 }
 
 #[test]
-fn detect_anti_bot_false_positive_pins() {
-    // Known false-positive class (per the legacy superset): these DO match.
+fn detect_anti_bot_unknown_patterns_and_cloudflare_markers() {
+    // An unanchored bot pattern (bare `turnstile` in prose, no Cloudflare
+    // context) hits the `is_bot_detected` catch-all -> Unknown, NOT a
+    // Cloudflare-specific mislabel.
+    let html = "Please solve the turnstile to continue.";
+    assert_eq!(detect_anti_bot(html), Some(BlockedBy::Unknown));
+    // Real Cloudflare markers still map to CloudflareTurnstile.
     let html = "Just a moment... checking your browser before accessing.";
     assert_eq!(detect_anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
-    let html = "Please solve the turnstile to continue.";
+    let html = r#"<div class="cf-turnstile" data-sitekey="abc"></div>"#;
     assert_eq!(detect_anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
 }
 
@@ -236,6 +243,9 @@ fn detect_anti_bot_label_correctness_for_known_vendor_patterns() {
             || pattern.to_lowercase().contains("recaptcha")
         {
             BlockedBy::Captcha
+        } else if pattern.to_lowercase() == "turnstile" {
+            // Bare `turnstile` (no Cloudflare anchoring) is an unknown pattern.
+            BlockedBy::Unknown
         } else {
             BlockedBy::CloudflareTurnstile
         };

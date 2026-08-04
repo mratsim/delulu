@@ -96,6 +96,9 @@ fn webfetch_raw_response_every_page_status_form() {
         PageStatus::Blocked {
             by: BlockedBy::CookieConsent,
         },
+        PageStatus::Blocked {
+            by: BlockedBy::Unknown,
+        },
         PageStatus::Empty,
     ];
     for status in statuses {
