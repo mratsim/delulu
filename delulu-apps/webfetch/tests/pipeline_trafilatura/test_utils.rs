@@ -124,10 +124,19 @@ impl std::fmt::Display for Classification {
 /// - OVER_FILTERING (<0.8): severe (<0.3), moderate (0.3–0.6), mild (0.6–0.8)
 /// - UNDER_FILTERING (>1.2): severe (>3.0), moderate (2.0–3.0), mild (1.2–2.0)
 ///
-/// When `expected_len` is 0, returns `OverFiltering(Severe)`.
+/// When `expected_len` is 0: `Pass` if `output_len` is also 0 (exact match),
+/// else `UnderFiltering(Severe)` (Rust produced content where Python expected
+/// none — never over-filtering).
 pub fn classify_output(output_len: usize, expected_len: usize) -> Classification {
     if expected_len == 0 {
-        return Classification::OverFiltering(Severity::Severe);
+        // No expected content: can't compute a ratio. Both empty is an exact
+        // match (Pass); Rust producing content where Python expected none is a
+        // divergence in the under-filtering direction, never over-filtering.
+        return if output_len == 0 {
+            Classification::Pass
+        } else {
+            Classification::UnderFiltering(Severity::Severe)
+        };
     }
     let ratio = output_len as f64 / expected_len as f64;
 
@@ -265,7 +274,19 @@ pub fn compute_confusion_matrix(
 /// - If the fixture directory or required files do not exist
 /// - If `source.html.zst` fails to decompress or parse
 pub fn load_test_case_tf(name: &str) -> (DomNode, String, Option<Annotations>) {
-    let dir = fixture_dir().join(name);
+    load_test_case_tf_from(&fixture_dir(), name)
+}
+
+/// Load a single trafilatura test case from an explicit base directory.
+///
+/// Same as [`load_test_case_tf`] but resolves the fixture under `base_dir`
+/// instead of the default [`fixture_dir`], so the diag's `--fixtures-dir`
+/// override actually reaches the load path.
+pub fn load_test_case_tf_from(
+    base_dir: &std::path::Path,
+    name: &str,
+) -> (DomNode, String, Option<Annotations>) {
+    let dir = base_dir.join(name);
     let source_path = dir.join("source.html.zst");
     let expected_path = dir.join("expected.md.zst");
     let annotations_path = dir.join("annotations.json.zst");
@@ -476,7 +497,7 @@ fn count_elements(node: &DomNode) -> u32 {
 /// Returns Some(0-4) if a match is found, or None if no container identified.
 /// A Pattern 0 match = strong signal (page structure is well-known).
 /// A Pattern 4 match = weak signal (page may have unusual structure).
-use delulu_webfetch::pipelines::passes::tf_filters::BODY_XPATH_PATTERN_2_RE;
+use delulu_webfetch::pipelines::passes::tf_filters::PATTERN_CHECKS;
 pub fn detect_body_xpath_pattern(html: &str) -> Option<usize> {
     #[cfg(not(feature = "use-xpath"))]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_isolate_content_container;
@@ -508,60 +529,24 @@ fn find_matching_pattern(node: &DomNode) -> Option<usize> {
             children,
             ..
         } => {
+            // Delegate to the SAME canonical PATTERN_CHECKS the production
+            // tf_isolate_content_container uses, so the reported index always
+            // matches which pattern production actually applied.
             let class_val = get_attr(attrs, "class").unwrap_or("");
             let id_val = get_attr(attrs, "id").unwrap_or("");
             let role_val = get_attr(attrs, "role").unwrap_or("");
             let itemprop_val = get_attr(attrs, "itemprop").unwrap_or("");
-
-            // Pattern 0: specific selectors
-            if itemprop_val == "articleBody"
-                || id_val == "articleContent"
-                || matches!(
-                    class_val,
-                    "post" | "entry" | "text" | "cell" | "story" | "postarea" | "art-postcontent"
-                )
-                || role_val == "article"
-            {
-                return Some(0);
+            for (i, check) in PATTERN_CHECKS.iter().enumerate() {
+                if check(tag, class_val, id_val, role_val, itemprop_val) {
+                    return Some(i);
+                }
             }
-
-            // Pattern 1: bare article/main tag
-            if matches!(tag.as_str(), "article" | "main") {
-                return Some(1);
-            }
-
-            // Pattern 2: content class/id (reduced — "content" and P2_RE moved to Pattern 3)
-            if class_val.contains("main-content") || class_val.contains("page-content") {
-                return Some(2);
-            }
-
-            // Pattern 3: broader content patterns (split from Python P2)
-            if class_val == "content"
-                || id_val == "content"
-                || BODY_XPATH_PATTERN_2_RE.is_match(class_val)
-                || BODY_XPATH_PATTERN_2_RE.is_match(id_val)
-                || class_val.contains("main-content")
-                || class_val.contains("page-content")
-            {
-                return Some(3);
-            }
-
-            // Pattern 4: starts-with main / role main
-            if tag == "main"
-                || class_val.starts_with("main")
-                || id_val.starts_with("main")
-                || role_val.starts_with("main")
-            {
-                return Some(4);
-            }
-
             // Recurse into children
             for child in children {
                 if let Some(p) = find_matching_pattern(child) {
                     return Some(p);
                 }
             }
-
             None
         }
         _ => None,
@@ -772,9 +757,14 @@ mod tests {
 
     #[test]
     fn classify_output_zero_expected() {
+        // Both empty: Rust matches Python exactly (both extract nothing) -> Pass.
+        assert_eq!(classify_output(0, 0), Classification::Pass);
+        // Rust produced content where Python expected none -> a divergence in the
+        // under-filtering direction (Rust keeps content Python discards), never
+        // over-filtering.
         assert_eq!(
-            classify_output(100, 0),
-            Classification::OverFiltering(Severity::Severe)
+            classify_output(1541, 0),
+            Classification::UnderFiltering(Severity::Severe)
         );
     }
 

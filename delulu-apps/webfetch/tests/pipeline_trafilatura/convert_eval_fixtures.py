@@ -286,20 +286,17 @@ def create_fixture(filename, info, force=False):
     with open(os.path.join(fixture_dir, "source.html.zst"), "wb") as f:
         f.write(source_compressed)
 
-    # Run trafilatura extraction
-    try:
-        expected_md = trafilatura.extract(
-            html_content,
-            output_format="markdown",
-            include_comments=False,
-            include_tables=True,
-            no_fallback=False,
-        )
-        if expected_md is None:
-            print(f"  WARN: {slug} - trafilatura returned None, using empty string")
-            expected_md = ""
-    except Exception as e:
-        print(f"  ERROR: {slug} - trafilatura extraction failed: {e}", file=sys.stderr)
+    # Run trafilatura extraction (let exceptions propagate — a failed
+    # extraction must not silently write an empty fixture)
+    expected_md = trafilatura.extract(
+        html_content,
+        output_format="markdown",
+        include_comments=False,
+        include_tables=True,
+        no_fallback=False,
+    )
+    if expected_md is None:
+        print(f"  WARN: {slug} - trafilatura returned None, using empty string")
         expected_md = ""
 
     # Compress expected markdown

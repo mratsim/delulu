@@ -705,42 +705,47 @@ pub static BODY_XPATH_PATTERN_2_RE: once_cell::sync::Lazy<regex::Regex> =
 ///   (and its ancestor chain) survives. All siblings of the matched container
 ///   are discarded.
 /// Reference: Trafilatura `main_extractor.py:597-647` `_extract()` (BODY_XPATH iteration)
+///
+/// The 5 BODY_XPATH patterns in cascade order (first match wins).
+/// `(tag, class, id, role, itemprop)` -> bool. Shared by the production
+/// `tf_isolate_content_container` and the test helper `find_matching_pattern`
+/// so both always agree on which pattern matched.
+pub const PATTERN_CHECKS: [fn(&str, &str, &str, &str, &str) -> bool; 5] = [
+    |_tag, cv, iv, rv, ipv| {
+        ipv == "articleBody"
+            || iv == "articleContent"
+            || matches!(cv, "post" | "entry")
+            || rv == "article"
+            || BODY_XPATH_PATTERN_0_RE.is_match(cv)
+            || BODY_XPATH_PATTERN_0_RE.is_match(iv)
+            || cv.contains("p-body-pageContent")
+            || iv.contains("p-body-pageContent")
+    },
+    |tag, _, _, _, _| matches!(tag, "article" | "main"),
+    |_, cv, _iv, _, _| {
+        matches!(
+            cv,
+            "postarea" | "art-postcontent" | "text" | "cell" | "story"
+        )
+    },
+    |_, cv, iv, _, _| {
+        iv == "content"
+            || cv == "content"
+            || BODY_XPATH_PATTERN_2_RE.is_match(cv)
+            || BODY_XPATH_PATTERN_2_RE.is_match(iv)
+            || cv.contains("main-content")
+            || cv.contains("page-content")
+    },
+    |tag, cv, iv, rv, _| {
+        tag == "main"
+            || cv.starts_with("main")
+            || iv.starts_with("main")
+            || rv.starts_with("main")
+    },
+];
 pub fn tf_isolate_content_container(node: &mut DomNode) {
     if let DomNode::Element { children, .. } = node {
         let mut best_path: Option<Vec<usize>> = None;
-        const PATTERN_CHECKS: [fn(&str, &str, &str, &str, &str) -> bool; 5] = [
-            |_tag, cv, iv, rv, ipv| {
-                ipv == "articleBody"
-                    || iv == "articleContent"
-                    || matches!(cv, "post" | "entry")
-                    || rv == "article"
-                    || BODY_XPATH_PATTERN_0_RE.is_match(cv)
-                    || BODY_XPATH_PATTERN_0_RE.is_match(iv)
-                    || cv.contains("p-body-pageContent")
-                    || iv.contains("p-body-pageContent")
-            },
-            |tag, _, _, _, _| matches!(tag, "article" | "main"),
-            |_, cv, _iv, _, _| {
-                matches!(
-                    cv,
-                    "postarea" | "art-postcontent" | "text" | "cell" | "story"
-                )
-            },
-            |_, cv, iv, _, _| {
-                iv == "content"
-                    || cv == "content"
-                    || BODY_XPATH_PATTERN_2_RE.is_match(cv)
-                    || BODY_XPATH_PATTERN_2_RE.is_match(iv)
-                    || cv.contains("main-content")
-                    || cv.contains("page-content")
-            },
-            |tag, cv, iv, rv, _| {
-                tag == "main"
-                    || cv.starts_with("main")
-                    || iv.starts_with("main")
-                    || rv.starts_with("main")
-            },
-        ];
         for check in PATTERN_CHECKS {
             // Collect ALL matches for this pattern (all siblings, all depths)
             let mut all_paths: Vec<Vec<usize>> = Vec::new();

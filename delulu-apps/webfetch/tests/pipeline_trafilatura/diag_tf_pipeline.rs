@@ -276,10 +276,10 @@ fn run_deep_dive(case_name: &str, fixtures_arg: &Option<PathBuf>) {
     eprintln!();
 
     // Load fixture — keep raw source HTML for introspection probes
-    let fixture_path = fixture_dir().join(case_name).join("source.html.zst");
+    let fixture_path = dir.join(case_name).join("source.html.zst");
     let source_html = test_utils::try_decompress_zst(&fixture_path)
         .unwrap_or_else(|e| panic!("failed to read source.html.zst: {e}"));
-    let (root, expected_md, annotations) = test_utils::load_test_case_tf(case_name);
+    let (root, expected_md, annotations) = test_utils::load_test_case_tf_from(&dir, case_name);
     let mut nodes = root;
     filter_trafilatura(&mut nodes);
 
