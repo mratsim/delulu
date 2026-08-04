@@ -39,6 +39,7 @@ mod markdown;
 use crate::markdown::md_doc_to_string;
 use delulu_webfetch::{is_private_ip, same_subnet_16};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -168,7 +169,11 @@ impl WebfetchServer {
             // `page_status` key. Never nested under a
             // `result` wrapper.
             Ok((result, status)) => Ok(webfetch_raw_response(&result, &status)),
-            Err(e) => Ok(format!("{{\"error\": true, \"error_type\": \"{:?}\"}}", e)),
+            Err(e) => Ok(json!({
+                "error": true,
+                "error_type": e.to_string(),
+            })
+            .to_string()),
         }
     }
 

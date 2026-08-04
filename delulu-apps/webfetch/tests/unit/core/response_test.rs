@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::core::page_status::{BlockedBy, PageStatus};
-use crate::core::types::{ExtractionResult, MarkdownDocument};
+use crate::core::types::{ExtractionResult, MarkdownDocument, WebfetchError};
 
 fn generic_result() -> ExtractionResult {
     ExtractionResult::GenericHtml {
@@ -115,4 +115,34 @@ fn webfetch_raw_response_every_page_status_form() {
             "missing GenericHtml for {status:?}"
         );
     }
+}
+
+// Error-arm serialization (main_mcp.rs fetch_and_extract_with_status) must emit
+// valid JSON even when the upstream error message carries control characters.
+// Before the fix the arm built JSON by hand with `{:?}` (Debug), which for a
+// String containing a control char emits a `\u{7f}` escape — NOT a valid JSON
+// escape — so an MCP client could not parse the advertised-JSON response.
+// This test mirrors the fixed arm and proves the old format fails to parse.
+#[test]
+fn error_arm_serializes_control_chars_as_valid_json() {
+    let e = WebfetchError::Fetch("transport \u{7f} glitch".to_string());
+
+    // Mirrors the fixed error arm in src/main_mcp.rs.
+    let json = serde_json::json!({
+        "error": true,
+        "error_type": e.to_string(),
+    })
+    .to_string();
+
+    // Non-tautology: the pre-fix hand-built `{:?}` string is NOT valid JSON.
+    let old_style = format!("{{\"error\": true, \"error_type\": \"{:?}\"}}", e);
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&old_style).is_err(),
+        "pre-fix Debug format must NOT be valid JSON"
+    );
+
+    // The fixed output parses as valid JSON and carries the Display message.
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(value["error"], serde_json::json!(true));
+    assert_eq!(value["error_type"], serde_json::json!(e.to_string()));
 }
