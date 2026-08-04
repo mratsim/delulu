@@ -1118,21 +1118,24 @@ use crate::pipelines::dom_xpath::XPath;
 #[cfg(feature = "use-xpath")]
 pub fn tf_remove_teaser_xpath(node: &mut DomNode) -> WalkerAction {
     match node {
-        DomNode::Element { tag, .. }
+        DomNode::Element { tag, attrs, .. }
             if matches!(
                 tag.as_str(),
                 "div" | "item" | "list" | "p" | "section" | "span"
             ) =>
         {
-            let has_teaser = node
-                .attr("class")
-                .or(node.attr("id"))
-                .map_or(false, |v| v.to_ascii_lowercase().contains("teaser"));
-            // Protect content containers: skip removal if id matches article content patterns
-            let is_content = node
-                .attr("id")
-                .or(node.attr("class"))
-                .map_or(false, |v| BODY_XPATH_PATTERN_0_RE.is_match(v));
+            // Check `class` and `id` independently (matches Trafilatura's
+            // `contains(translate(@id,'T','t'),'teaser') or contains(translate(@class,'T','t'),'teaser')`
+            // and the manual twin `tf_remove_teaser`). A teaser in either attribute
+            // is enough to discard.
+            let has_teaser = attrs.iter().any(|(key, val)| {
+                matches!(key.as_str(), "class" | "id")
+                    && val.to_ascii_lowercase().contains("teaser")
+            });
+            // Protect content containers: skip removal if class or id matches article content patterns
+            let is_content = attrs.iter().any(|(k, v)| {
+                (k == "id" || k == "class") && BODY_XPATH_PATTERN_0_RE.is_match(v.as_str())
+            });
             if has_teaser && !is_content {
                 WalkerAction::Remove
             } else {

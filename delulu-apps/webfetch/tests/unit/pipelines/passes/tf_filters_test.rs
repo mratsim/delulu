@@ -1721,3 +1721,33 @@ fn test_tf_recall_has_tag_catalog() {
         "TF_RECALL definition must include apply_tf_filter_tag_catalog"
     );
 }
+
+// ── tf_remove_teaser_xpath: independent class/id check (Issue A) ──
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_tf_remove_teaser_xpath_checks_class_and_id_independently() {
+    // (a) teaser in id while class is present-but-innocuous -> must be removed
+    let mut root =
+        parse_html("<div class=\"foo\" id=\"teaser\">teaser</div><p>keep</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_teaser_xpath(n));
+    assert!(
+        !find_tag(&root, "div"),
+        "<div class='foo' id='teaser'> should be removed (teaser in id)"
+    );
+    assert!(find_tag(&root, "p"), "<p> should be kept");
+
+    // (b) teaser in id with content-like class must STILL be removed (not protected)
+    let mut root2 =
+        parse_html("<div id=\"teaser\" class=\"content\">teaser</div><p>keep</p>").unwrap();
+    walk_pre_mut(&mut root2, &|n| tf_remove_teaser_xpath(n));
+    assert!(
+        !find_tag(&root2, "div"),
+        "<div id='teaser' class='content'> should be removed, not protected"
+    );
+
+    // (c) normal non-teaser node -> kept
+    let mut root3 = parse_html("<div class=\"content\" id=\"main\">keep</div>").unwrap();
+    walk_pre_mut(&mut root3, &|n| tf_remove_teaser_xpath(n));
+    assert!(find_tag(&root3, "div"), "normal <div> should be kept");
+}
