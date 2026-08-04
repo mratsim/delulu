@@ -71,6 +71,12 @@ impl DomNode {
 
     /// Total byte length of visible text content (skips <script>, <style>).
     /// Zero-allocation text length excluding non-visible tags (script, style, svg, canvas, template, noscript).
+    /// **Depth-capped at `MAX_DEPTH`:** recursion stops once the tree depth exceeds
+    /// `MAX_DEPTH` (to bound recursion and avoid stack overflow), so on a DOM tree
+    /// deeper than `MAX_DEPTH` the measured `visible_len` is **truncated** — text
+    /// below the cap is not counted. A very deep page can therefore under-count its
+    /// visible text and be misclassified (e.g. fail the `Article` gate). This is
+    /// deliberate, not a bug.
     /// Panic-if: Never panics (infallible).
     pub fn visible_text_len(&self) -> usize {
         self.visible_text_len_inner(MAX_DEPTH)
@@ -103,6 +109,11 @@ impl DomNode {
     /// Text outside a `<script>` contributes 0 (only the `script`-element branch
     /// counts its subtree). Measured PRE-pipeline, while `<script>` content is
     /// still present (post-pipeline passes strip `<script>`).
+    /// **Depth-capped at `MAX_DEPTH`:** recursion stops once the tree depth exceeds
+    /// `MAX_DEPTH` (to bound recursion and avoid stack overflow), so on a DOM tree
+    /// deeper than `MAX_DEPTH` the measured `script_len` is **truncated** — script
+    /// text below the cap is not counted. A very deep page can therefore under-count
+    /// and miss the `JSHeavy` classification. This is deliberate, not a bug.
     /// Panic-if: Never panics (infallible).
     pub fn script_len(&self) -> usize {
         self.script_len_inner(MAX_DEPTH)

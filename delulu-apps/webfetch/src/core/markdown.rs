@@ -216,12 +216,52 @@ mod tests {
     }
 
     #[test]
-    fn test_enrich_date_of_retrieval_appends_before_closing() {
-        let mut out = "---\ntitle: Test\n---\n\nBody".to_string();
-        let now = "2026-01-15T10:00:00+00:00";
-        enrich_date_of_retrieval(&mut out, now);
-        assert!(out.contains(&format!("date_of_retrieval: {}", now)));
-        assert!(out.starts_with("---"));
+    fn test_enrich_date_of_retrieval_inside_frontmatter_block() {
+        // Non-tautological: asserts the `date_of_retrieval` line lands INSIDE the
+        // frontmatter block — after the opening `---` delimiter and before the
+        // closing `---` delimiter — and that the body never carries it. If
+        // `enrich_date_of_retrieval` were to append the date to the body (the old
+        // buggy behavior) instead of inside the frontmatter, this test fails.
+        //
+        // Uses GenericHtml (not Reddit) so the frontmatter genuinely LACKS the
+        // field: the Reddit arm always emits `date_of_retrieval: N/A` and therefore
+        // exercises the `replace` path, never the insert-before-closing path that
+        // this test guards.
+        let result = ExtractionResult::GenericHtml {
+            content_md: MarkdownDocument {
+                frontmatter: "title: Test\n".to_string(),
+                body: "Post body".to_string(),
+            },
+            raw_html_len: 0,
+            filtered_html_len: 0,
+        };
+        let out = md_doc_to_string(result);
+
+        // Opening frontmatter delimiter must be at the very start.
+        assert!(
+            out.starts_with("---\n"),
+            "frontmatter must open the document, got:\n{out}"
+        );
+        // Closing delimiter is the first `\n---` after the opening.
+        let closing = out.find("\n---").expect("closing --- delimiter must exist");
+        let fm_region = &out[..closing];
+        // date_of_retrieval must be strictly INSIDE the block (after opening ---,
+        // before the closing ---).
+        assert!(
+            fm_region.starts_with("---\n"),
+            "date_of_retrieval must come after the opening ---, got:\n{out}"
+        );
+        assert!(
+            fm_region.contains("date_of_retrieval:"),
+            "date_of_retrieval must be inside the frontmatter block, got:\n{out}"
+        );
+        // The body (after the closing `---\n\n`) must NOT carry the date.
+        let body_start = closing + "\n---\n\n".len();
+        let body = &out[body_start..];
+        assert!(
+            !body.contains("date_of_retrieval:"),
+            "body must not carry date_of_retrieval, got:\n{out}"
+        );
     }
 
     #[test]

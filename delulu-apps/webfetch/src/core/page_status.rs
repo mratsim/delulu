@@ -20,7 +20,7 @@ use crate::core::detect::is_bot_detected;
 /// Minimum visible-text byte length (of `visible_len`, measured pre-pipeline)
 /// that counts as "meaningful content" for the Article gate. Measured against
 /// pre-pipeline visible text (excludes script/style/etc.), not extracted
-/// markdown bytes. The value stays 200.
+/// markdown bytes.
 ///
 /// **Byte-based approximation (deliberate, not a bug):** the gate is applied to
 /// the **byte length** of the pre-pipeline visible text, never its character
