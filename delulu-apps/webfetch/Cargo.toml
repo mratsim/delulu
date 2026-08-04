@@ -7,7 +7,9 @@ description = "CLI tools and MCP server for web content fetching and markdown co
 
 [features]
 default = ["cli", "mcp"]
+use-xpath = []
 cli = ["dep:clap"]
+diagnostic = []
 mcp = [
     "dep:schemars",
     "dep:rmcp",
@@ -43,6 +45,7 @@ rayon = "1.12"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-std", "io-util", "fs", "process"] }
 axum = "0.7"
 wreq = { version = "6.0.0-rc.26", features = ["json", "brotli", "gzip", "zstd", "tracing", "stream"] }
+unicode-normalization = "0.1"
 
 [package.metadata.mcp]
 name = "delulu-webfetch"
@@ -63,6 +66,15 @@ required-features = ["mcp"]
 name = "diag_rd_pipeline"
 path = "tests/pipeline_readability/diag_rd_pipeline.rs"
 
+
+[[test]]
+name = "diag_tf_pipeline"
+path = "tests/pipeline_trafilatura/diag_tf_pipeline.rs"
+
+[[test]]
+name = "diag_tf_trace"
+path = "tests/pipeline_trafilatura/diag_tf_trace.rs"
+
 [[test]]
 name = "t_webfetch_mcp"
 path = "tests/t_webfetch_mcp.rs"
@@ -71,5 +83,6 @@ required-features = ["mcp"]
 [[test]]
 name = "t_fetch_doc_e2e"
 path = "tests/t_fetch_doc_e2e.rs"
+
 [package.metadata.cargo-machete]
 ignored = ["rmcp"]

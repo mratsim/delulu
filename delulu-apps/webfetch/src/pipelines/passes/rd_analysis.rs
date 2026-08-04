@@ -109,19 +109,7 @@ impl ScoreAccumulator {
 
         // ── 2. Paragraph score (only for p/td/pre/blockquote) ──
         let para_score = if matches!(tag.as_str(), "p" | "td" | "pre" | "blockquote") {
-            // Inlined: collect_text_nodes was called exactly once.
-            fn collect_text(nodes: &[DomNode]) -> String {
-                let mut buf = String::new();
-                for node in nodes {
-                    match node {
-                        DomNode::Text(t) => buf.push_str(t),
-                        DomNode::Element { children, .. } => buf.push_str(&collect_text(children)),
-                        _ => {}
-                    }
-                }
-                buf
-            }
-            let text = collect_text(children);
+            let text: String = children.iter().map(|c| c.text_content()).collect();
             let text_len = text.len();
 
             // 25-char minimum (matches JS Readability)

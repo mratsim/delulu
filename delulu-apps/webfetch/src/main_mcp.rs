@@ -277,7 +277,7 @@ async fn validate_url(
     }
 }
 
-/// Check if an IP address is in a private/internal range.
+// Check if an IP address is in a private/internal range.
 // ---------------------------------------------------------------------------
 // md_doc_to_string: Convert ExtractionResult to a Markdown string
 // ---------------------------------------------------------------------------

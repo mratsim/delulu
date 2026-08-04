@@ -103,20 +103,7 @@ pub fn normalize_spaces(text: &str) -> String {
 /// Whitespace runs in the raw concatenated text are collapsed to single spaces,
 /// and leading/trailing whitespace is removed.
 pub fn get_inner_text(node: &DomNode) -> String {
-    fn collect(node: &DomNode, buf: &mut String) {
-        match node {
-            DomNode::Text(t) => buf.push_str(t),
-            DomNode::Element { children, .. } => {
-                for child in children {
-                    collect(child, buf);
-                }
-            }
-            _ => {}
-        }
-    }
-    let mut raw = String::new();
-    collect(node, &mut raw);
-    normalize_spaces(&raw)
+    normalize_spaces(&node.text_content())
 }
 
 // ---------------------------------------------------------------------------

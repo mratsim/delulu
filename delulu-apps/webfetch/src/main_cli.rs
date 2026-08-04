@@ -70,8 +70,8 @@ struct Args {
     #[arg(long)]
     raw: bool,
 
-    /// Pipeline to use: "rd" (default, Mozilla Readability) or "tf" (Trafilatura).
-    #[arg(long, default_value = "rd")]
+    /// Pipeline to use: "tf" (default, Trafilatura) or "rd" (Mozilla Readability).
+    #[arg(long, default_value = "tf", value_parser = ["tf", "rd"])]
     pipeline: String,
 }
 
@@ -171,12 +171,11 @@ fn format_reddit_comment(out: &mut String, comment: &RedditComment, depth: u32) 
 /// Select pipeline based on CLI argument.
 fn select_pipeline(name: &str) -> &'static [delulu_webfetch::pipelines::PassFn] {
     match name {
-        "rd" | "" => &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
         "tf" => &[delulu_webfetch::pipelines::trafilatura::filter_trafilatura],
-        _ => {
-            tracing::warn!("unknown pipeline '{}', falling back to default", name);
-            &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability]
-        }
+        "rd" => &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
+        // Defensive branch: unreachable because `--pipeline` is restricted by
+        // Clap's `value_parser` to exactly "tf" / "rd".
+        _ => unreachable!("pipeline '{}' should have been rejected by Clap", name),
     }
 }
 
@@ -196,10 +195,10 @@ async fn main() -> Result<(), Error> {
         .init();
 
     // Try clap subcommand parsing first (for "doc" subcommand)
-    if let Ok(cli) = Cli::try_parse() {
-        if let Some(Command::Doc(doc_args)) = cli.command {
-            return run_doc(doc_args).await;
-        }
+    if let Ok(cli) = Cli::try_parse()
+        && let Some(Command::Doc(doc_args)) = cli.command
+    {
+        return run_doc(doc_args).await;
     }
 
     // Fallback to flat args (backward-compatible with prior versions)
@@ -344,4 +343,30 @@ async fn run_doc(args: DocArgs) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Args;
+    use clap::Parser;
+
+    #[test]
+    fn pipeline_rejects_unknown_value() {
+        // Non-tautological: before the `value_parser = ["tf", "rd"]` fix,
+        // `--pipeline=banana` parsed OK and silently fell back to trafilatura.
+        let err = Args::try_parse_from(["delulu-fetch", "-i", "-", "--pipeline=banana"]);
+        assert!(
+            err.is_err(),
+            "unknown pipeline must be rejected at parse time"
+        );
+    }
+
+    #[test]
+    fn pipeline_accepts_valid_values() {
+        for valid in ["tf", "rd"] {
+            let args = Args::try_parse_from(["delulu-fetch", "-i", "-", "--pipeline", valid]);
+            assert!(args.is_ok(), "valid pipeline '{valid}' should parse");
+            assert_eq!(args.unwrap().pipeline, valid);
+        }
+    }
 }

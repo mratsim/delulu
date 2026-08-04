@@ -472,14 +472,7 @@ fn test_walk_post_mut_should_descend_data_table_guard() {
 
     // Guard: block descent into data tables
     fn is_data_table(node: &DomNode) -> bool {
-        match node {
-            DomNode::Element { metadata, .. }
-                if metadata.get("is_data_table").map(|s| s.as_str()) == Some("true") =>
-            {
-                false
-            }
-            _ => true,
-        }
+        !matches!(node, DomNode::Element { metadata, .. } if metadata.get("is_data_table").map(|s| s.as_str()) == Some("true"))
     }
 
     walk_post_mut(&mut tree, &mut filters, Some(is_data_table));
@@ -574,5 +567,50 @@ fn test_walk_post_mut_replace_with_children_on_text_is_continue() {
         }
     } else {
         panic!("expected Element");
+    }
+}
+
+// ── Tail text preservation on element removal ─────────────────────────
+
+#[test]
+fn test_walk_pre_mut_remove_element_preserves_trailing_sibling_text() {
+    // Regression guard for a CodeRabbit claim that removing an element via
+    // children.remove(i) loses its TRAILING text (lxml `.tail`).
+    //
+    // In this DOM model trailing text is NOT stored as an element `.tail` field;
+    // dom_convert.rs:92-93 pushes following text as a SEPARATE sibling
+    // DomNode::Text child (dom_nodes.rs:23). So removing the <span> element
+    // leaves the sibling Text node "tail" intact.
+    //
+    // HTML: <div><span>x</span>tail</div>
+    let mut tree = crate::pipelines::parse_html("<div><span>x</span>tail</div>").expect("parse");
+
+    // Remove the <span> element in pre-order.
+    walk_pre_mut(&mut tree, &|n: &mut DomNode| match n {
+        DomNode::Element { tag, .. } if tag == "span" => WalkerAction::Remove,
+        _ => WalkerAction::Continue,
+    });
+
+    // Locate the <div> element and verify its children.
+    let div = tree
+        .descendants()
+        .into_iter()
+        .find(|n| matches!(n, DomNode::Element { tag, .. } if tag == "div"))
+        .expect("div should remain");
+    if let DomNode::Element { children, .. } = div {
+        // After removing <span>, only the trailing sibling Text "tail" remains.
+        assert_eq!(
+            children.len(),
+            1,
+            "span removed, tail sibling should remain"
+        );
+        match &children[0] {
+            DomNode::Text(t) => assert_eq!(t, "tail", "trailing text must survive removal"),
+            other => panic!("expected trailing Text node, got {:?}", other),
+        }
+        // text_content of the div should still be "tail" ("x" was inside the removed span).
+        assert_eq!(div.text_content(), "tail");
+    } else {
+        panic!("expected div Element");
     }
 }

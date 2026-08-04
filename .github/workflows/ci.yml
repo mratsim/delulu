@@ -49,6 +49,11 @@ jobs:
       - name: Test
         run: |
           cargo test --release
+      - name: Test (use-xpath feature)
+        # The `use-xpath` code path (dom_xpath + *_xpath passes) is gated behind
+        # the feature; run the lib tests with it enabled so CI actually exercises it.
+        run: |
+          cargo test --release -p delulu-webfetch --lib --features use-xpath
 
   fmt:
     if: github.event.pull_request.draft == false

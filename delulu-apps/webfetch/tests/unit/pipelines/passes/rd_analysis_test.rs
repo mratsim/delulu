@@ -70,7 +70,7 @@ fn test_distance_division_four_level() {
     let div_acc = get_acc(&root, "div").expect("div should have acc");
     let body_acc = get_acc(&root, "body").expect("body should have acc");
 
-    // With the new scoring (REQ-P0-001/002/003):
+    // With the new scoring (ancestor bonus + paragraph score):
     // section (parent of p, level 0): gets p.para_score/1 = 2.0/1 = 2.0
     // div (grandparent of p, level 1): gets ancestor_bonus(5) + p.para_score/2
     //   = 5.0 + 2.0/2.0 = 6.0

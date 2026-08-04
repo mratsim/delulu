@@ -1,6 +1,32 @@
 use super::*;
 use crate::pipelines::{parse_html, walk_pre_mut};
 
+/// Helper: find a tag in a tree (recursive, slice version).
+fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
+    for node in nodes {
+        match node {
+            DomNode::Element { tag: t, .. } if t == tag => return true,
+            DomNode::Element { children, .. } if find_tag(children, tag) => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Helper: count <p> elements in a tree (recursive).
+fn find_p_count(nodes: &[DomNode]) -> usize {
+    let mut count = 0;
+    for node in nodes {
+        if let DomNode::Element { tag, children, .. } = node {
+            if tag == "p" {
+                count += 1;
+            }
+            count += find_p_count(children);
+        }
+    }
+    count
+}
+
 // ── 2. convert_double_br_to_paragraph ─────────────────────────────────
 
 #[test]
@@ -10,18 +36,6 @@ fn test_convert_double_br_to_paragraph() {
     walk_pre_mut(&mut nodes[0], &|n| convert_double_br_to_paragraph(n));
 
     // Should have <div> containing two <p> elements.
-    fn find_p_count(nodes: &[DomNode]) -> usize {
-        let mut count = 0;
-        for node in nodes {
-            if let DomNode::Element { tag, children, .. } = node {
-                if tag == "p" {
-                    count += 1;
-                }
-                count += find_p_count(children);
-            }
-        }
-        count
-    }
 
     assert_eq!(
         find_p_count(&nodes),
@@ -36,17 +50,6 @@ fn test_convert_double_br_no_change_no_br() {
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     walk_pre_mut(&mut nodes[0], &|n| convert_double_br_to_paragraph(n));
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element { tag: t, .. } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     assert!(
         !find_tag(&nodes, "p"),
         "no <p> should be created when there are no <br><br>"
@@ -60,19 +63,6 @@ fn test_convert_font_to_span() {
     let html = r#"<font color="red">text</font>"#;
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     walk_pre_mut(&mut nodes[0], &|n| convert_font_to_span(n));
-
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
 
     assert!(!find_tag(&nodes, "font"), "<font> should be converted");
     assert!(find_tag(&nodes, "span"), "<span> should replace <font>");
@@ -116,19 +106,6 @@ fn test_convert_div_to_paragraph() {
         convert_div_containing_phrasing_to_paragraph(n)
     });
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     assert!(
         !find_tag(&nodes, "div"),
         "<div> with phrasing content should become <p>"
@@ -147,17 +124,6 @@ fn test_convert_div_to_paragraph_keeps_div_with_block_children() {
     walk_pre_mut(&mut nodes[0], &|n| {
         convert_div_containing_phrasing_to_paragraph(n)
     });
-
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element { tag: t, .. } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
 
     assert!(
         find_tag(&nodes, "div"),
@@ -246,19 +212,6 @@ fn test_replace_h1_with_h2() {
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     walk_pre_mut(&mut nodes[0], &|n| replace_h1_with_h2(n));
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     assert!(!find_tag(&nodes, "h1"), "no <h1> should remain");
     assert!(find_tag(&nodes, "h2"), "<h2> elements should exist");
 }
@@ -271,19 +224,6 @@ fn test_unwrap_single_cell_table_to_paragraph() {
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
 
     walk_pre_mut(&mut nodes[0], &|n| unwrap_single_cell_tables(n));
-
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
 
     assert!(
         !find_tag(&nodes, "table"),
@@ -298,19 +238,6 @@ fn test_collapse_single_child_div() {
     let html = "<div><section><p>text</p></section></div>";
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     collapse_single_child_elements(&mut nodes[0]);
-
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
 
     // After collapse, only <p> should remain (div and section unwrapped)
     assert!(find_tag(&nodes, "p"), "p should remain");
@@ -347,19 +274,6 @@ fn test_strip_removes_script() {
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     rd_strip_non_content(&mut nodes[0]);
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     assert!(!find_tag(&nodes, "script"), "<script> should be removed");
     assert!(find_tag(&nodes, "p"), "<p> should survive");
 }
@@ -369,19 +283,6 @@ fn test_strip_removes_multiple_non_content() {
     let html = "<div><script>a</script><style>.c{}</style><nav>menu</nav><footer>copy</footer><aside>side</aside><form>f</form><p>text</p></div>";
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     rd_strip_non_content(&mut nodes[0]);
-
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
 
     assert!(!find_tag(&nodes, "script"), "<script> removed");
     assert!(!find_tag(&nodes, "style"), "<style> removed");
@@ -433,19 +334,6 @@ fn test_strip_preserves_title() {
     }];
     rd_strip_non_content(&mut nodes[0]);
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     assert!(find_tag(&nodes, "title"), "<title> should be preserved");
     assert!(!find_tag(&nodes, "script"), "<script> should be removed");
 }
@@ -455,19 +343,6 @@ fn test_strip_preserves_content_elements() {
     let html = "<div><p>hello</p><h1>title</h1><a href='x'>link</a><img src='x.png'><table><tr><td>data</td></tr></table></div>";
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     rd_strip_non_content(&mut nodes[0]);
-
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
 
     assert!(find_tag(&nodes, "p"), "<p> should survive");
     assert!(find_tag(&nodes, "h1"), "<h1> should survive");
@@ -482,19 +357,6 @@ fn test_strip_preserves_unknown_tag() {
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     rd_strip_non_content(&mut nodes[0]);
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     assert!(find_tag(&nodes, "custom-x"), "<custom-x> should survive");
     assert!(find_tag(&nodes, "p"), "<p> should survive");
 }
@@ -506,19 +368,6 @@ fn test_unwrap_single_container() {
     let mut nodes = vec![parse_html("<html><p>text</p></html>").expect("valid HTML")];
     rd_unwrap_structural_wrappers(&mut nodes[0]);
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     assert!(!find_tag(&nodes, "html"), "<html> should be unwrapped");
     assert!(find_tag(&nodes, "p"), "<p> should survive");
 }
@@ -529,19 +378,6 @@ fn test_unwrap_nested_containers() {
             .expect("valid HTML"),
     ];
     rd_unwrap_structural_wrappers(&mut nodes[0]);
-
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
 
     assert!(!find_tag(&nodes, "html"), "<html> should be unwrapped");
     assert!(!find_tag(&nodes, "head"), "<head> should be unwrapped");
@@ -577,19 +413,6 @@ fn test_unwrap_preserves_data_table() {
     }];
     rd_unwrap_structural_wrappers(&mut nodes[0]);
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     assert!(find_tag(&nodes, "table"), "data table should be preserved");
     assert!(
         find_tag(&nodes, "td"),
@@ -624,19 +447,6 @@ fn test_unwrap_layout_table() {
     }];
     rd_unwrap_structural_wrappers(&mut nodes[0]);
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     assert!(
         !find_tag(&nodes, "table"),
         "layout <table> should be unwrapped"
@@ -649,19 +459,6 @@ fn test_unwrap_consecutive_containers() {
     let mut nodes =
         vec![parse_html("<html><body><p>a</p><p>b</p></body></html>").expect("valid HTML")];
     rd_unwrap_structural_wrappers(&mut nodes[0]);
-
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
 
     fn count_tag(nodes: &[DomNode], tag: &str) -> usize {
         let mut count = 0;
@@ -709,19 +506,6 @@ fn test_unwrap_is_data_table_case_insensitive() {
     }];
     rd_unwrap_structural_wrappers(&mut nodes[0]);
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     assert!(
         find_tag(&nodes, "table"),
         "data table with 'True' should be preserved"
@@ -738,19 +522,6 @@ fn test_unwrap_header_and_li() {
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     rd_unwrap_structural_wrappers(&mut nodes[0]);
 
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     // Now only html/head/body are unwrapped; header/li etc. are preserved
     assert!(find_tag(&nodes, "header"), "<header> should be preserved");
     assert!(find_tag(&nodes, "li"), "<li> should be preserved");
@@ -765,18 +536,6 @@ fn test_clean_styles_removes_style_attr() {
     let html = r#"<div style="color:red">text</div>"#;
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     walk_pre_mut(&mut nodes[0], &|n| clean_styles(n));
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
     // After clean_styles, the <div> should still exist but without style attr
     assert!(find_tag(&nodes, "div"), "<div> should be kept");
     // Verify style attr is gone
@@ -802,18 +561,6 @@ fn test_clean_styles_removes_event_handler() {
     let html = r#"<button onclick="doSomething()">click</button>"#;
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     walk_pre_mut(&mut nodes[0], &|n| clean_styles(n));
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
     assert!(find_tag(&nodes, "button"), "<button> should be kept");
     fn has_onclick(nodes: &[DomNode]) -> bool {
         for node in nodes {
@@ -837,18 +584,6 @@ fn test_clean_styles_preserves_other_attrs() {
     let html = r#"<a href="/test" style="color:blue" onclick="track()">link</a>"#;
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     walk_pre_mut(&mut nodes[0], &|n| clean_styles(n));
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
     assert!(find_tag(&nodes, "a"), "<a> should be kept");
     fn get_href(nodes: &[DomNode]) -> Option<String> {
         for node in nodes {
@@ -884,18 +619,6 @@ fn test_clean_classes_removes_class_attr() {
     let html = r#"<div class="sidebar">text</div>"#;
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     walk_pre_mut(&mut nodes[0], &|n| clean_classes(n));
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
     assert!(find_tag(&nodes, "div"), "<div> should be kept");
     fn has_class_attr(nodes: &[DomNode]) -> bool {
         for node in nodes {
@@ -919,18 +642,6 @@ fn test_clean_classes_preserves_other_attrs() {
     let html = r#"<div id="main" class="content" data-x="test">text</div>"#;
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     walk_pre_mut(&mut nodes[0], &|n| clean_classes(n));
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
     assert!(find_tag(&nodes, "div"), "<div> should be kept");
     fn get_id(nodes: &[DomNode]) -> Option<String> {
         for node in nodes {
@@ -980,18 +691,6 @@ fn test_collapse_empty_div_removed() {
     let html = "<div></div>";
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     collapse_single_child_elements(&mut nodes[0]);
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
     assert!(!find_tag(&nodes, "div"), "empty div should be removed");
 }
 
@@ -1000,18 +699,6 @@ fn test_collapse_whitespace_only_div_removed() {
     let html = "<div>   </div>";
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     collapse_single_child_elements(&mut nodes[0]);
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
     assert!(
         !find_tag(&nodes, "div"),
         "whitespace-only div should be removed"
@@ -1023,18 +710,6 @@ fn test_collapse_empty_nested_divs_removed() {
     let html = "<div><section><div></div></section></div>";
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     collapse_single_child_elements(&mut nodes[0]);
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
     assert!(
         !find_tag(&nodes, "div"),
         "empty nested div should be removed"
@@ -1077,18 +752,6 @@ fn test_collapse_non_empty_div_kept() {
     let html = "<div><p>content</p></div>";
     let mut nodes = vec![parse_html(html).expect("valid HTML")];
     collapse_single_child_elements(&mut nodes[0]);
-    fn find_tag(nodes: &[DomNode], tag: &str) -> bool {
-        for node in nodes {
-            match node {
-                DomNode::Element {
-                    tag: t, children, ..
-                } if t == tag => return true,
-                DomNode::Element { children, .. } if find_tag(children, tag) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
     assert!(find_tag(&nodes, "p"), "p should remain");
 }
 

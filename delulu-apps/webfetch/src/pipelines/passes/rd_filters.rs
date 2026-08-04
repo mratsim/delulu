@@ -212,16 +212,7 @@ pub fn rd_strip_analytics(node: &mut DomNode) -> WalkerAction {
                         return WalkerAction::Remove;
                     }
                     // Check inline text content for analytics API calls
-                    let text_content: String = children
-                        .iter()
-                        .filter_map(|c| {
-                            if let DomNode::Text(t) = c {
-                                Some(t.as_str())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
+                    let text_content: String = children.iter().map(|c| c.text_content()).collect();
                     if ANALYTICS_INLINE_RE.is_match(&text_content) {
                         return WalkerAction::Remove;
                     }
@@ -230,16 +221,7 @@ pub fn rd_strip_analytics(node: &mut DomNode) -> WalkerAction {
                 "noscript" => {
                     // Check children text content for tracking URLs
                     // (scraper parses noscript children as text nodes, not elements)
-                    let text_content: String = children
-                        .iter()
-                        .filter_map(|c| {
-                            if let DomNode::Text(t) = c {
-                                Some(t.as_str())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
+                    let text_content: String = children.iter().map(|c| c.text_content()).collect();
                     if ANALYTICS_SRC_RE.is_match(&text_content)
                         || ANALYTICS_PIXEL_RE.is_match(&text_content)
                     {
@@ -575,27 +557,27 @@ pub fn clean_negative_headers(node: &mut DomNode) -> WalkerAction {
 // 15.  filter_low_density_elements
 // ---------------------------------------------------------------------------
 
-/// Remove low-content tables, ULs, and DIVs based on density heuristics.
-///
-/// Implements Mozilla Readability's `_cleanConditionally` multi-heuristic.
-///
-/// Uses `walk_pre_mut` with SkipSubtree/Remove instead of manual recursion.
-///
-/// Algorithm:
-/// 1. Find the global max score (md_rd_subtree_max_score) across ALL nodes
-/// 2. Call `walk_pre_mut` with a closure that:
-///    a. Returns SkipSubtree for top-scored nodes (subtree_max >= global_max)
-///    b. Returns SkipSubtree for data tables, code, pre (keep entire subtree)
-///    c. Returns Keep for figure (let children evaluate normally)
-///    d. Returns Remove for table|ul|div that fail density heuristics
-///    e. Returns Keep for everything else
-///
-/// Pre: Analysis passes have run (needs "link_density", "heading_density",
-///      "embed_count", "img_para_ratio" metadata on each node).
-///      ScorerMozillaReadability has run (needs "mozilla_readability" scores).
-/// Post: Low-density elements are removed. Top-scored nodes are never removed.
-/// Pre-scan: find tables inside `<figure>` and mark them as data tables.
-/// Analysis passes can't see parent context, so this is done at filtering level.
+// Remove low-content tables, ULs, and DIVs based on density heuristics.
+//
+// Implements Mozilla Readability's `_cleanConditionally` multi-heuristic.
+//
+// Uses `walk_pre_mut` with SkipSubtree/Remove instead of manual recursion.
+//
+// Algorithm:
+// 1. Find the global max score (md_rd_subtree_max_score) across ALL nodes
+// 2. Call `walk_pre_mut` with a closure that:
+//    a. Returns SkipSubtree for top-scored nodes (subtree_max >= global_max)
+//    b. Returns SkipSubtree for data tables, code, pre (keep entire subtree)
+//    c. Returns Keep for figure (let children evaluate normally)
+//    d. Returns Remove for table|ul|div that fail density heuristics
+//    e. Returns Keep for everything else
+//
+// Pre: Analysis passes have run (needs "link_density", "heading_density",
+//      "embed_count", "img_para_ratio" metadata on each node).
+//      ScorerMozillaReadability has run (needs "mozilla_readability" scores).
+// Post: Low-density elements are removed. Top-scored nodes are never removed.
+// Pre-scan: find tables inside `<figure>` and mark them as data tables.
+// Analysis passes can't see parent context, so this is done at filtering level.
 // ---------------------------------------------------------------------------
 // Helper functions for density filter passes
 // ---------------------------------------------------------------------------
@@ -1456,7 +1438,7 @@ pub(crate) fn check_text_density(text_chars: usize, serialized_chars: usize) -> 
     (text_chars as f64 / serialized_chars as f64) == 0.0
 }
 
-/// Count `<img>` elements in the children slice.
+// Count `<img>` elements in the children slice.
 
 /// Check if an element fails the density heuristics and should be removed.
 ///

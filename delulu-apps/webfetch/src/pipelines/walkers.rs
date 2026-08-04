@@ -154,6 +154,7 @@ pub fn walk_post_mut(
 ///
 /// Same semantics as [`walk_post_mut`]: when `should_descend` returns `false`,
 /// children are skipped and the filter receives an empty `&[]`.
+#[allow(clippy::type_complexity)]
 pub fn walk_post_acc_mut<A: Default>(
     nodes: &mut Vec<DomNode>,
     should_descend: Option<fn(&DomNode) -> bool>,

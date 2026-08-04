@@ -9,6 +9,7 @@ use crate::pipelines::walkers::{WalkerAction, WalkerFilter, walk_post_mut};
 ///
 /// - `h1` → `<head rend="h1">`
 /// - `h3` → `<head rend="h3">`
+///   Reference: Trafilatura `htmlprocessing.py:316-320` `convert_headings()`
 pub fn tf_convert_headings(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. }
@@ -35,6 +36,7 @@ pub fn tf_convert_headings(node: &mut DomNode) -> WalkerAction {
 ///
 /// - `ul`/`ol` → `list`
 /// - `li` → `item`
+///   Reference: Trafilatura `htmlprocessing.py:271-284` `convert_lists()`
 pub fn tf_convert_lists(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, .. } if matches!(tag.as_str(), "ul" | "ol") => {
@@ -60,6 +62,7 @@ pub fn tf_convert_lists(node: &mut DomNode) -> WalkerAction {
 /// - `blockquote` → `quote`
 /// - `pre` → `code`
 /// - `q` → `quote`
+///   Reference: Trafilatura `htmlprocessing.py:287-303` `convert_quotes()`
 pub fn tf_convert_quotes(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, .. } if matches!(tag.as_str(), "blockquote" | "q") => {
@@ -85,6 +88,7 @@ pub fn tf_convert_quotes(node: &mut DomNode) -> WalkerAction {
 /// - `b`/`strong` → `<hi rend="#b">`
 /// - `em`/`i` → `<hi rend="#i">`
 /// - `del`/`s`/`strike` → `<del rend="overstrike">`
+///   Reference: Trafilatura `htmlprocessing.py:26-38` `REND_TAG_MAPPING` + `convert_tags()`
 pub fn tf_convert_formatting(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. } if matches!(tag.as_str(), "b" | "strong") => {
@@ -123,6 +127,7 @@ pub fn tf_convert_formatting(node: &mut DomNode) -> WalkerAction {
 ///
 /// - `br` → `lb`
 /// - `hr` → `lb`
+///   Reference: Trafilatura `htmlprocessing.py:323-325` `convert_line_breaks()`
 pub fn tf_convert_breaks(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, .. } if matches!(tag.as_str(), "br" | "hr") => {
@@ -143,6 +148,7 @@ pub fn tf_convert_breaks(node: &mut DomNode) -> WalkerAction {
 /// - `a` → `ref`, move `href` → `target`
 /// - `details` → `div`
 /// - `summary` → `head`
+///   Reference: Trafilatura `htmlprocessing.py:334-338` `convert_details()` + `htmlprocessing.py:364-373` `convert_link()`
 pub fn tf_convert_refs_and_details(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, attrs, .. } if tag == "a" => {
@@ -185,6 +191,7 @@ pub fn tf_convert_refs_and_details(node: &mut DomNode) -> WalkerAction {
 ///
 /// Pre: DOM tree is fully parsed.
 /// Post: All non-content elements in the strip list are removed.
+///   Reference: Trafilatura `htmlprocessing.py:47-79` `tree_cleaning()` (partial)
 pub fn tf_canonicalize_strip_non_content(node: &mut DomNode) {
     // NOTE: head is intentionally EXCLUDED from this list.
     // The rd version (rd_strip_non_content) includes head.
@@ -225,6 +232,7 @@ pub fn tf_canonicalize_strip_non_content(node: &mut DomNode) {
 /// Pre: DOM tree is fully parsed. Analysis passes (rd_analysis) have populated
 ///      `metadata["is_data_table"]` on relevant `<table>` elements.
 /// Post: Layout containers are unwrapped. Data tables are preserved intact.
+/// Note: No direct Python trafilatura equivalent — Rust-specific.
 pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
     const CONTAINER_TAGS: &[&str] = &[
         "div", "span", "section", "article", "header", "main", "body", "html",

@@ -85,7 +85,7 @@ pub async fn spawn_stdio_server(path: &Path) -> Result<(Child, ChildStdin, Child
     let stderr = child.stderr.take().unwrap();
     let stdout = child.stdout.take().unwrap();
     let stdin = child.stdin.take().unwrap();
-    let _ = stream_stderr_to_console(stderr);
+    std::mem::drop(stream_stderr_to_console(stderr));
     Ok((child, stdin, stdout))
 }
 
@@ -191,7 +191,6 @@ pub async fn read_json_response(
             let read_result = tokio::time::timeout(timeout, stdout.read(&mut buf[..1])).await;
             match read_result {
                 Ok(Ok(0)) => break, // EOF
-                Ok(Ok(n)) if n == 0 => break,
                 Ok(Ok(_)) => {
                     let ch = buf[0] as char;
                     if ch == '\n' {
