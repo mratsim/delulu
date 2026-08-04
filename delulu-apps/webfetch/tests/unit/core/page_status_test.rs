@@ -105,7 +105,8 @@ fn page_status_blocked_cookie_consent_serializes_exact() {
 
 #[test]
 fn blocked_by_has_five_variants() {
-    // Compile-time assertion via a non-exhaustive match over all five variants.
+    // Compile-time assertion via an exhaustive match over all five variants:
+    // adding a new `BlockedBy` variant fails to compile until it is handled here.
     let all = [
         BlockedBy::CloudflareTurnstile,
         BlockedBy::Captcha,
@@ -175,7 +176,11 @@ fn detect_anti_bot_never_returns_cookie_consent() {
     // CookieConsent is the separate concern of detect_cookie_consent.
     let html = r#"<div id="cmp"></div><script>__tcfapi</script>"#;
     let result = anti_bot(html);
-    assert!(result.is_none() || result != Some(BlockedBy::CookieConsent));
+    assert_ne!(
+        result,
+        Some(BlockedBy::CookieConsent),
+        "detect_anti_bot must never return CookieConsent"
+    );
 }
 
 #[test]

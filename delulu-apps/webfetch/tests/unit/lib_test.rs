@@ -985,23 +985,17 @@ fn load_js_challenge_fixture() -> String {
 }
 
 /// The body must contain none of the anti-bot/consent/paywall markers so
-/// no higher-priority signal fires before `is_js_heavy`.
+/// no higher-priority signal fires before `is_js_heavy`. This drives the REAL
+/// detectors in `src/core/page_status.rs` (rather than a hardcoded marker
+/// list) so it can never drift out of sync with what `classify_page` matches.
 fn assert_no_bot_consent_paywall_markers(body: &str) {
-    const MARKERS: &[&str] = &[
-        "turnstile",
-        "challenge-platform",
-        "data-sitekey",
-        "cf-",
-        "g-recaptcha",
-        "consent.google",
-        "data-paywall",
-        "paywall-",
-        "metered-content",
-    ];
     let lower = body.to_lowercase();
-    for m in MARKERS {
-        assert!(!lower.contains(m), "body must be marker-free, found {m}");
-    }
+    assert!(
+        crate::core::page_status::detect_anti_bot(&lower).is_none()
+            && !crate::core::page_status::detect_cookie_consent(&lower)
+            && !crate::core::page_status::detect_paywall(&lower),
+        "body must be free of anti-bot/consent/paywall markers so JSHeavy fires first"
+    );
 }
 
 #[tokio::test]
