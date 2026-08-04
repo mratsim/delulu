@@ -7,3 +7,8 @@ dependencies = []
 
 [dependency-groups]
 dev = ["mcp>=1.0", "jsonschema"]
+
+# Only needed to regenerate diagnostic evaluation fixtures
+# (tests/pipeline_trafilatura/convert_eval_fixtures.py). Not used by the
+# Rust crate at runtime.
+fixtures = ["trafilatura>=2.1.0", "zstandard>=0.22"]

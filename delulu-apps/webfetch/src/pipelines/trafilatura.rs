@@ -32,35 +32,37 @@ use super::passes::tf_transforms::{
 
 /// Wrap a `WalkerAction`-returning pass for use in a pipeline array.
 ///
-/// Expands to `(|node| walk_pre_mut(node, &|n| $f(n))) as fn(&mut DomNode)`.
-/// Eliminates boilerplate closure cast syntax.
+/// Expands to a `fn(&mut $crate::pipelines::DomNode)` that walks the tree in
+/// pre-order applying `$f`. Eliminates boilerplate closure cast syntax.
 ///
-/// Pre: `$f` is a function `fn(&mut DomNode) -> WalkerAction`.
-/// Post: Returns a `fn(&mut DomNode)` that walks the tree in pre-order applying `$f`.
+/// Pre: `$f` is a function `fn(&mut $crate::pipelines::DomNode) -> $crate::pipelines::WalkerAction`.
+/// Post: Returns a `fn(&mut $crate::pipelines::DomNode)` that walks the tree in pre-order applying `$f`.
 ///
 /// Note: No direct trafilatura equivalent — Rust-specific macro.
 #[macro_export]
 macro_rules! wrap_pass {
     ($f:expr) => {
-        (|node| walk_pre_mut(node, &|n| $f(n))) as fn(&mut DomNode)
+        (|node| $crate::pipelines::walk_pre_mut(node, &|n| $f(n)))
+            as fn(&mut $crate::pipelines::DomNode)
     };
 }
 
 /// Wrap a void-returning pass for use in a pipeline array.
 ///
-/// Expands to `(|node| walk_pre_mut(node, &|n| { $f(n); WalkerAction::Continue })) as fn(&mut DomNode)`.
+/// Expands to a `fn(&mut $crate::pipelines::DomNode)` that walks the tree in
+/// pre-order applying `$f`. Eliminates boilerplate closure cast syntax.
 ///
-/// Pre: `$f` is a function `fn(&mut DomNode)` (no return value).
-/// Post: Returns a `fn(&mut DomNode)` that walks the tree in pre-order applying `$f`.
+/// Pre: `$f` is a function `fn(&mut $crate::pipelines::DomNode)` (no return value).
+/// Post: Returns a `fn(&mut $crate::pipelines::DomNode)` that walks the tree in pre-order applying `$f`.
 #[macro_export]
 macro_rules! wrap_pass_void {
     ($f:expr) => {
         (|node| {
-            walk_pre_mut(node, &|n| {
+            $crate::pipelines::walk_pre_mut(node, &|n| {
                 $f(n);
-                WalkerAction::Continue
+                $crate::pipelines::WalkerAction::Continue
             })
-        }) as fn(&mut DomNode)
+        }) as fn(&mut $crate::pipelines::DomNode)
     };
 }
 

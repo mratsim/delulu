@@ -427,3 +427,25 @@ fn test_tf_balanced_names_aligned_with_passes() {
         assert!(!name.is_empty(), "TF_BALANCED_NAMES[{i}] must be non-empty");
     }
 }
+
+// ── Issue W: macros must be path-hygienic ─────────────────────────────
+//
+// This nested module deliberately does NOT `use` (or inherit via the parent's
+// `use super::*`) the unqualified names `walk_pre_mut`, `DomNode`, or
+// `WalkerAction`. It only ever refers to them fully qualified as
+// `crate::pipelines::...`. Before the `$crate::` hygiene fix, invoking
+// `crate::wrap_pass!` / `crate::wrap_pass_void!` here failed to compile because
+// their expansions referenced those names unqualified.
+mod hygiene {
+    fn pass(n: &mut crate::pipelines::DomNode) -> crate::pipelines::WalkerAction {
+        crate::pipelines::WalkerAction::Continue
+    }
+
+    fn void_pass(_n: &mut crate::pipelines::DomNode) {}
+
+    #[test]
+    fn macros_are_path_hygienic() {
+        let _: fn(&mut crate::pipelines::DomNode) = crate::wrap_pass!(pass);
+        let _: fn(&mut crate::pipelines::DomNode) = crate::wrap_pass_void!(void_pass);
+    }
+}
