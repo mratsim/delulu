@@ -240,12 +240,23 @@ pub fn apply_tf_isolate_container_xpath_with_backup(node: &mut DomNode) {
 // Retry Level Constants
 // ---------------------------------------------------------------------------
 
+/// Apply tag catalog filter — remove all tags not in TAG_CATALOG.
+///
+/// Pre: `node` is a valid DOM tree. All other passes have been applied.
+/// Post: Only tags in TAG_CATALOG survive. Unknown tags are replaced with their children (ReplaceWithChildren). Uses `walk_post_mut` (ReplaceWithChildren panics in pre-order).
+fn apply_tf_filter_tag_catalog(node: &mut DomNode) {
+    use crate::pipelines::walkers::WalkerFilter;
+    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
+    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
+    walk_post_mut(node, &mut filters, None);
+}
+
 /// Level: Balanced — standard Trafilatura-equivalent pipeline.
 ///
 /// Pre: `node` is a valid DOM tree. `rd_analysis::mark_data_tables_by_structure` has been called.
-/// Post: All 17 passes are applied in order. `node` is mutated in-place. Output contains only tags in TAG_CATALOG.
+/// Post: `node` is mutated in-place. Output contains only tags in TAG_CATALOG.
 ///
-/// Order:
+/// Order (as listed in `TF_BALANCED`):
 /// 1. Remove MANUALLY_CLEANED tags (figure, script, nav, etc.)
 /// 2. Remove TEASER_DISCARD elements (teaser in class/id)
 /// 3. Remove UNLIKELY_CANDIDATES elements (class/id matches OVERALL_DISCARD_XPATH)
@@ -256,17 +267,6 @@ pub fn apply_tf_isolate_container_xpath_with_backup(node: &mut DomNode) {
 /// 8. Canonicalization (strip non-content, unwrap containers)
 /// 9. DISCARD_IMAGE_ELEMENTS (remove caption elements)
 /// 10. TAG_CATALOG filter (whitelist allowed output tags)
-fn apply_tf_filter_tag_catalog(node: &mut DomNode) {
-    use crate::pipelines::walkers::WalkerFilter;
-    let mut filter = |n: &mut DomNode| -> WalkerAction { tf_filter_tag_catalog(n) };
-    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
-    walk_post_mut(node, &mut filters, None);
-}
-
-/// Apply tag catalog filter — remove all tags not in TAG_CATALOG.
-///
-/// Pre: `node` is a valid DOM tree. All other passes have been applied.
-/// Post: Only tags in TAG_CATALOG survive. Unknown tags are replaced with their children (ReplaceWithChildren). Uses `walk_post_mut` (ReplaceWithChildren panics in pre-order).
 pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
     &[
         tf_extract_script_templates,
@@ -406,6 +406,44 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
 /// Minimum output length (in characters) for a successful tf_* extraction.
 /// Uses the same constant as the readability pipeline for consistency.
 pub const TF_MIN_OUTPUT_CHARS: usize = 1000;
+
+// Retry-cascade recovery thresholds. Each is annotated with its provenance in
+// Trafilatura v2.1.0 (reference clone at _references_fetch/trafilatura) so drift
+// or hallucination is checkable at a glance: a value either cites the Python
+// file:line it derives from, or is explicitly marked Rust-specific (no Python
+// counterpart).
+
+/// Low total-output gate that triggers unfiltered wild-<p> recovery.
+/// Rust-specific heuristic — no Trafilatura v2.1.0 literal.
+// TODO: slop drift, to be removed.
+const RECOVERY_MIN_OUTPUT_CHARS: usize = 500;
+
+/// Length gate combined with [`RECOVERY_MIN_NONWS_CHARS`] to trigger unfiltered
+/// wild-<p> recovery when output is short but wordy.
+/// Rust-specific heuristic — no Trafilatura v2.1.0 literal.
+// TODO: slop drift, to be removed.
+const RECOVERY_LOW_LEN_WORD_GATE: usize = 2200;
+
+/// Min non-whitespace chars (with [`RECOVERY_LOW_LEN_WORD_GATE`]) to trigger
+/// wild-<p> recovery; also the min `<p>` text to trigger JSON-LD rescue.
+/// Maps to Trafilatura v2.1.0 `MIN_EXTRACTED_SIZE = 250` (settings.cfg:26).
+const RECOVERY_MIN_NONWS_CHARS: usize = 250;
+
+/// Output gate below which FILTERED wild-<p> recovery runs (with a min per-<p>
+/// char filter).
+/// Rust-specific heuristic — no Trafilatura v2.1.0 literal.
+// TODO: slop drift, to be removed.
+const RECOVERY_FILTERED_OUTPUT_CHARS: usize = 800;
+
+/// Min chars a wild <p> must have to be recovered in the filtered pass.
+/// Rust-specific heuristic — no Trafilatura v2.1.0 literal.
+// TODO: slop drift, to be removed.
+const WILD_P_MIN_CHARS: usize = 100;
+
+/// Min articleBody length (chars) to accept the JSON-LD rescue result.
+/// Mirrors Trafilatura v2.1.0 `baseline.py` `len(temp_text) > 100` gate
+/// (baseline.py:57).
+const JSONLD_MIN_BODY_CHARS: usize = 100;
 
 /// Recover `<p>` elements from the original tree that were lost during pipeline processing.
 ///
@@ -551,7 +589,10 @@ pub fn filter_trafilatura(node: &mut DomNode) {
 
     // If best output is below threshold, try recovering <p> elements
     // Uses a cleaned copy with boilerplate containers removed first.
-    if best_len < 500 || (best_len < 2200 && count_non_ws_chars(&best_tree) < 250) {
+    if best_len < RECOVERY_MIN_OUTPUT_CHARS
+        || (best_len < RECOVERY_LOW_LEN_WORD_GATE
+            && count_non_ws_chars(&best_tree) < RECOVERY_MIN_NONWS_CHARS)
+    {
         let old_len = best_len;
         let n = recover_wild_paragraphs(&mut best_tree, &original, 0);
         best_len = best_tree.text_len();
@@ -565,9 +606,9 @@ pub fn filter_trafilatura(node: &mut DomNode) {
         } else {
             tracing::debug!("recover_wild_text: no improvement ({} chars)", best_len);
         }
-    } else if best_len < 800 {
+    } else if best_len < RECOVERY_FILTERED_OUTPUT_CHARS {
         let old_len = best_len;
-        let n = recover_wild_paragraphs(&mut best_tree, &original, 100);
+        let n = recover_wild_paragraphs(&mut best_tree, &original, WILD_P_MIN_CHARS);
         best_len = best_tree.text_len();
         if best_len > old_len {
             tracing::info!(
@@ -575,7 +616,7 @@ pub fn filter_trafilatura(node: &mut DomNode) {
                 old_len,
                 best_len,
                 n,
-                100
+                WILD_P_MIN_CHARS
             );
         } else {
             tracing::debug!(
@@ -591,12 +632,12 @@ pub fn filter_trafilatura(node: &mut DomNode) {
     let p_text = best_tree.text_stats().0;
     // Trigger JSON-LD recovery when pipeline produces little content:
     // either low total chars (<500) or no real <p> content (<250)
-    if best_len < 500 || p_text < 250 {
+    if best_len < RECOVERY_MIN_OUTPUT_CHARS || p_text < RECOVERY_MIN_NONWS_CHARS {
         // Walk the original tree looking for JSON-LD script elements with articleBody
         let article_body = extract_jsonld_article_body(&original);
         if let Some(body) = article_body {
             let trimmed = body.trim();
-            if trimmed.len() >= 100 {
+            if trimmed.len() >= JSONLD_MIN_BODY_CHARS {
                 let existing_text = best_tree.text_content();
                 if !existing_text.contains(trimmed) {
                     tracing::info!(
@@ -629,7 +670,7 @@ pub fn filter_trafilatura(node: &mut DomNode) {
     // Last-resort fallback: if all cascade levels (Balanced, Recall, recovery) produce
     // little to no content, return the original tree rather than an empty result.
     // This matches Python's behavior of returning whatever survived the pipeline.
-    if best_len < 500 {
+    if best_len < RECOVERY_MIN_OUTPUT_CHARS {
         tracing::warn!(
             "filter_trafilatura: all cascade levels produced <500 chars ({}), falling back to original tree",
             best_len,
