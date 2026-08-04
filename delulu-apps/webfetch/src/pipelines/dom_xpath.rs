@@ -291,6 +291,11 @@ pub(crate) enum XPathExpr {
     Position,
     /// A predicate expression
     Predicate(Box<XPathExpr>),
+    /// A parenthesized expression with trailing predicate(s), e.g. `(.//div)[1]`.
+    /// Unlike a step predicate (which applies per-parent), the predicate here
+    /// applies to the WHOLE node-set produced by the inner expression, so a
+    /// numeric `[N]` selects the Nth node in document order (lxml XPath 1.0).
+    Group(Box<XPathExpr>, Vec<Predicate>),
 }
 
 /// A path expression: a sequence of steps separated by `/` or `//`.
@@ -437,6 +442,40 @@ fn parse_union_expr(
     Ok(left)
 }
 
+
+/// Expand a `descendant-or-self::test[preds]` step into
+/// `descendant-or-self::node()/child::test[preds]` when the step carries a
+/// positional (numeric) predicate.
+///
+/// XPath 1.0 parses `//foo[1]` as `descendant-or-self::node()/child::foo[1]`,
+/// so the `[1]` selects the first matching child PER PARENT. If we kept a
+/// single descendant-or-self step, the predicate would select the Nth node of
+/// the whole flattened document order (wrong). Steps without a numeric
+/// predicate are returned unchanged: a non-positional filter yields the same
+/// node-set either way, so this keeps the change minimal and safe.
+fn expand_descendant_step(step: Step) -> Vec<Step> {
+    let has_numeric_pred = step
+        .predicates
+        .iter()
+        .any(|p| matches!(&*p.expr, XPathExpr::Number(_)));
+    if step.axis == Axis::DescendantOrSelf && has_numeric_pred {
+        vec![
+            Step {
+                axis: Axis::DescendantOrSelf,
+                node_test: NodeTest::Any,
+                predicates: Vec::new(),
+            },
+            Step {
+                axis: Axis::Child,
+                node_test: step.node_test,
+                predicates: step.predicates,
+            },
+        ]
+    } else {
+        vec![step]
+    }
+}
+
 fn parse_path_expr(
     tokens: &[XPathToken],
     pos: &mut usize,
@@ -485,6 +524,20 @@ fn parse_path_expr(
                 if let Some(first) = steps.first_mut() {
                     first.axis = axis;
                 }
+                // `//step` (and `/` handled below) is shorthand for
+                // `descendant-or-self::node()/child::step`. A positional predicate
+                // (e.g. `[1]`) on the descendant-or-self step must therefore apply
+                // PER-PARENT, not to the whole flattened document order. Expand
+                // the step into two steps so the predicate lands on the per-parent
+                // `child::` step, matching lxml XPath 1.0.
+                if axis == Axis::DescendantOrSelf {
+                    let first = steps.remove(0);
+                    let mut expanded = expand_descendant_step(first);
+                    let mut new_steps = Vec::with_capacity(expanded.len() + steps.len());
+                    new_steps.append(&mut expanded);
+                    new_steps.extend(steps);
+                    steps = new_steps;
+                }
             }
             // Parse remaining /step or //step
             while *pos < tokens.len() {
@@ -502,7 +555,9 @@ fn parse_path_expr(
                     XPathToken::DoubleSlash => {
                         *pos += 1;
                         let step = parse_step(tokens, pos, Axis::DescendantOrSelf, depth + 1)?;
-                        steps.push(step);
+                        // Same per-parent expansion as the leading `//` case.
+                        let mut expanded = expand_descendant_step(step);
+                        steps.append(&mut expanded);
                     }
                     _ => break,
                 }
@@ -550,7 +605,29 @@ fn parse_step_or_primary(
                 )));
             }
             *pos += 1;
-            Ok(expr)
+            // Parse trailing predicates on the parenthesized group, e.g.
+            // `(.//article)[1]`. These apply to the WHOLE node-set (document
+            // order), unlike step predicates which apply per-parent.
+            let mut preds = Vec::new();
+            while *pos < tokens.len() && tokens[*pos] == XPathToken::LBracket {
+                *pos += 1;
+                let pexpr = parse_or_expr(tokens, pos, depth + 1)?;
+                if *pos >= tokens.len() || tokens[*pos] != XPathToken::RBracket {
+                    let found = if *pos < tokens.len() {
+                        format!("{:?}", tokens[*pos])
+                    } else {
+                        "end of input".to_string()
+                    };
+                    return Err(XPathError(format!("unexpected token at position {pos}: expected ']', found {found}")));
+                }
+                *pos += 1;
+                preds.push(Predicate { expr: Box::new(pexpr) });
+            }
+            if preds.is_empty() {
+                Ok(expr)
+            } else {
+                Ok(XPathExpr::Group(Box::new(expr), preds))
+            }
         }
         XPathToken::Dot => {
             *pos += 1;
@@ -931,6 +1008,12 @@ fn restore_re_test(
         XPathExpr::Predicate(inner) => {
             restore_re_test(inner, regex_cache)?;
         }
+        XPathExpr::Group(inner, preds) => {
+            restore_re_test(inner, regex_cache)?;
+            for pred in preds.iter_mut() {
+                restore_re_test(&mut pred.expr, regex_cache)?;
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -1031,6 +1114,16 @@ fn eval_expr<'a>(
             }
         }
         XPathExpr::Predicate(_) => Ok(vec![]),
+        XPathExpr::Group(inner, preds) => {
+            // Evaluate the inner expression, then apply each predicate to the
+            // WHOLE node-set (document-order position), mirroring lxml for
+            // parenthesized forms like `(.//article)[1]`.
+            let mut nodes = eval_expr(inner, context, root, regex_cache, depth + 1)?;
+            for pred in preds {
+                nodes = apply_predicate(&nodes, &pred.expr, root, regex_cache, depth + 1)?;
+            }
+            Ok(nodes)
+        }
     }
 }
 
@@ -1220,6 +1313,7 @@ fn eval_predicate_expr(
         }
         XPathExpr::Position => Ok(true),
         XPathExpr::Predicate(_) => Ok(true),
+        XPathExpr::Group(_, _) => Ok(!eval_expr(expr, node, root, regex_cache, depth + 1)?.is_empty()),
     }
 }
 
@@ -1597,7 +1691,117 @@ fn assign_positions<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Build the standard regression doc:
+    ///   body
+    ///    ├── div#a
+    ///    │    ├── div#a1
+    ///    │    └── div#a2
+    ///    └── div#b
+    ///         ├── div#b1
+    ///         └── div#b2
+    fn make_issue_b_doc() -> DomNode {
+        make_elem(
+            "body",
+            vec![],
+            vec![
+                make_elem(
+                    "div",
+                    vec![("id", "a")],
+                    vec![
+                        make_elem("div", vec![("id", "a1")], vec![]),
+                        make_elem("div", vec![("id", "a2")], vec![]),
+                    ],
+                ),
+                make_elem(
+                    "div",
+                    vec![("id", "b")],
+                    vec![
+                        make_elem("div", vec![("id", "b1")], vec![]),
+                        make_elem("div", vec![("id", "b2")], vec![]),
+                    ],
+                ),
+            ],
+        )
+    }
 
+    /// Return the sorted set of `id` attributes of the matched nodes.
+    fn sorted_ids(nodes: &[&DomNode]) -> Vec<String> {
+        let mut v: Vec<String> = nodes
+            .iter()
+            .map(|n| get_attr_value(n, "id").to_string())
+            .collect();
+        v.sort();
+        v
+    }
+
+    // Issue B: `//div[1]` selects the FIRST div under EACH parent (per-parent),
+    // not the single document-first div. lxml XPath 1.0: `//div[1]` =
+    // `descendant-or-self::node()/child::div[1]`.
+    #[test]
+    fn test_issue_b_per_parent_first() {
+        let doc = make_issue_b_doc();
+        let result = XPath::compile("//div[1]").unwrap().eval(&doc).unwrap();
+        // Parents with >=1 div child: body -> a, a -> a1, b -> b1.
+        let ids = sorted_ids(&result);
+        assert_eq!(ids, vec!["a", "a1", "b1"]);
+    }
+
+    // Issue B: `//div[2]` selects the SECOND div under each parent.
+    #[test]
+    fn test_issue_b_per_parent_second() {
+        let doc = make_issue_b_doc();
+        let result = XPath::compile("//div[2]").unwrap().eval(&doc).unwrap();
+        // Parents with >=2 div children: body -> b, a -> a2, b -> b2.
+        let ids = sorted_ids(&result);
+        assert_eq!(ids, vec!["a2", "b", "b2"]);
+    }
+
+    // Issue B: `(.//div)[1]` (parenthesized) selects only the single document-first
+    // div — whole-document order, NOT per-parent.
+    #[test]
+    fn test_issue_b_parenthesized_doc_first() {
+        let doc = make_issue_b_doc();
+        let result = XPath::compile("(.//div)[1]").unwrap().eval(&doc).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(get_attr_value(result[0], "id"), "a");
+    }
+
+    // Issue B: production-relevant `.//*[...][1]` step shape (mirrors
+    // BODY_XPATH[0] from trafilatura xpaths.py) must select per-parent.
+    #[test]
+    fn test_issue_b_step_predicate_production_shape() {
+        let doc = make_elem(
+            "body",
+            vec![],
+            vec![
+                make_elem(
+                    "section",
+                    vec![("id", "s1")],
+                    vec![
+                        make_elem("div", vec![("id", "c1"), ("class", "post")], vec![]),
+                        make_elem("div", vec![("id", "c2"), ("class", "entry")], vec![]),
+                    ],
+                ),
+                make_elem(
+                    "section",
+                    vec![("id", "s2")],
+                    vec![
+                        make_elem("div", vec![("id", "c3"), ("class", "entry")], vec![]),
+                        make_elem("div", vec![("id", "c4"), ("class", "post")], vec![]),
+                    ],
+                ),
+            ],
+        );
+        let result = XPath::compile(
+            ".//*[self::div or self::section][@class='post' or @class='entry'][1]",
+        )
+        .unwrap()
+        .eval(&doc)
+        .unwrap();
+        // Per-parent first matching child: s1 -> c1, s2 -> c3.
+        let ids = sorted_ids(&result);
+        assert_eq!(ids, vec!["c1", "c3"]);
+    }
     fn make_elem(tag: &str, attrs: Vec<(&str, &str)>, children: Vec<DomNode>) -> DomNode {
         DomNode::Element {
             tag: tag.to_string(),
