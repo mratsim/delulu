@@ -297,10 +297,6 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
         #[cfg(feature = "use-xpath")]
         apply_tf_isolate_container_xpath_with_backup,
         #[cfg(not(feature = "use-xpath"))]
-        tf_fallback_content_container,
-        #[cfg(feature = "use-xpath")]
-        tf_fallback_content_container,
-        #[cfg(not(feature = "use-xpath"))]
         wrap_pass!(tf_discard_image_elements),
         #[cfg(feature = "use-xpath")]
         wrap_pass!(tf_discard_image_elements_xpath),
@@ -345,10 +341,6 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
         apply_tf_isolate_container_with_backup,
         #[cfg(feature = "use-xpath")]
         apply_tf_isolate_container_xpath_with_backup,
-        #[cfg(not(feature = "use-xpath"))]
-        tf_fallback_content_container,
-        #[cfg(feature = "use-xpath")]
-        tf_fallback_content_container,
         #[cfg(not(feature = "use-xpath"))]
         wrap_pass!(tf_discard_image_elements),
         #[cfg(feature = "use-xpath")]

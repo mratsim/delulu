@@ -335,3 +335,53 @@ fn test_recall_cleaning_preserves_all_p() {
         "the <p> content must be retained"
     );
 }
+
+// ── Issue C regression: recovered <p> must survive the full pipeline ──
+
+/// Regression test for Issue C.
+///
+/// `tf_fallback_content_container` is a Rust-internal heuristic with NO Python
+/// counterpart: Python's `_extract()` (trafilatura/main_extractor.py:597-608)
+/// iterates BODY_XPATH once and extracts the FIRST matching subtree — it never
+/// re-runs a "pick the best <p> child" pass after extraction.
+///
+/// In Rust the fallback legitimately runs inside the backup closure of
+/// `apply_tf_isolate_container_with_backup`. But it must NOT appear as a
+/// standalone pass in TF_BALANCED/TF_RECALL: when the container isolation
+/// triggers backup recovery (`recover_wild_p_elements`), the tree regains
+/// multiple top-level children, and a second standalone fallback re-isolates,
+/// dropping the just-recovered <p> elements.
+///
+/// This test feeds a doc whose isolation step removes >=90% of text (so the
+/// backup closure recovers wild <p>s back into a multi-child tree) and asserts
+/// the recovered <p>s survive the entire TF_BALANCED pipeline.
+#[test]
+fn test_bal_pipeline_preserves_recovered_p_after_backup() {
+    // article.post is the BODY_XPATH match (>=250 chars of <p> text).
+    // The secondary div is large enough that isolating only the article
+    // removes >=90% of total text, triggering the backup closure's
+    // recover_wild_p_elements, which pushes the div's two <p>s back as
+    // top-level siblings -> a multi-child tree.
+    let a = "ALPHABRAVO".repeat(30); // 300 chars in article.post
+    let b = "CHARLIEDELTA".repeat(400); // 4800 chars, recovered wild <p>
+    let c = "ECHOFOXTROT".repeat(300); // 3300 chars, recovered wild <p>
+    let html = format!(
+        "<html><body>\
+         <article class=\"post\"><p>{a}</p></article>\
+         <div class=\"secondary\"><p>{b}</p><p>{c}</p></div>\
+         </body></html>"
+    );
+    let mut doc = parse_html(&html).unwrap();
+    for pass in *super::TF_BALANCED {
+        pass(&mut doc);
+    }
+    let text = doc.text_content();
+    assert!(
+        text.contains("CHARLIEDELTA"),
+        "recovered <p> (CHARLIEDELTA) must survive the TF_BALANCED pipeline"
+    );
+    assert!(
+        text.contains("ECHOFOXTROT"),
+        "recovered <p> (ECHOFOXTROT) must survive the TF_BALANCED pipeline"
+    );
+}
