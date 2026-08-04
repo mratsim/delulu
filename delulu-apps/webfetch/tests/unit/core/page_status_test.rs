@@ -1,5 +1,19 @@
 use super::*;
 
+// The production detectors now require a PRE-LOWERED `&str` (see
+// `classify_page`, which lowercases the body once). These thin wrappers keep
+// the test inputs ergonomic while still exercising the exact same detector
+// path: they lowercase before delegating.
+fn anti_bot(html: &str) -> Option<BlockedBy> {
+    detect_anti_bot(&html.to_lowercase())
+}
+fn cookie_consent(html: &str) -> bool {
+    detect_cookie_consent(&html.to_lowercase())
+}
+fn paywall(html: &str) -> bool {
+    detect_paywall(&html.to_lowercase())
+}
+
 // ---------------------------------------------------------------------------
 // exact JSON serialization forms
 // ---------------------------------------------------------------------------
@@ -117,50 +131,50 @@ fn blocked_by_has_five_variants() {
 #[test]
 fn detect_anti_bot_clean_page_is_none() {
     let html = "<html><body><p>Ordinary readable content here</p></body></html>";
-    assert_eq!(detect_anti_bot(html), None);
+    assert_eq!(anti_bot(html), None);
 }
 
 #[test]
 fn detect_anti_bot_captcha_vendor() {
     let html = r#"<div class="g-recaptcha" data-sitekey="abc"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::Captcha));
+    assert_eq!(anti_bot(html), Some(BlockedBy::Captcha));
     let html = r#"<div class="h-captcha"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::Captcha));
+    assert_eq!(anti_bot(html), Some(BlockedBy::Captcha));
     let html = r#"<div data-recaptcha="1"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::Captcha));
+    assert_eq!(anti_bot(html), Some(BlockedBy::Captcha));
 }
 
 #[test]
 fn detect_anti_bot_cloudflare_vendor() {
     let html = r#"<div class="cf-turnstile"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
+    assert_eq!(anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
     let html = r#"<div id="cf-browser-verification"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
+    assert_eq!(anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
     let html = r#"<div class="cf-challenge"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
+    assert_eq!(anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
     let html = r#"<div id="__cf_chl_opt"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
+    assert_eq!(anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
     let html = r#"<div id="challenge-platform"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
+    assert_eq!(anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
 }
 
 #[test]
 fn detect_anti_bot_anubis_vendor() {
     let html = r#"<div id="anubis"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::Anubis));
+    assert_eq!(anti_bot(html), Some(BlockedBy::Anubis));
     let html = r#"<div class="anubis"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::Anubis));
+    assert_eq!(anti_bot(html), Some(BlockedBy::Anubis));
     let html = r#"<div data-anubis="1"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::Anubis));
+    assert_eq!(anti_bot(html), Some(BlockedBy::Anubis));
     let html = r#"<script src="anubis.js"></script>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::Anubis));
+    assert_eq!(anti_bot(html), Some(BlockedBy::Anubis));
 }
 
 #[test]
 fn detect_anti_bot_never_returns_cookie_consent() {
     // CookieConsent is the separate concern of detect_cookie_consent.
     let html = r#"<div id="cmp"></div><script>__tcfapi</script>"#;
-    let result = detect_anti_bot(html);
+    let result = anti_bot(html);
     assert!(result.is_none() || result != Some(BlockedBy::CookieConsent));
 }
 
@@ -170,7 +184,7 @@ fn detect_anti_bot_data_sitekey_only_maps_to_cloudflare() {
     // and Turnstile; it deliberately maps to CloudflareTurnstile (legacy group).
     let html = r#"<div data-sitekey="6Lc12345"></div>"#;
     assert_eq!(
-        detect_anti_bot(html),
+        anti_bot(html),
         Some(BlockedBy::CloudflareTurnstile),
         "data-sitekey-only must deterministically map to CloudflareTurnstile"
     );
@@ -180,7 +194,7 @@ fn detect_anti_bot_data_sitekey_only_maps_to_cloudflare() {
 fn detect_anti_bot_vendor_determinism_captcha_wins() {
     // g-recaptcha AND data-sitekey both present → Captcha (checked first).
     let html = r#"<div class="g-recaptcha" data-sitekey="abc"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::Captcha));
+    assert_eq!(anti_bot(html), Some(BlockedBy::Captcha));
 }
 
 #[test]
@@ -189,12 +203,12 @@ fn detect_anti_bot_unknown_patterns_and_cloudflare_markers() {
     // context) hits the `is_bot_detected` catch-all -> Unknown, NOT a
     // Cloudflare-specific mislabel.
     let html = "Please solve the turnstile to continue.";
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::Unknown));
+    assert_eq!(anti_bot(html), Some(BlockedBy::Unknown));
     // Real Cloudflare markers still map to CloudflareTurnstile.
     let html = "Just a moment... checking your browser before accessing.";
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
+    assert_eq!(anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
     let html = r#"<div class="cf-turnstile" data-sitekey="abc"></div>"#;
-    assert_eq!(detect_anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
+    assert_eq!(anti_bot(html), Some(BlockedBy::CloudflareTurnstile));
 }
 
 #[test]
@@ -204,13 +218,13 @@ fn detect_anti_bot_benign_prose_is_none() {
         "No captcha needed here. Our premium subscription includes perks. ",
         "Read our anubis-themed blog post."
     );
-    assert_eq!(detect_anti_bot(html), None);
+    assert_eq!(anti_bot(html), None);
 }
 
 #[test]
 fn detect_anti_bot_bare_anubis_in_prose_is_none() {
     let html = "The ancient Egyptian god Anubis guarded the underworld.";
-    assert_eq!(detect_anti_bot(html), None);
+    assert_eq!(anti_bot(html), None);
 }
 
 // -- superset equivalence -----------------------
@@ -226,7 +240,7 @@ fn detect_anti_bot_is_superset_of_bot_detection_patterns() {
             "pattern '{pattern}' must satisfy is_bot_detected"
         );
         assert!(
-            detect_anti_bot(&html).is_some(),
+            anti_bot(&html).is_some(),
             "detect_anti_bot must be a superset: pattern '{pattern}' yielded None"
         );
     }
@@ -250,7 +264,7 @@ fn detect_anti_bot_label_correctness_for_known_vendor_patterns() {
             BlockedBy::CloudflareTurnstile
         };
         assert_eq!(
-            detect_anti_bot(&html),
+            anti_bot(&html),
             Some(expected),
             "pattern {pattern} should map to the expected label"
         );
@@ -267,7 +281,7 @@ fn detect_anti_bot_differential_is_bot_detected_implies_some() {
             "precondition: is_bot_detected must be true for '{pattern}'"
         );
         assert!(
-            detect_anti_bot(&html).is_some(),
+            anti_bot(&html).is_some(),
             "is_bot_detected ⇒ detect_anti_bot.is_some() failed for '{pattern}'"
         );
     }
@@ -279,61 +293,53 @@ fn detect_anti_bot_differential_is_bot_detected_implies_some() {
 
 #[test]
 fn cookie_consent_consent_google_com_true() {
-    assert!(detect_cookie_consent(
+    assert!(cookie_consent(
         r#"<script src="https://consent.google.com/..."></script>"#
     ));
-    assert!(detect_cookie_consent(
+    assert!(cookie_consent(
         r#"<script src="https://consent.google/..."></script>"#
     ));
 }
 
 #[test]
 fn cookie_consent_tcfapi_true() {
-    assert!(detect_cookie_consent(
+    assert!(cookie_consent(
         r#"<script>__tcfapi('addEventListener')</script>"#
     ));
 }
 
 #[test]
 fn cookie_consent_id_cmp_true() {
-    assert!(detect_cookie_consent(r#"<div id="cmp"></div>"#));
-    assert!(detect_cookie_consent(r#"<div class="cmp"></div>"#));
-    assert!(detect_cookie_consent(r#"<div data-cmp="1"></div>"#));
+    assert!(cookie_consent(r#"<div id="cmp"></div>"#));
+    assert!(cookie_consent(r#"<div class="cmp"></div>"#));
+    assert!(cookie_consent(r#"<div data-cmp="1"></div>"#));
 }
 
 #[test]
 fn cookie_consent_onetrust_attr_true_bare_prose_false() {
-    assert!(detect_cookie_consent(
-        r#"<div id="onetrust-consent-sdk"></div>"#
-    ));
-    assert!(detect_cookie_consent(
-        r#"<div id="onetrust-banner-sdk"></div>"#
-    ));
-    assert!(!detect_cookie_consent("we use onetrust to manage cookies"));
+    assert!(cookie_consent(r#"<div id="onetrust-consent-sdk"></div>"#));
+    assert!(cookie_consent(r#"<div id="onetrust-banner-sdk"></div>"#));
+    assert!(!cookie_consent("we use onetrust to manage cookies"));
 }
 
 #[test]
 fn cookie_consent_bare_vendor_prose_false() {
-    assert!(!detect_cookie_consent("Our vendor is didomi."));
-    assert!(!detect_cookie_consent(
-        "We integrate cookiebot for analytics."
-    ));
-    assert!(!detect_cookie_consent("Powered by consentmanager."));
+    assert!(!cookie_consent("Our vendor is didomi."));
+    assert!(!cookie_consent("We integrate cookiebot for analytics."));
+    assert!(!cookie_consent("Powered by consentmanager."));
 }
 
 #[test]
 fn cookie_consent_bare_consent_prose_false() {
-    assert!(!detect_cookie_consent(
+    assert!(!cookie_consent(
         "By continuing you agree to our cookie policy."
     ));
-    assert!(!detect_cookie_consent(
-        "We use cookies, see our consent policy."
-    ));
+    assert!(!cookie_consent("We use cookies, see our consent policy."));
 }
 
 #[test]
 fn cookie_consent_clean_false() {
-    assert!(!detect_cookie_consent(
+    assert!(!cookie_consent(
         "<html><body><p>Normal page</p></body></html>"
     ));
 }
@@ -344,35 +350,29 @@ fn cookie_consent_clean_false() {
 
 #[test]
 fn paywall_token_anchored_true() {
-    assert!(detect_paywall(r#"<div class="paywall"></div>"#));
-    assert!(detect_paywall(r#"<div id="paywall"></div>"#));
-    assert!(detect_paywall(r#"<div data-paywall="1"></div>"#));
-    assert!(detect_paywall(r#"<div class="paywall-container"></div>"#));
-    assert!(detect_paywall(r#"<div id="metered-content"></div>"#));
-    assert!(detect_paywall(r#"<div class="metered-content"></div>"#));
-    assert!(detect_paywall(r#"<div data-metered="1"></div>"#));
-    assert!(detect_paywall(r#"<div class="subscription-gate"></div>"#));
-    assert!(detect_paywall(r#"<div class="premium-gate"></div>"#));
-    assert!(detect_paywall(r#"<div data-premium="1"></div>"#));
-    assert!(detect_paywall(r#"<div id="subscription"></div>"#));
-    assert!(detect_paywall(
-        r#"<div class="subscription-gate-outer"></div>"#
-    ));
+    assert!(paywall(r#"<div class="paywall"></div>"#));
+    assert!(paywall(r#"<div id="paywall"></div>"#));
+    assert!(paywall(r#"<div data-paywall="1"></div>"#));
+    assert!(paywall(r#"<div class="paywall-container"></div>"#));
+    assert!(paywall(r#"<div id="metered-content"></div>"#));
+    assert!(paywall(r#"<div class="metered-content"></div>"#));
+    assert!(paywall(r#"<div data-metered="1"></div>"#));
+    assert!(paywall(r#"<div class="subscription-gate"></div>"#));
+    assert!(paywall(r#"<div class="premium-gate"></div>"#));
+    assert!(paywall(r#"<div data-premium="1"></div>"#));
+    assert!(paywall(r#"<div id="subscription"></div>"#));
+    assert!(paywall(r#"<div class="subscription-gate-outer"></div>"#));
 }
 
 #[test]
 fn paywall_prose_only_false() {
-    assert!(!detect_paywall(
-        "We offer a premium subscription to all readers."
-    ));
-    assert!(!detect_paywall("This article is behind a metered paywall."));
+    assert!(!paywall("We offer a premium subscription to all readers."));
+    assert!(!paywall("This article is behind a metered paywall."));
 }
 
 #[test]
 fn paywall_clean_false() {
-    assert!(!detect_paywall(
-        "<html><body><p>Free content</p></body></html>"
-    ));
+    assert!(!paywall("<html><body><p>Free content</p></body></html>"));
 }
 
 // ---------------------------------------------------------------------------

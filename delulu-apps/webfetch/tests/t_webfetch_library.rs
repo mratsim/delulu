@@ -119,6 +119,11 @@ async fn test_fetch_and_extract_reddit_from_fixture() {
     assert_eq!(data.selftext, "This is the post body content");
     assert_eq!(data.permalink, "/r/test/comments/abc123/hello_world/");
     assert!(!data.comments.is_empty(), "should have comments");
+    // The fixture contains exactly 2 top-level comments (the nested reply
+    // lives inside the 2nd comment's `replies` and is NOT counted). This is a
+    // known fixture constant, pinning the value `comment_count` is derived from
+    // (`data.comments.len()` in lib.rs) — well below the MAX_COMMENTS=500 cap.
+    assert_eq!(data.comments.len(), 2, "fixture has 2 top-level comments");
     assert!(
         data.comments[0].body.contains("First comment body"),
         "first comment body mismatch: {}",
@@ -201,8 +206,16 @@ async fn test_fetch_and_extract_discourse_from_fixture() {
             title,
             topic_id,
             posts,
+            post_count,
+            posts_returned,
             ..
         } => {
+            // Fixture has posts_count=12 and delivers all 12 posts in the
+            // JSON response (known constants, not derived from the code under
+            // test): post_count is the server total, posts_returned is what
+            // was fetched.
+            assert_eq!(post_count, 12, "fixture posts_count is 12");
+            assert_eq!(posts_returned, 12, "fixture delivers 12 posts");
             assert_eq!(
                 title,
                 "Reed-Solomon erasure code recovery in n*log^2(n) time with FFTs"

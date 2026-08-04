@@ -700,6 +700,54 @@ async fn test_injected_reddit_bot_blocked_both_err() {
 }
 
 #[tokio::test]
+async fn test_injected_reddit_fixture_metadata_fields() {
+    // Full-pipeline assertion of the Reddit metadata fields added under RID:
+    // `comment_count` and `source_url`, sourced from the REAL fixture
+    // (`tests/fixtures-webfetch/reddit/reddit-thread-simple.json.zst`) rather
+    // than a synthetic page. The fixture contains exactly 2 top-level comments
+    // (the nested reply lives inside the 2nd comment's `replies` and is NOT
+    // counted by `comment_count`), below the MAX_COMMENTS=500 cap, and its
+    // permalink is `/r/test/comments/abc123/hello_world/`.
+    let crawler = test_crawler_no_network();
+    let url = "https://www.reddit.com/r/test/comments/abc123/hello_world/";
+
+    let path: std::path::PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "tests",
+        "fixtures-webfetch",
+        "reddit",
+        "reddit-thread-simple.json.zst",
+    ]
+    .iter()
+    .collect();
+    let compressed = std::fs::read(&path).expect("failed to read reddit fixture");
+    let body = String::from_utf8(zstd::decode_all(compressed.as_slice()).expect("decompress"))
+        .expect("utf-8");
+
+    let (result, _status) = fetch_and_extract_inner_with_body(url, &crawler, &[], body)
+        .await
+        .expect("full-pipeline reddit extraction should succeed");
+
+    match result {
+        ExtractionResult::Reddit {
+            comment_count,
+            source_url,
+            ..
+        } => {
+            // 2 top-level comments in the fixture (known constant, not derived
+            // from the code under test).
+            assert_eq!(comment_count, 2, "fixture has 2 top-level comments");
+            // source_url is the permalink-derived well-formed URL.
+            assert_eq!(
+                source_url,
+                "https://reddit.com/r/test/comments/abc123/hello_world/",
+            );
+        }
+        other => panic!("Expected ExtractionResult::Reddit, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn test_injected_content_bearing_bot_body_is_article() {
     // Differential fixture 1: content-bearing (>=200) bot body -> Ok((_, Article))
     // from both functions (content beats the bot marker).

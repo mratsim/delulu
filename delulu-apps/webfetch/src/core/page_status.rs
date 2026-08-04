@@ -129,11 +129,14 @@ pub enum BlockedBy {
 ///    `data-anubis`, `anubis.js`. Bare `anubis` in prose does NOT match.
 /// 4. **Unknown catch-all:** if none of the above matched but
 ///    `is_bot_detected(html)` is true, return `Some(BlockedBy::Unknown)`.
-pub fn detect_anti_bot(html: &str) -> Option<BlockedBy> {
-    let lower = html.to_lowercase();
-
+///
+/// Caller must pass the HTML already lowercased (see `classify_page`).
+pub fn detect_anti_bot(lower_html: &str) -> Option<BlockedBy> {
     // 1. Captcha (checked first; first-match-in-document wins).
-    if lower.contains("g-recaptcha") || lower.contains("h-captcha") || lower.contains("recaptcha") {
+    if lower_html.contains("g-recaptcha")
+        || lower_html.contains("h-captcha")
+        || lower_html.contains("recaptcha")
+    {
         return Some(BlockedBy::Captcha);
     }
 
@@ -141,28 +144,28 @@ pub fn detect_anti_bot(html: &str) -> Option<BlockedBy> {
     //    matched here (it must be anchored to a Cloudflare marker such as
     //    `cf-turnstile`); an unanchored `turnstile` falls through to the
     //    `is_bot_detected` catch-all below as `BlockedBy::Unknown`.
-    if lower.contains("cf-turnstile")
-        || lower.contains("cf-browser-verification")
-        || lower.contains("cf-challenge")
-        || lower.contains("__cf_chl_opt")
-        || lower.contains("challenge-platform")
-        || lower.contains("data-sitekey")
-        || lower.contains("just a moment...")
+    if lower_html.contains("cf-turnstile")
+        || lower_html.contains("cf-browser-verification")
+        || lower_html.contains("cf-challenge")
+        || lower_html.contains("__cf_chl_opt")
+        || lower_html.contains("challenge-platform")
+        || lower_html.contains("data-sitekey")
+        || lower_html.contains("just a moment...")
     {
         return Some(BlockedBy::CloudflareTurnstile);
     }
 
     // 3. Anubis (token-anchored only).
-    if lower.contains(r#"id="anubis""#)
-        || lower.contains(r#"class="anubis""#)
-        || lower.contains("data-anubis")
-        || lower.contains("anubis.js")
+    if lower_html.contains(r#"id="anubis""#)
+        || lower_html.contains(r#"class="anubis""#)
+        || lower_html.contains("data-anubis")
+        || lower_html.contains("anubis.js")
     {
         return Some(BlockedBy::Anubis);
     }
 
     // 4. Unknown catch-all: any legacy pattern not matched by a vendor check.
-    if is_bot_detected(html) {
+    if is_bot_detected(lower_html) {
         return Some(BlockedBy::Unknown);
     }
 
@@ -204,31 +207,31 @@ fn attr_token_present(lower: &str, token: &str) -> bool {
 /// `consentmanager`) match only when they appear as a CMP SDK token inside an
 /// HTML attribute value (quoted) or identifier token — never as a bare word in
 /// prose ("we use onetrust" → `false`).
-pub fn detect_cookie_consent(html: &str) -> bool {
-    let lower = html.to_lowercase();
-
+///
+/// Caller must pass the HTML already lowercased (see `classify_page`).
+pub fn detect_cookie_consent(lower_html: &str) -> bool {
     // Multi-token / exact anchored markers.
-    if lower.contains("consent.google.com") || lower.contains("consent.google") {
+    if lower_html.contains("consent.google.com") || lower_html.contains("consent.google") {
         return true;
     }
-    if lower.contains("__tcfapi") {
+    if lower_html.contains("__tcfapi") {
         return true;
     }
-    if lower.contains("onetrust-consent-sdk") {
+    if lower_html.contains("onetrust-consent-sdk") {
         return true;
     }
-    if lower.contains(r#"id="cmp""#)
-        || lower.contains(r#"class="cmp""#)
-        || lower.contains("data-cmp")
+    if lower_html.contains(r#"id="cmp""#)
+        || lower_html.contains(r#"class="cmp""#)
+        || lower_html.contains("data-cmp")
     {
         return true;
     }
 
     // Single-token vendor markers — only in attribute-value context.
-    if attr_token_present(&lower, "onetrust")
-        || attr_token_present(&lower, "didomi")
-        || attr_token_present(&lower, "cookiebot")
-        || attr_token_present(&lower, "consentmanager")
+    if attr_token_present(lower_html, "onetrust")
+        || attr_token_present(lower_html, "didomi")
+        || attr_token_present(lower_html, "cookiebot")
+        || attr_token_present(lower_html, "consentmanager")
     {
         return true;
     }
@@ -240,8 +243,9 @@ pub fn detect_cookie_consent(html: &str) -> bool {
 ///
 /// Case-insensitive, token-anchored matching (NOT bare-word substrings). Bare
 /// `paywall`/`metered`/`premium`/`subscription` words in prose do NOT match.
-pub fn detect_paywall(html: &str) -> bool {
-    let lower = html.to_lowercase();
+///
+/// Caller must pass the HTML already lowercased (see `classify_page`).
+pub fn detect_paywall(lower_html: &str) -> bool {
     const MARKERS: &[&str] = &[
         r#"class="paywall""#,
         r#"id="paywall""#,
@@ -257,12 +261,13 @@ pub fn detect_paywall(html: &str) -> bool {
         r#"id="subscription""#,
         r#"class="subscription-gate""#,
     ];
-    MARKERS.iter().any(|m| lower.contains(m))
+    MARKERS.iter().any(|m| lower_html.contains(m))
 }
 
 /// True when any SPA-shell root marker is present, case-insensitively.
-fn has_spa_shell_marker(html: &str) -> bool {
-    let lower = html.to_lowercase();
+///
+/// Caller must pass the HTML already lowercased (see `classify_page`).
+fn has_spa_shell_marker(lower_html: &str) -> bool {
     const MARKERS: &[&str] = &[
         r#"<div id="root">"#,
         r#"<div id="app">"#,
@@ -270,7 +275,7 @@ fn has_spa_shell_marker(html: &str) -> bool {
         r#"<div id="__nuxt">"#,
         r#"<div id="app-root">"#,
     ];
-    MARKERS.iter().any(|m| lower.contains(m))
+    MARKERS.iter().any(|m| lower_html.contains(m))
 }
 
 /// True when `token` appears in `lower` as a standalone token — bounded by
@@ -301,26 +306,29 @@ fn token_anchored(lower: &str, token: &str) -> bool {
 /// True when a JS-enforcement interstitial marker is present: the plain
 /// `httpservice/retry/enablejs` path, or token-anchored `enablejs` /
 /// `enable-js`. Bare prose `javascript`/`enable`/`js` never matches.
-fn has_js_enforcement_marker(html: &str) -> bool {
-    let lower = html.to_lowercase();
-    lower.contains("httpservice/retry/enablejs")
-        || token_anchored(&lower, "enablejs")
-        || token_anchored(&lower, "enable-js")
+///
+/// Caller must pass the HTML already lowercased (see `classify_page`).
+fn has_js_enforcement_marker(lower_html: &str) -> bool {
+    lower_html.contains("httpservice/retry/enablejs")
+        || token_anchored(lower_html, "enablejs")
+        || token_anchored(lower_html, "enable-js")
 }
 
 /// True when a page is JS-heavy: script-dominance (measurement-based, primary)
 /// OR an SPA-shell root marker OR a JS-enforcement interstitial marker.
-fn is_js_heavy(html: &str, visible_len: usize, script_len: usize) -> bool {
+///
+/// Caller must pass the HTML already lowercased (see `classify_page`).
+fn is_js_heavy(lower_html: &str, visible_len: usize, script_len: usize) -> bool {
     // 1. Script dominance (primary, measurement-based).
     if script_len > visible_len && visible_len < MEANINGFUL_CONTENT_THRESHOLD {
         return true;
     }
     // 2. SPA-shell root markers (additional signal).
-    if has_spa_shell_marker(html) {
+    if has_spa_shell_marker(lower_html) {
         return true;
     }
     // 3. JS-enforcement interstitial markers (additional signal).
-    has_js_enforcement_marker(html)
+    has_js_enforcement_marker(lower_html)
 }
 
 /// Classify a page from its raw HTML body and visible/script text lengths.
@@ -346,21 +354,26 @@ pub fn classify_page(html: &str, visible_len: usize, script_len: usize) -> PageS
         return PageStatus::Article;
     }
 
-    if let Some(by) = detect_anti_bot(html) {
+    // Lower-case the HTML ONCE for the entire detection pass. Every detector
+    // below (and the gallery `<img>` count) consumes this single pre-lowered
+    // string, avoiding ~5-6 full-body allocations per thin page.
+    let lower = html.to_lowercase();
+
+    if let Some(by) = detect_anti_bot(&lower) {
         return PageStatus::Blocked { by };
     }
-    if detect_cookie_consent(html) {
+    if detect_cookie_consent(&lower) {
         return PageStatus::Blocked {
             by: BlockedBy::CookieConsent,
         };
     }
-    if detect_paywall(html) {
+    if detect_paywall(&lower) {
         return PageStatus::Partial;
     }
-    if is_js_heavy(html, visible_len, script_len) {
+    if is_js_heavy(&lower, visible_len, script_len) {
         return PageStatus::JSHeavy;
     }
-    if html.to_lowercase().matches("<img").count() >= GALLERY_IMG_THRESHOLD {
+    if lower.matches("<img").count() >= GALLERY_IMG_THRESHOLD {
         return PageStatus::Gallery;
     }
     PageStatus::Empty
