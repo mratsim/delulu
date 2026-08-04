@@ -97,6 +97,18 @@ pub(crate) fn wrap_blocked_status(
 /// `ExtractionResult` together with its [`PageStatus`] and never collapses a
 /// `Blocked` status into an error. Structured sources (Reddit, Discourse,
 /// arXiv, Document) still hard-fail on bot detection inside the fetch path.
+///
+/// # Contract
+///
+/// `fetch_and_extract_with_status` returns `Ok((result, status))` for **every**
+/// status — including `Blocked` — and never applies the `Blocked` → `Err`
+/// hard-fail mapping. That mapping is exclusively [`fetch_and_extract`]'s job
+/// (via [`wrap_blocked_status`]). The caller decides how to handle a `Blocked`
+/// status; this function deliberately surfaces it as data rather than an error.
+///
+/// This asymmetry is intentional: the same body that makes [`fetch_and_extract`]
+/// return `Err(BLOCKED_MSG)` (via [`wrap_blocked_status`]) is returned here as
+/// `Ok((result, Blocked))`.
 pub async fn fetch_and_extract_with_status(
     url: &str,
     crawler: &RateLimitedCrawler,
@@ -286,7 +298,19 @@ async fn process_text_body(
             return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
         }
         let data = sources::reddit::RedditExtractor::extract(&body)?;
-        let source_url = format!("https://reddit.com{}", data.permalink);
+        // Build a well-formed source_url from the permalink. A missing or
+        // non-`/`-prefixed permalink would otherwise yield a malformed URL
+        // (`https://reddit.com` bare, or `https://reddit.comnonslash`).
+        // Normalize: an empty permalink falls back to the original full `url`
+        // the caller fetched (already well-formed); a non-`/`-prefixed
+        // permalink gets `/` prepended so the separator is never lost.
+        let source_url = if data.permalink.trim().is_empty() {
+            url.trim().to_string()
+        } else if data.permalink.starts_with('/') {
+            format!("https://reddit.com{}", data.permalink)
+        } else {
+            format!("https://reddit.com/{}", data.permalink)
+        };
         let comment_count = data.comments.len();
         return Ok((
             ExtractionResult::Reddit {

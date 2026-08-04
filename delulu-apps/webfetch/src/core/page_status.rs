@@ -12,6 +12,9 @@
 
 use serde::Serialize;
 
+use regex::Regex;
+use std::sync::LazyLock;
+
 use crate::core::detect::is_bot_detected;
 
 /// Minimum visible-text byte length (of `visible_len`, measured pre-pipeline)
@@ -23,6 +26,14 @@ pub const MEANINGFUL_CONTENT_THRESHOLD: usize = 200;
 /// Minimum number of `<img>` tags (case-insensitive) for a thin page to be
 /// classified as a gallery.
 pub const GALLERY_IMG_THRESHOLD: usize = 8;
+
+/// Matches a lowercase `<img` element opening: `<img` immediately followed by
+/// whitespace, `>`, or `/` (self-closing). This excludes `<imgsrc=...>` (no
+/// space), `<image>`, and `<img` embedded inside `<script>` strings or
+/// attribute values — all of which the old raw `"<img"` substring count
+/// mistakenly tallied as gallery images.
+static IMG_OPEN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<img[\s/>]").expect("valid regex: img element opening"));
 
 // ---------------------------------------------------------------------------
 // PageStatus
@@ -346,8 +357,13 @@ fn is_js_heavy(lower_html: &str, visible_len: usize, script_len: usize) -> bool 
 ///   c. `detect_paywall(html)` → `Partial`;
 ///   d. JS-heavy (script-dominance / SPA shell / JS-enforcement interstitial)
 ///     → `JSHeavy`;
-///   e. `>= GALLERY_IMG_THRESHOLD` `<img>` tags → `Gallery`;
+///   e. `>= GALLERY_IMG_THRESHOLD` `<img>` element openings → `Gallery`;
 ///   f. else → `Empty`.
+///
+/// The gallery check is a substring approximation: `classify_page` has only the
+/// raw HTML (no parsed DOM), so it counts `<img` openings via `IMG_OPEN_RE`
+/// (`<img` followed by whitespace/`>`/`/`) rather than real parsed `<img>`
+/// elements.
 #[allow(clippy::doc_overindented_list_items, clippy::doc_lazy_continuation)]
 pub fn classify_page(html: &str, visible_len: usize, script_len: usize) -> PageStatus {
     if visible_len >= MEANINGFUL_CONTENT_THRESHOLD {
@@ -373,7 +389,7 @@ pub fn classify_page(html: &str, visible_len: usize, script_len: usize) -> PageS
     if is_js_heavy(&lower, visible_len, script_len) {
         return PageStatus::JSHeavy;
     }
-    if lower.matches("<img").count() >= GALLERY_IMG_THRESHOLD {
+    if IMG_OPEN_RE.find_iter(&lower).count() >= GALLERY_IMG_THRESHOLD {
         return PageStatus::Gallery;
     }
     PageStatus::Empty

@@ -754,6 +754,73 @@ async fn test_injected_reddit_fixture_metadata_fields() {
 }
 
 #[tokio::test]
+async fn test_injected_reddit_source_url_normalization() {
+    // BUG-B-002: builds a well-formed `source_url` even when the Reddit body's
+    // `permalink` is empty or lacks the leading `/`. Before the fix, an empty
+    // permalink yielded the bare `https://reddit.com` (no path) and a
+    // non-`/`-prefixed permalink yielded `https://reddit.comnonslash`.
+    //
+    // Non-tautological: with an empty permalink the old code produced exactly
+    // `https://reddit.com`, failing the `starts_with("https://reddit.com/")`
+    // and `/`-separator assertions below.
+    let crawler = test_crawler_no_network();
+
+    // Case 1: permalink empty -> falls back to the original `url`.
+    let url = "https://reddit.com/r/t/comments/x/";
+    let post_listing = serde_json::json!({
+        "kind": "Listing",
+        "data": { "children": [{
+            "kind": "t3",
+            "data": {
+                "title": "T", "author": "a", "score": 1, "selftext": "",
+                "created_utc": 1.0, "permalink": ""
+            }
+        }] }
+    });
+    let comments_listing = serde_json::json!({ "kind": "Listing", "data": { "children": [] } });
+    let body = serde_json::to_string(&vec![post_listing, comments_listing]).unwrap();
+    let (result, _status) = fetch_and_extract_inner_with_body(url, &crawler, &[], body)
+        .await
+        .expect("extraction should succeed");
+    match result {
+        ExtractionResult::Reddit { source_url, .. } => {
+            assert_eq!(source_url, "https://reddit.com/r/t/comments/x/");
+            assert!(source_url.starts_with("https://reddit.com/"));
+            assert_ne!(source_url, "https://reddit.com");
+            assert!(source_url.contains("reddit.com/"));
+        }
+        other => panic!("Expected ExtractionResult::Reddit, got {other:?}"),
+    }
+
+    // Case 2: permalink missing the leading `/`.
+    let url2 = "https://www.reddit.com/r/t/comments/y/";
+    let post_listing2 = serde_json::json!({
+        "kind": "Listing",
+        "data": { "children": [{
+            "kind": "t3",
+            "data": {
+                "title": "T", "author": "a", "score": 1, "selftext": "",
+                "created_utc": 1.0, "permalink": "r/t/comments/y/"
+            }
+        }] }
+    });
+    let comments_listing2 = serde_json::json!({ "kind": "Listing", "data": { "children": [] } });
+    let body2 = serde_json::to_string(&vec![post_listing2, comments_listing2]).unwrap();
+    let (result2, _status) = fetch_and_extract_inner_with_body(url2, &crawler, &[], body2)
+        .await
+        .expect("extraction should succeed");
+    match result2 {
+        ExtractionResult::Reddit { source_url, .. } => {
+            assert_eq!(source_url, "https://reddit.com/r/t/comments/y/");
+            assert!(source_url.starts_with("https://reddit.com/"));
+            assert_ne!(source_url, "https://reddit.com");
+            assert!(source_url.contains("reddit.com/"));
+        }
+        other => panic!("Expected ExtractionResult::Reddit, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn test_injected_reddit_over_cap_truncates_and_flags() {
     // Synthetic body with 510 top-level comments (above MAX_COMMENTS=500):
     // exercises the truncation path end-to-end through the same `lib.rs` seam,

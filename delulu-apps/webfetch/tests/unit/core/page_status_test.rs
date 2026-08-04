@@ -495,6 +495,44 @@ fn classify_thin_image_dominant_is_gallery() {
 }
 
 #[test]
+fn classify_thin_img_lookalikes_are_not_gallery() {
+    // BUG-B-004: only real `<img` element openings count toward the gallery
+    // threshold. `<imgsrc=...>` (no space), `<image>`, and `<img` inside a
+    // `<script>` string are NOT gallery images.
+    //
+    // Non-tautological: before the fix, the raw `"<img"` substring count treated
+    // each `<imgsrc=...>` as a gallery image, so 8 such lookalikes would have
+    // been classified `Gallery`; now they classify `Empty`.
+    let lookalikes: String = (0..8)
+        .map(|i| format!(r#"<imgsrc="img{i}.jpg">"#))
+        .collect();
+    let html = format!("<html><body>{lookalikes}<image src=\"hero.png\"></image></body></html>");
+    assert_eq!(classify(&html, 199, 0), PageStatus::Empty);
+
+    // `<img` inside a script string (no-space form) must not count either.
+    let script_imgs: String = (0..8).map(|i| format!(r#"<imgsrc="s{i}.jpg">"#)).collect();
+    let html2 = format!("<html><body><script>const tpl = `{script_imgs}`;</script></body></html>");
+    assert_eq!(classify(&html2, 199, 0), PageStatus::Empty);
+}
+
+#[test]
+fn classify_thin_gallery_threshold_brackets_real_vs_lookalike() {
+    // 8 real `<img ` openings (with a space) -> Gallery.
+    let real: String = (0..8).map(|i| format!(r#"<img src="r{i}.jpg">"#)).collect();
+    assert_eq!(
+        classify(&format!("<html><body>{real}</body></html>"), 199, 0),
+        PageStatus::Gallery
+    );
+    // The same count of `<imgsrc=...>` lookalikes -> NOT Gallery (Empty),
+    // bracketing the threshold on both sides.
+    let fake: String = (0..8).map(|i| format!(r#"<imgsrc="f{i}.jpg">"#)).collect();
+    assert_eq!(
+        classify(&format!("<html><body>{fake}</body></html>"), 199, 0),
+        PageStatus::Empty
+    );
+}
+
+#[test]
 fn classify_thin_clean_is_empty() {
     let html = "<html><body></body></html>";
     assert_eq!(classify(html, 0, 0), PageStatus::Empty);
