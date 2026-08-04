@@ -577,7 +577,7 @@ fn get_attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
 /// and may need pattern refinement.
 pub fn detect_retry_level(html: &str) -> usize {
     use delulu_webfetch::pipelines::trafilatura::{
-        TF_BALANCED, TF_MIN_OUTPUT_CHARS, filter_trafilatura,
+        TF_BALANCED, TF_MIN_OUTPUT_CHARS, TF_RECALL,
     };
 
     let original = parse_html(html).expect("parse_html failed");
@@ -594,13 +594,16 @@ pub fn detect_retry_level(html: &str) -> usize {
         return 0;
     }
 
-    // Otherwise, run full filter_trafilatura (which tries Balanced→Recall)
-    // and check if the output differs from Balanced-only
-    let mut full_tree = original;
-    filter_trafilatura(&mut full_tree);
-    let full_len = tf_count_text_chars(&full_tree);
+    // Otherwise, run Recall passes directly and compare against Balanced.
+    // (We intentionally avoid filter_trafilatura here, since its recovery/
+    // fallback paths can inflate output length without Recall contributing.)
+    let mut recall_tree = original;
+    for pass in *TF_RECALL {
+        pass(&mut recall_tree);
+    }
+    let recall_len = tf_count_text_chars(&recall_tree);
 
-    if full_len > balanced_len { 1 } else { 0 }
+    if recall_len > balanced_len { 1 } else { 0 }
 }
 
 // ---------------------------------------------------------------------------
