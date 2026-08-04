@@ -53,39 +53,57 @@ fn test_with_backup_threshold_triggered() {
 
 #[test]
 fn test_with_backup_threshold_not_triggered() {
-    // 5x threshold: if new_len * 5 <= old_len, restore
-    // old_len = 100, new_len = 50, threshold = 5
-    // 50 * 5 = 250 > 100 -> NOT triggered
+    // old_len = 100 -> new_len = 60; 60 * 5 = 300 > 100 -> NOT restored
+    let restored = std::cell::Cell::new(false);
     let mut doc = make_doc(100);
-    // We need a pass that removes SOME but not ALL text
-    // Since we can't easily make a partial remover, use the noop
-    with_backup(&mut doc, noop_pass, 5, full_restore);
-    // Should NOT be restored (noop keeps same length)
-    assert_eq!(
-        doc.text_len(),
-        100,
-        "should NOT be restored when threshold not triggered"
+    with_backup(
+        &mut doc,
+        |n| *n = make_doc(60),
+        5,
+        |_, _| restored.set(true),
     );
+    assert!(
+        !restored.get(),
+        "recovery must NOT run when new_len*threshold > old_len"
+    );
+    assert_eq!(doc.text_len(), 60, "modified tree must be kept");
 }
 
 #[test]
 fn test_with_backup_overflow_safe() {
-    // checked_mul overflow: new_len very large
-    // threshold = 5, new_len = usize::MAX / 2 + 1
-    // new_len * 5 would overflow -> keep modified tree
+    // new_len=10, threshold=usize::MAX -> 10 * MAX overflows usize ->
+    // checked_mul returns None -> keep modified tree (no restore, no panic)
+    let restored = std::cell::Cell::new(false);
     let mut doc = make_doc(10);
-    with_backup(&mut doc, noop_pass, 5, full_restore);
-    // Should keep modified tree (noop, so same length)
-    assert_eq!(doc.text_len(), 10, "should keep modified tree on overflow");
+    with_backup(
+        &mut doc,
+        noop_pass,
+        usize::MAX,
+        |_, _| restored.set(true),
+    );
+    assert!(
+        !restored.get(),
+        "overflow must keep modified tree (no restore)"
+    );
+    assert_eq!(doc.text_len(), 10, "tree unchanged on overflow");
 }
 
 #[test]
 fn test_with_backup_zero_threshold() {
     // threshold = 0: new_len * 0 = 0 <= old_len always -> always restore
+    let restored = std::cell::Cell::new(false);
     let mut doc = make_doc(100);
-    with_backup(&mut doc, noop_pass, 0, full_restore);
-    // Should be restored since 0 <= old_len always
-    assert_eq!(doc.text_len(), 100, "zero threshold should always restore");
+    with_backup(
+        &mut doc,
+        |n| *n = make_doc(10),
+        0,
+        |node, backup| {
+            *node = backup.clone();
+            restored.set(true);
+        },
+    );
+    assert!(restored.get(), "zero threshold must always restore");
+    assert_eq!(doc.text_len(), 100, "tree restored to original length");
 }
 
 #[test]

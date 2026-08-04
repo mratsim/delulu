@@ -699,7 +699,8 @@ mod tests {
     fn decompress_zst_roundtrip() {
         let data = "Hello, trafilatura diagnostic!";
         let compressed = zstd::encode_all(data.as_bytes(), 3).expect("compress");
-        let tmp = std::env::temp_dir().join("test_decompress_zst.zst");
+        // Unique per-process path to avoid collisions across concurrent test runs.
+        let tmp = std::env::temp_dir().join(format!("test_decompress_zst_{}.zst", std::process::id()));
         std::fs::write(&tmp, &compressed).unwrap();
         let result = decompress_zst(&tmp);
         assert_eq!(result, data);

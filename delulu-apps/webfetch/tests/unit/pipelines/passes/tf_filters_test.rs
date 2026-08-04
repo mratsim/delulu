@@ -1704,22 +1704,33 @@ fn test_tf_remove_teaser_protects_content_container_via_class() {
 // ── Anti-regression: TF_RECALL has tag catalog ───────────────────
 
 #[test]
-fn test_tf_recall_has_tag_catalog() {
-    // Verify TF_RECALL pipeline definition contains apply_tf_filter_tag_catalog
-    let definition = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/pipelines/trafilatura.rs"),
+fn test_tf_filter_tag_catalog_strips_non_catalog_tags() {
+    // BEHAVIORAL: the tag-catalog pass must remove elements whose tag is outside
+    // TAG_CATALOG while preserving catalog tags and their text content.
+    let mut doc = parse_html(
+        "<html><body><foo>content here</foo><p>kept paragraph</p></body></html>",
     )
     .unwrap();
-    // Find the TF_RECALL definition section
-    let recall_section: Vec<&str> = definition
-        .lines()
-        .skip_while(|l| !l.contains("pub static TF_RECALL"))
-        .collect();
-    let recall_text = recall_section.join("\n");
+    // Same walking as production apply_tf_filter_tag_catalog (walk_post_mut
+    // supports ReplaceWithChildren, which unwraps the element keeping children).
+    use crate::pipelines::walkers::WalkerFilter;
+    use crate::pipelines::WalkerAction;
+    let mut filter = |n: &mut DomNode| -> WalkerAction {
+        crate::pipelines::passes::tf_filters::tf_filter_tag_catalog(n)
+    };
+    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
+    crate::pipelines::walkers::walk_post_mut(&mut doc, &mut filters, None);
     assert!(
-        recall_text.contains("apply_tf_filter_tag_catalog"),
-        "TF_RECALL definition must include apply_tf_filter_tag_catalog"
+        !find_tag(&doc, "foo"),
+        "<foo> not in TAG_CATALOG must be removed"
     );
+    assert!(find_tag(&doc, "p"), "<p> in TAG_CATALOG must be preserved");
+    let text = doc.text_content();
+    assert!(
+        text.contains("content here"),
+        "text inside the removed tag should survive"
+    );
+    assert!(text.contains("kept paragraph"));
 }
 
 // ── tf_remove_teaser_xpath: independent class/id check (Issue A) ──
