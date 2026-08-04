@@ -218,7 +218,7 @@ async fn test_thin_consent_wall_err_and_blocked_cookie_consent() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn test_reddit_direct_extractor_status_article() {
+async fn test_reddit_direct_extractor_metadata() {
     let body = load_fixture(
         "tests/fixtures-webfetch",
         "reddit/reddit-thread-simple.json.zst",
@@ -290,7 +290,7 @@ async fn test_discourse_domain_dispatched_status_article() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn test_arxiv_direct_pipeline_status_article() {
+async fn test_arxiv_direct_pipeline_metadata() {
     let fixture_path = fixture_path("tests/fixtures-arxiv", "valida-isa/source.html.zst");
     let compressed = std::fs::read(&fixture_path).unwrap();
     let decompressed = zstd::decode_all(compressed.as_slice()).unwrap();

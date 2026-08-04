@@ -21,6 +21,16 @@ use crate::core::detect::is_bot_detected;
 /// that counts as "meaningful content" for the Article gate. Measured against
 /// pre-pipeline visible text (excludes script/style/etc.), not extracted
 /// markdown bytes. The value stays 200.
+///
+/// **Byte-based approximation (deliberate, not a bug):** the gate is applied to
+/// the **byte length** of the pre-pipeline visible text, never its character
+/// count. For CJK/multibyte content this overestimates the character count
+/// (e.g. 200 bytes ≈ 66 CJK chars, since each CJK char is 3 UTF-8 bytes), so a
+/// short CJK page can be classified `Article` while a Latin page of the same
+/// character count would not. This tradeoff is intentional and documented — the
+/// gate stays byte-based because pre-pipeline `visible_len` is measured in
+/// bytes and byte comparison is cheap. It is pinned by the CJK unit test in
+/// `page_status_test.rs` (`classify_cjk_short_text_counts_bytes_not_chars_is_article`).
 pub const MEANINGFUL_CONTENT_THRESHOLD: usize = 200;
 
 /// Minimum number of `<img>` tags (case-insensitive) for a thin page to be

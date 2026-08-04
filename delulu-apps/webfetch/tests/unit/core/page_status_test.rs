@@ -543,6 +543,30 @@ fn classify_boundary_199_never_article_200_article() {
     assert_eq!(classify(&html, 200, 0), PageStatus::Article);
 }
 
+#[test]
+fn classify_cjk_short_text_counts_bytes_not_chars_is_article() {
+    // MEANINGFUL_CONTENT_THRESHOLD is applied to the BYTE length of the
+    // pre-pipeline visible text, never its character count. A ~70-char CJK
+    // string is ~210 bytes (each CJK char is 3 UTF-8 bytes), so it clears the
+    // 200-byte gate and classifies Article — even though its character count
+    // (70) is far below 200. This pins the deliberate byte-based approximation:
+    // a char-count gate would reject this page, so this test fails if the gate
+    // ever switches to counting characters.
+    let cjk = "日".repeat(70);
+    let visible_len = cjk.len(); // ~210 bytes
+    assert!(
+        visible_len >= MEANINGFUL_CONTENT_THRESHOLD,
+        "210 bytes must clear the gate"
+    );
+    assert_eq!(cjk.chars().count(), 70);
+    assert!(cjk.chars().count() < 200, "char count is well below 200");
+    assert_eq!(
+        classify(&cjk, visible_len, 0),
+        PageStatus::Article,
+        "byte-based gate: ~210 bytes of CJK -> Article"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // classify_page — measurement-based JSHeavy
 // ---------------------------------------------------------------------------
