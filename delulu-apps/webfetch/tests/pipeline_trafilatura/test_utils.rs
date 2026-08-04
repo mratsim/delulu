@@ -18,6 +18,7 @@ use std::path::PathBuf;
 
 use delulu_webfetch::pipelines::{DomNode, parse_html};
 use serde::Deserialize;
+use delulu_webfetch::pipelines::passes::tf_filters::PATTERN_CHECKS;
 
 // ---------------------------------------------------------------------------
 // Fixture directory
@@ -511,7 +512,6 @@ fn count_elements(node: &DomNode) -> u32 {
 /// Returns Some(0-4) if a match is found, or None if no container identified.
 /// A Pattern 0 match = strong signal (page structure is well-known).
 /// A Pattern 4 match = weak signal (page may have unusual structure).
-use delulu_webfetch::pipelines::passes::tf_filters::PATTERN_CHECKS;
 pub fn detect_body_xpath_pattern(html: &str) -> Option<usize> {
     #[cfg(not(feature = "use-xpath"))]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_isolate_content_container;

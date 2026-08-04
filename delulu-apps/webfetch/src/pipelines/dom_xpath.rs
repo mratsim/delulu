@@ -348,13 +348,6 @@ pub(crate) struct Predicate {
     pub(crate) expr: Box<XPathExpr>,
 }
 
-/// An argument to an XPath function (can be a node-set, string, or number).
-#[derive(Debug, Clone)]
-pub(crate) enum XPathArg {
-    NodeSet(Vec<DomNode>),
-    String(String),
-    Number(f64),
-}
 
 // ---------------------------------------------------------------------------
 // Parser

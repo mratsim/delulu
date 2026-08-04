@@ -4,7 +4,7 @@
 
 delulu-webfetch is a **micropass compiler pipeline** for web content extraction. It parses HTML into a DOM tree, then runs a sequence of small single-purpose passes to produce clean content output. Two extraction strategies are implemented, each with a fundamentally different approach:
 - **Readability** (`rd_*`): scoring-based — analysis → scoring → filtering → transformation → generation
-- **Trafilatura** (`tf_*`): tag-based removal — no scoring, no analysis phase, purely rule-based filtering and tag conversion
+- **Trafilatura** (`tf_*`): tag-based removal — no content scoring (it only invokes the mark-only analysis pass `mark_data_tables_by_structure`), purely rule-based filtering and tag conversion
 All passes are plain `fn(&mut DomNode)` — no traits, no `Box<dyn>`, no dynamic dispatch.
 
 ## Diagram
@@ -56,7 +56,7 @@ flowchart LR
 | **Transform** | Both | Rename/mutate elements | `tf_convert_headings` (tf), `canonicalize_unwrap_containers` (both) |
 | **Generation** | Both | Serialize DOM tree to output format | `dom_nodes_to_html`, `MarkdownLowerer::lower` |
 
-**Note:** Trafilatura has no analysis or scoring phase. It goes directly from parsing to tag-based filtering.
+**Note:** Trafilatura does not score content and runs no Readability-style scoring phase. It invokes the mark-only analysis pass `mark_data_tables_by_structure` (which marks table nodes for later handling) before proceeding directly from parsing to tag-based filtering.
 
 ## Two Pipeline Architectures
 
@@ -233,7 +233,7 @@ HTML → parse_html → tf_remove_cleaned (52 tags) → tf_remove_teaser (TEASER
   → gen_html/gen_md
 ```
 
-Trafilatura has no analysis or scoring phase — it immediately removes known-non-content elements
+Trafilatura does not score content — it invokes the mark-only analysis pass `mark_data_tables_by_structure` (which marks table nodes for later handling), then immediately removes known-non-content elements
 by tag name and XPath pattern, then isolates the content container via BODY_XPATH cascade.
 The retry cascade (TF_BALANCED → TF_RECALL → wild p-recovery → JSON-LD rescue) compensates
 for the lack of scoring by falling back to progressively more aggressive recovery strategies.
