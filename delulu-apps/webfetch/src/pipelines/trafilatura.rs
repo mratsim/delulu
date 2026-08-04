@@ -451,8 +451,9 @@ const JSONLD_MIN_BODY_CHARS: usize = 100;
 ///      `original` is a clone of the original tree (pre-pipeline).
 ///      `min_p_len` is the minimum paragraph length in characters (0 = no filter).
 /// Post: `<p>` elements from the cleaned original tree that don't duplicate existing text
-///       are appended to `best_tree.children`. Dedup uses substring `contains()` (matching
-///       Python behavior, not exact match). Paragraphs shorter than `min_p_len` are filtered out
+///       are appended to `best_tree.children`. Dedup uses EXACT-match on paragraph text via a
+///       `HashSet<String>` (`HashSet::insert` returns `false` when the exact text already exists),
+///       not substring matching. Paragraphs shorter than `min_p_len` are filtered out
 ///       to avoid recovering boilerplate/sidebar snippets (see OVERALL_DISCARD_XPATH).
 /// Returns: The number of paragraphs appended to `best_tree`.
 ///

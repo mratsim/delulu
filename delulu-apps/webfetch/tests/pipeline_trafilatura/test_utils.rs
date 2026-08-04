@@ -318,12 +318,26 @@ pub fn load_test_case_tf_from(
 
 /// Count total text characters in a DOM tree recursively.
 ///
-/// Walks all descendant `Text` nodes and sums their character counts.
+/// Walks all descendant `Text` nodes and sums their character counts (via
+/// `str::chars().count()`), so a CJK char counts as 1 (not 3 bytes).
 /// Replicates the private `count_text_chars` in `trafilatura.rs`.
 pub fn tf_count_text_chars(node: &DomNode) -> usize {
     match node {
-        DomNode::Text(t) => t.len(),
+        DomNode::Text(t) => t.chars().count(),
         DomNode::Element { children, .. } => children.iter().map(tf_count_text_chars).sum(),
+        _ => 0,
+    }
+}
+
+/// Count total text BYTES in a DOM tree recursively.
+///
+/// Walks all descendant `Text` nodes and sums their byte lengths (via `str::len()`).
+/// For CJK/non-ASCII text this diverges from `tf_count_text_chars` (e.g. "日本語" is
+/// 9 bytes but 3 chars); reporting both surfaces potential CJK bugs.
+pub fn tf_count_text_bytes(node: &DomNode) -> usize {
+    match node {
+        DomNode::Text(t) => t.len(),
+        DomNode::Element { children, .. } => children.iter().map(tf_count_text_bytes).sum(),
         _ => 0,
     }
 }
@@ -970,5 +984,46 @@ mod tests {
         assert!(first_diff_position("", "a").is_some());
         assert!(first_diff_position("a", "").is_some());
         assert_eq!(first_diff_position("", ""), None);
+    }
+
+    // ── tf_count_text_chars / tf_count_text_bytes ────────────────────────
+
+    fn text_node(s: &str) -> DomNode {
+        DomNode::Text(s.to_string())
+    }
+
+    #[test]
+    fn tf_count_text_chars_counts_chars_not_bytes() {
+        // "日本語" is 9 bytes but 3 chars — must count chars.
+        let node = text_node("日本語");
+        assert_eq!(tf_count_text_chars(&node), 3, "CJK must count as 3 chars, not 9 bytes");
+        // "héllo" is 6 bytes but 5 chars.
+        assert_eq!(tf_count_text_chars(&text_node("héllo")), 5);
+        // Recursive over children.
+        let parent = DomNode::Element {
+            tag: "p".to_string(),
+            attrs: vec![],
+            children: vec![text_node("日本"), text_node("語")],
+            scores: Default::default(),
+            metadata: Default::default(),
+        };
+        assert_eq!(tf_count_text_chars(&parent), 3);
+    }
+
+    #[test]
+    fn tf_count_text_bytes_counts_bytes_not_chars() {
+        // "日本語" is 9 bytes but 3 chars — must count bytes.
+        let node = text_node("日本語");
+        assert_eq!(tf_count_text_bytes(&node), 9, "日本語 must count as 9 bytes, not 3 chars");
+        assert_eq!(tf_count_text_bytes(&text_node("héllo")), 6);
+        // Recursive over children.
+        let parent = DomNode::Element {
+            tag: "p".to_string(),
+            attrs: vec![],
+            children: vec![text_node("a"), text_node("bcd")],
+            scores: Default::default(),
+            metadata: Default::default(),
+        };
+        assert_eq!(tf_count_text_bytes(&parent), 4);
     }
 }

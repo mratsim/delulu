@@ -39,7 +39,7 @@ mod test_utils;
 use test_utils::{
     Classification, classify_output, compute_confusion_matrix, detect_backup_restore,
     detect_body_xpath_pattern, detect_retry_level, first_diff_position, fixture_dir,
-    normalize_output, tf_count_text_chars,
+    normalize_output, tf_count_text_bytes, tf_count_text_chars,
 };
 
 #[cfg(feature = "diagnostic")]
@@ -54,6 +54,7 @@ use test_utils::time_passes;
 struct BatchResult {
     name: String,
     output_len: usize,
+    output_bytes: usize,
     expected_len: usize,
     ratio: f64,
     classification: Classification,
@@ -149,6 +150,7 @@ fn run_batch(fixtures_arg: &Option<PathBuf>) {
         results.push(BatchResult {
             name: name.clone(),
             output_len: out_len,
+            output_bytes: tf_count_text_bytes(&nodes),
             expected_len: exp_len,
             ratio,
             classification,
@@ -170,10 +172,11 @@ fn run_batch(fixtures_arg: &Option<PathBuf>) {
 
     // Print padded header
     println!(
-        "{name:width$}  {output:>10}  {expected:>10}  {ratio:>6}  {class:class_width$}  {prec:>7}  {rec:>7}  {f1:>7}  truncated  dup_chars",
+        "{name:width$}  {output:>10}  {bytes:>10}  {expected:>10}  {ratio:>6}  {class:class_width$}  {prec:>7}  {rec:>7}  {f1:>7}  truncated  dup_chars",
         name = "fixture",
         width = max_name_len,
         output = "output_len",
+        bytes = "output_bytes",
         expected = "expected_len",
         ratio = "ratio",
         class = "classification",
@@ -186,10 +189,11 @@ fn run_batch(fixtures_arg: &Option<PathBuf>) {
     for r in &results {
         let cl = format!("{}", r.classification);
         println!(
-            "{name:width$}  {output:>10}  {expected:>10}  {ratio:>6.4}  {class:class_width$}  {prec:>7.4}  {rec:>7.4}  {f1:>7.4}  {trunc}  {dup}",
+            "{name:width$}  {output:>10}  {bytes:>10}  {expected:>10}  {ratio:>6.4}  {class:class_width$}  {prec:>7.4}  {rec:>7.4}  {f1:>7.4}  {trunc}  {dup}{div}",
             name = r.name,
             width = max_name_len,
             output = r.output_len,
+            bytes = r.output_bytes,
             expected = r.expected_len,
             ratio = r.ratio,
             class = cl,
@@ -199,6 +203,11 @@ fn run_batch(fixtures_arg: &Option<PathBuf>) {
             f1 = r.f1,
             trunc = if r.truncated { "true" } else { "false" },
             dup = r.dup_chars,
+            div = if r.output_bytes != r.output_len {
+                format!("  [bytes={}, chars={}]", r.output_bytes, r.output_len)
+            } else {
+                String::new()
+            },
         );
     }
 
@@ -302,6 +311,14 @@ fn run_deep_dive(case_name: &str, fixtures_arg: &Option<PathBuf>) {
     eprintln!("  Output length:   {out_len}");
     eprintln!("  Expected length: {exp_len}");
     eprintln!("  Ratio:           {ratio:.4}");
+    // Surface byte-vs-char divergence (CJK/non-ASCII) on the filtered DOM output.
+    let out_bytes = tf_count_text_bytes(&nodes);
+    let out_chars = tf_count_text_chars(&nodes);
+    if out_bytes != out_chars {
+        eprintln!("  Output [bytes={out_bytes}, chars={out_chars}]  <-- CJK/non-ASCII divergence");
+    } else {
+        eprintln!("  Output [bytes={out_bytes}, chars={out_chars}]");
+    }
     eprintln!();
 
     // ── Section 2: Classification ──────────────────────────────────────
