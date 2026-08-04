@@ -18,9 +18,8 @@ flowchart LR
     Orchestrator -->|--pipeline tf| TF[Trafilatura Orchestrator<br/>filter_trafilatura]
     
     subgraph RD_Pipeline[Readability Pipeline]
-        RD --> RD_Analysis[13 analysis passes<br/>analyze_link_density etc.]
-        RD_Analysis --> RDScore[rd_score_node<br/>Accumulated scoring]
-        RDScore --> RDFilter[rd_filter_by_score<br/>/3 cutoff + extraction]
+        RD --> RDScore[rd_score_mozilla_readability<br/>Accumulated scoring]
+        RDScore --> RDFilter[Extraction<br/>pass_splice_cutoff /3 + sibling scan]
         RDFilter --> RDCanon[Canonicalization]
     end
     
@@ -40,8 +39,8 @@ flowchart LR
 
 | Module | Responsibility | Files |
 |--------|---------------|-------|
-| **pipeline** | Orchestration, walkers, error model | `pipeline/mod.rs`, `pipeline/walkers.rs`, `pipeline/error.rs` |
-| **pipeline/passes** | Analysis, filter, transform, scoring | `passes/rd_*.rs`, `passes/tf_*.rs`, `passes/datatypes.rs` |
+| **pipelines** | Orchestration, walkers, error model | `pipelines/mod.rs`, `pipelines/walkers.rs`, `pipelines/error.rs` |
+| **pipelines/passes** | Analysis, filter, transform, scoring | `passes/rd_*.rs`, `passes/tf_*.rs`, `passes/dl_*.rs` |
 | **generators** | Output format: HTML and Markdown | `generators/gen_html.rs`, `generators/gen_md.rs` |
 | **core** | HTTP client, URL detection, result types | `core/http.rs`, `core/detect.rs`, `core/types.rs` |
 | **sources** | Platform-specific extractors (Reddit, Discourse) | `sources/reddit.rs`, `sources/discourse.rs` |
@@ -50,10 +49,10 @@ flowchart LR
 
 | Category | Pipeline | What it does | Examples |
 |----------|----------|-------------|---------|
-| **Analysis** | Readability only | Pure reads — produce metadata strings on each node | `analyze_link_density`, `analyze_text_density`, `analyze_comma_count` |
-| **Scoring** | Readability only | Compute content scores (accumulated, distance-divided) | `rd_score_node` |
-| **Filter** | Both | Remove non-content elements | `rd_filter_by_score` (rd), `tf_remove_cleaned` (tf), `tf_remove_unlikely_candidates` (tf) |
-| **Transform** | Both | Rename/mutate elements | `tf_convert_headings` (tf), `canonicalize_unwrap_containers` (both) |
+| **Analysis** | Both | Mark-only: flag data tables by structural heuristics | `mark_data_tables_by_structure` |
+| **Scoring** | Readability only | Compute content scores inline via `ScoreAccumulator` | `rd_score_mozilla_readability` |
+| **Filter** | Both | Remove non-content elements | `filter_low_density_elements` (rd), `tf_remove_cleaned` (tf), `tf_remove_unlikely_candidates` (tf) |
+| **Transform** | Both | Rename/mutate elements | `tf_convert_headings` (tf), `tf_canonicalize_unwrap_containers` (tf), `rd_unwrap_structural_wrappers` (rd) |
 | **Generation** | Both | Serialize DOM tree to output format | `dom_nodes_to_html`, `MarkdownLowerer::lower` |
 
 **Note:** Trafilatura does not score content and runs no Readability-style scoring phase. It invokes the mark-only analysis pass `mark_data_tables_by_structure` (which marks table nodes for later handling) before proceeding directly from parsing to tag-based filtering.
@@ -62,8 +61,8 @@ flowchart LR
 
 ### Readability (`rd_*`)
 - **Approach**: Score every element, filter by threshold
-- **Scoring**: Accumulated content score with distance-based division (matches JS `scoreDivider`)
-- **Filtering**: `/3` ancestor cutoff via candidate extraction + parent-path index
+- **Scoring**: Accumulated content score via `ScoreAccumulator` (`add_self` = tag bonus + class weight + paragraph score; `apply_link_density` = `content * (1 - link_density)`)
+- **Filtering**: `/3` thin-wrapper cutoff (`pass_splice_cutoff`) + candidate extraction (`pass_prune_no_candidate`, `pass_keep_qualifying_siblings`)
 - **Retry**: 4 levels (Strict → Keep Unlikely → Ignore Class Weights → No Score Filter)
 - **Output**: Full HTML tree (canonicalization strips scripts/unwraps containers before generation)
 
@@ -71,16 +70,16 @@ flowchart LR
 - **Approach**: Tag-based removal + conversion (no scoring)
 - **Filtering**: MANUALLY_CLEANED tags, OVERALL_DISCARD_XPATH patterns, BODY_XPATH container isolation
 - **Transforms**: Heading/list/quote/formatting tag conversion (matching Trafilatura's XML schema)
-- **Retry**: 3 levels (Balanced → Precision → Recall) with backup/restore safety
+- **Retry**: 4 levels (Balanced → Recall → wild p-recovery → JSON-LD rescue) with backup/restore safety
 - **Output**: Same generators as Readability (format mapping after canonicalization)
 
 ## Walkers
 
 | Walker | Location | Order | Callbacks | Error Model | Used By |
 |--------|----------|-------|-----------|-------------|---------|
-| `walk_pre_mut` | `pipeline/mod.rs` | Pre-order | Single `Fn(&mut DomNode) -> VisitAction` | Panic | Trafilatura (tf_* passes), simple traversals |
-| `walk_post_mut` | `pipeline/walkers.rs` | Post-order | Multi `&mut [&mut WalkerFilter]` | `Result<bool, PipelineError>` | Trafilatura (backup wrappers, tag catalog) |
-| `walk_post_acc_mut` | `pipeline/walkers.rs` | Post-order | Accumulating | `Result<bool, PipelineError>` | Readability (scoring with child accumulation) |
+| `walk_pre_mut` | `pipelines/walkers.rs` | Pre-order | Single `&impl Fn(&mut DomNode) -> WalkerAction` | Panic on misuse | Trafilatura (tf_* passes), simple traversals |
+| `walk_post_mut` | `pipelines/walkers.rs` | Post-order | Multi `&mut [&mut WalkerFilter]` | Panic (`SkipChildren`) | Both (canonicalization, tag catalog, data-table marking) |
+| `walk_post_acc_mut` | `pipelines/walkers.rs` | Post-order | Accumulating `FnMut(&mut DomNode, &[A]) -> (WalkerAction, A)` | Panic (`SkipChildren`) | Readability (scoring via `ScoreAccumulator`, extraction, filters) |
 
 `walkers.rs` is the "destination architecture" — all single-callback passes should eventually migrate to multi-callback for batched traversals.
 
@@ -95,9 +94,15 @@ No traits, no structs, no dynamic dispatch. Passes are composed into pipelines a
 // PassFn = fn(&mut DomNode)
 pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
     &[
-        tf_protect_content_forms,       // marks forms >90% page as protected
-        tf_extract_script_templates,      // extracts Blogger template content
-        tf_remove_cleaned,                 // removes 39 boilerplate tags
+        tf_extract_script_templates,       // extracts Blogger template content
+        wrap_pass!(tf_remove_cleaned),     // removes 52 boilerplate tags
+        wrap_pass!(tf_remove_teaser),      // removes TEASER_DISCARD elements
+        apply_tf_remove_unlikely_candidates_with_backup, // OVERALL_DISCARD_XPATH
+        tf_strip_unwrapped,                // unwraps MANUALLY_STRIPPED tags
+        wrap_pass!(tf_remove_empty_cut),   // removes empty p/div/li
+        apply_tf_filter_by_link_density_with_backup,     // high-link-density removal
+        wrap_pass!(tf_convert_headings),   // ... then 5 more tag-conversion passes,
+        // ... canonicalization, container isolation, tag-catalog whitelist
     ]
 });
 ```
@@ -108,7 +113,7 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
 |-----------|----------|----------------------|
 | `fn(&mut DomNode)` | Transform/analysis passes that never remove | N/A — pass mutates in place |
 | `fn(&mut DomNode) -> WalkerAction` | Filter passes that may remove | `Continue` / `Remove` / `SkipChildren` / `ReplaceWithChildren` |
-| `fn(&mut DomNode) -> Result<bool, PipelineError>` | Fallible passes (walkers) | Return `Ok(true)` = modified, `Ok(false)` = unchanged |
+| `fn(&mut DomNode, &[A]) -> (WalkerAction, A)` | Accumulating passes (`walk_post_acc_mut`) | Returns action + accumulated child value |
 
 ### Walker Choice
 
@@ -116,8 +121,8 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
 |----------------|-----|--------|
 | Removes elements by tag/attribute | `walk_pre_mut` | Pre-order: see parent before children, remove entire subtrees efficiently |
 | Replaces elements with children (e.g., unwrap) | `walk_post_mut` | Post-order: children already processed, safe to splice |
-| Needs backup/restore (destructive pass) | `walk_post_mut` wrapper | Measure output before/after, restore if too much removed |
-| Accumulates child scores upward | `walk_post_acc_mut` | Post-order with child aggregation (Readability only) |
+| Needs backup/restore (destructive pass) | `with_backup` wrapper (uses `walk_pre_mut` inside) | Clone + measure `text_len` before/after, restore via recovery if too much removed |
+| Accumulates child scores upward | `walk_post_acc_mut` | Post-order with child aggregation (Readability scoring via `ScoreAccumulator`, extraction, filters) |
 
 **Rule:** Pre-order is the default for simple removal passes. Post-order is required for `ReplaceWithChildren`.
 Using `walk_pre_mut` with `ReplaceWithChildren` panics at runtime.
@@ -127,7 +132,7 @@ Using `walk_pre_mut` with `ReplaceWithChildren` panics at runtime.
 | Prefix | Pipeline | Example |
 |--------|----------|--------|
 | `tf_*` | Trafilatura | `tf_remove_cleaned`, `tf_filter_by_link_density` |
-| `rd_*` | Readability | `rd_score_node`, `rd_filter_by_score` |
+| `rd_*` | Readability | `rd_score_mozilla_readability`, `filter_low_density_elements` |
 | `dl_*` | Download | `dl_arxiv`, `dl_doc` |
 
 **Verb conventions:**
@@ -146,6 +151,7 @@ Using `walk_pre_mut` with `ReplaceWithChildren` panics at runtime.
 | File | Contains |
 |------|----------|
 | `passes/tf_filters.rs` | Trafilatura filter passes (removal decisions) + helper functions |
+| `passes/tf_analysis.rs` | Trafilatura analysis helpers (e.g. `count_non_ws_chars`) |
 | `passes/tf_transforms.rs` | Trafilatura transform passes (tag conversion, canonicalization) |
 | `passes/rd_analysis.rs` | Readability analysis passes (signal computation) |
 | `passes/rd_filters.rs` | Readability filter passes (scoring, removal) |
@@ -181,19 +187,29 @@ pub fn tf_remove_unlikely_candidates(node: &mut DomNode) -> WalkerAction { }
 Destructive passes that could remove too much content use a backup/restore wrapper:
 
 ```rust
-pub fn apply_tf_filter_by_link_density_with_backup(node: &mut DomNode) {
-    let old_len = measure_output(node);
+pub fn with_backup<F, R>(node: &mut DomNode, pass: F, threshold: usize, recovery: R) {
+    let old_len = node.text_len();
     let backup = node.clone();
-    walk_pre_mut(node, &mut [&mut |n| tf_filter_by_link_density(n)]);
-    let new_len = measure_output(node);
-    if new_len * 5 <= old_len {  // >=80% text removed
-        tracing::warn!("link density filter removed >=80% text, restoring backup");
-        *node = backup;  // restore
+    pass(node);                              // destructive pass runs here
+    let new_len = node.text_len();
+    if new_len.checked_mul(threshold).is_some_and(|p| p <= old_len) {
+        tracing::warn!("backup triggered ({} -> {} chars, threshold={}), restoring",
+                       old_len, new_len, threshold);
+        recovery(node, &backup);             // restore from backup
     }
 }
-```
 
-The threshold `new_len * 5 <= old_len` means "restore if >=80% of text was removed."
+// `with_backup_wrapper!` generates a concrete wrapper; recovery is full restore
+// (`*node = backup.clone()`) followed by re-applying `tf_remove_cleaned`:
+pub fn apply_tf_remove_unlikely_candidates_with_backup(node: &mut DomNode) {
+    with_backup(node,
+        |n| walk_pre_mut(n, &|n| tf_remove_unlikely_candidates(n)),
+        5,                                   // 5x = >=80% text removed
+        |node, backup| { *node = backup.clone(); walk_pre_mut(node, &|n| tf_remove_cleaned(n)); });
+}
+
+The threshold `new_len * threshold <= old_len` means "restore if >=(1 - 1/threshold) of text was removed"
+(e.g. threshold 5 => >=80%, 10 => >=90%, 19 => >=95%; link-density filtering uses threshold 19).
 This matches Python trafilatura's `with_backup=True` pattern using `deepcopy`.
 
 ### Shared Helpers
@@ -202,26 +218,25 @@ Helpers that are needed by both pipelines or by the orchestrator are made `pub(c
 
 | Helper | File | Returns |
 |--------|------|---------|
-| `collect_text(children)` | `tf_filters.rs` | `String` — concatenated text of all child nodes |
-| `get_inner_text(node)` | `tf_filters.rs` / `rd_utils.rs` | `String` — recursive text (raw vs whitespace-normalized) |
-| `count_p_text(nodes)` | `tf_filters.rs` | `usize` — total `<p>` text length |
-| `count_non_ws_chars(node)` | `trafilatura.rs` | `usize` — non-whitespace char count |
-| `measure_output(node)` | `trafilatura.rs` | `usize` — total text length (used for backup/restore thresholds) |
+| `get_inner_text(node)` | `rd_utils.rs` | `String` — recursive text content of a node |
+| `collect_p_elements(node, result)` | `tf_filters.rs` | collects `<p>` nodes into a `Vec` (wild-`<p>` recovery) |
+| `count_non_ws_chars(node)` | `tf_analysis.rs` | `usize` — non-whitespace char count |
+| `measure_output(node)` | `mozilla_readability.rs` | `usize` — Markdown output length (backup/restore thresholds) |
 
-**Naming collision note:** `get_inner_text` exists in both `tf_filters.rs` (raw text, no normalization) and `rd_utils.rs` (whitespace-normalized). The tf_ version may be renamed to `get_raw_inner_text` in the future.
+**Note:** `get_inner_text` lives only in `rd_utils.rs`; there is no tf_ version.
 ## Key Data Flows
 
 ### Readability Extraction (scoring-based)
 ```
-HTML → parse_html → 13 analysis passes → rd_score_node (distance division)
-  → rd_filter_by_score (/3 cutoff → candidate extraction → sibling scan)
+HTML → parse_html → rd_score_mozilla_readability (ScoreAccumulator)
+  → pass_splice_cutoff (/3 thin-wrapper cutoff) → pass_keep_qualifying_siblings
   → transforms (10+) → canonicalization (strip + unwrap) → gen_html/gen_md
 ```
 
-The 13 analysis passes compute per-node signals (link density, text density, comma count, etc.).
-`rd_score_node` accumulates these into a content score with distance-based division.
-Scoring passes never remove nodes — they only write to `DomNode.scores`.
-A final commit pass removes nodes below threshold.
+`rd_score_mozilla_readability` computes a content score per node via `ScoreAccumulator`
+(`add_self`: tag bonus + class weight + paragraph score; `apply_link_density`: `content * (1 - link_density)`, clipped at 0).
+Scoring writes to `DomNode.scores` and metadata but never removes nodes.
+Extraction passes (`pass_prune_no_candidate`, `pass_splice_cutoff`, `pass_keep_qualifying_siblings`) then remove/splice nodes below threshold.
 
 ### Trafilatura Extraction (tag-based removal, no scoring)
 ```
@@ -243,35 +258,35 @@ Backup/restore wrappers prevent catastrophic content loss from over-aggressive r
 
 ### Readability-specific
 - **[ADR-004]** Tattletale pattern: scores ARE the marks — no mark-and-sweep flags (see HANDBOOK.md)
-- **Distance-based division**: Score propagation matches JS `scoreDivider` (0→1.0, 1→2.0, n≥2→n*3.0)
+- **Scoring**: Content scores are computed by `rd_score_mozilla_readability` via `ScoreAccumulator` (`add_self` = tag bonus + class weight + paragraph score; `apply_link_density` = `content * (1 - link_density)`, clipped at 0). Thin wrappers are spliced when a node's score < best child's score / 3 (`pass_splice_cutoff`).
 
 ### Trafilatura-specific
 - **No scoring in tf_***: Trafilatura strategy uses tag-based removal, not scoring. The `scores` field on `DomNode` is unused in tf_* passes.
-- **Retry cascade**: 3 levels (TF_BALANCED → TF_RECALL → wild p-recovery → JSON-LD rescue). Each level triggers when output < thresholds. This matches Python trafilatura's `trafilatura_sequence` 4-stage cascade.
+- **Retry cascade**: 4 levels (TF_BALANCED → TF_RECALL → wild p-recovery → JSON-LD rescue). Each level triggers when output < thresholds. This matches Python trafilatura's `trafilatura_sequence` cascade.
 - **Backup/restore wrappers**: `apply_*_with_backup` pattern clones the tree before destructive passes and restores if >80% text is removed. This is the Rust equivalent of Python's `deepcopy` + `with_backup=True` pattern.
-- **BODY_XPATH container isolation**: 5-pattern cascade (P0→P4) using `find_first_match` + `container_has_content`. Matches Python's `BODY_XPATH` `[1]` first-match-wins semantics.
+- **BODY_XPATH container isolation**: 5-pattern cascade (P0→P4). The non-XPath path uses `find_all_matches` + `container_has_content` (accepts the first match with enough text; `find_first_match` is dead code); the XPath path evaluates `BODY_XPATH_0..4` and takes the first pattern's first match. Matches Python's `BODY_XPATH` `[1]` first-match-wins semantics.
 
 ### Shared
-- **[ADR-007]** Function-pointer pass interface: all passes are `fn(&mut Vec<DomNode>)` — no Pass trait
+- **[ADR-007]** Function-pointer pass interface: all passes are `fn(&mut DomNode)` (or `fn(&mut DomNode) -> WalkerAction`) — no Pass trait
 - **Separate rd/tf files**: Pipelines share walker infrastructure but NOT filter/transform passes (split after spec-design session at commit 1e10974)
 - **Pass ordering**: Both pipelines order passes by cost (cheap filters first, expensive transforms last)
 ## Cross-Cutting Concerns
 
 - **Error model**: Single `PipelineError::ParseError(String)` — all other failures panic (pre-alpha)
 - **Clipping**: `.max(0.0)` not `.clamp(0.0, 1.0)` — scores can exceed 1.0 (Readability only)
-- **Input guard**: `INPUT_NODE_LIMIT = 10_000` skips retry cascade for huge trees
-- **Measurement**: `content_score = edit_distance / reference_words` (word-level multiset)
+- **Input guard**: No fuzzing guard yet — the retry cascade is not skipped for huge trees (open TODO in `filter_trafilatura`, trafilatura.rs:561)
+- **Measurement**: Retry levels are compared by output length — `text_len()` (tf) / `measure_output()` Markdown length (rd)
 ## Trade-offs
 
 - **Backup/restore in tf_***: Safety net prevents content loss but can mask over-removal bugs. 80% threshold (new_len * 5 <= old_len) may be too conservative for paywall pages where preview text is most of the static content.
 - **`has_likely_content` guard in rd_***: Protects against over-removal in Readability. Removed in tf_* to match Trafilatura behavior. Causes aclu.org regression.
 - **No BODY_XPATH for rd_***: Readability uses scoring, not container isolation. Trafilatura needs BODY_XPATH because it doesn't score.
-- **Retry cascade vs single-pass**: Trafilatura's retry cascade (3 levels + JSON-LD rescue) is inherently more expensive than Readability's single-pass scoring, but produces better results on non-article layouts (forums, CMS pages, form-wrapped content).
+- **Retry cascade vs single-pass**: Trafilatura's retry cascade (4 levels) is inherently more expensive than Readability's single-pass scoring, but produces better results on non-article layouts (forums, CMS pages, form-wrapped content).
 ## Glossary
 
 | Term | Definition |
 |------|-----------|
-| **micropass** | A single `fn(&mut Vec<DomNode>)` that does one thing. No traits, no structs. |
+| **micropass** | A single `fn(&mut DomNode)` (or `fn(&mut DomNode) -> WalkerAction`) that does one thing. No traits, no structs. |
 | **Readability** | Mozilla's algorithm: score every element, filter by score threshold |
 | **Trafilatura** | Python library: tag-based removal + XPath container extraction |
 | **tattletale** | Pattern: compute once during scoring, read O(1) in filters (no marking passes). Used in Readability only. |
