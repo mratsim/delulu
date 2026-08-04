@@ -238,7 +238,10 @@ async fn test_fetch_and_extract_discourse_from_fixture() {
             // lib.rs cannot slip through.
             assert_eq!(post_count, 12, "fixture posts_count is 12");
             assert_eq!(posts_returned, 3, "only 3 posts delivered in trimmed body");
-            assert_ne!(post_count, posts_returned as u64, "post_count (server total) must differ from posts_returned (returned)");
+            assert_ne!(
+                post_count, posts_returned as u64,
+                "post_count (server total) must differ from posts_returned (returned)"
+            );
             assert_eq!(
                 title,
                 "Reed-Solomon erasure code recovery in n*log^2(n) time with FFTs"
