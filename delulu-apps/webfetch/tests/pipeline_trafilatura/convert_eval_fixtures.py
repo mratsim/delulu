@@ -240,7 +240,7 @@ def select_fixtures(pages, count=15):
 
     # If still not enough, add more regardless of domain
     if len(selected) < count:
-        for filename, info, _ in candidates:
+        for filename, _, _ in candidates:
             if len(selected) >= count:
                 break
             if filename not in selected:

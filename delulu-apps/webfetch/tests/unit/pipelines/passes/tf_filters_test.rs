@@ -1337,6 +1337,255 @@ fn test_pattern2_preserves_pattern1_sidebar() {
     );
 }
 
+// ── XPath counterparts: tf_remove_unlikely_candidates_xpath ─────────────
+// These run the SAME assertions through the `_xpath` code path so that the
+// `use-xpath` implementation is actually exercised by CI (the non-XPath
+// variants above are gated `#[cfg(not(feature = "use-xpath"))]`).
+// Reference: Trafilatura `xpaths.py:118-148` OVERALL_DISCARD_XPATH.
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_remove_unlikely_candidates_removes_despite_likely_content() {
+    let mut root = parse_html("<div class=\"sidebar\"><p>content text here</p></div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "<div class='sidebar'> should be removed despite <p> child");
+    assert!(!find_tag(&root, "p"), "<p> child should also be removed with parent");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_remove_unlikely_candidates_removes_display_none_with_content() {
+    let mut root = parse_html("<div style=\"display:none\"><p>hidden content</p></div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "display:none div should be removed despite <p> child");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_remove_unlikely_candidates_keeps_non_matching() {
+    let mut root = parse_html("<div class=\"content\"><p>actual article content</p></div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(find_tag(&root, "div"), "<div class='content'> should be kept (no match)");
+    assert!(find_tag(&root, "p"), "<p> should be kept (parent kept)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_scope_restriction_keeps_a_tag() {
+    let mut root = parse_html("<a class=\"sidebar\">link text</a>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(find_tag(&root, "a"), "<a class='sidebar'> should be KEPT (not in scope)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_scope_restriction_removes_div() {
+    let mut root = parse_html("<div class=\"sidebar\">side content</div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "<div class='sidebar'> should be REMOVED (in scope)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_scope_restriction_nested_parent_kept_child_removed() {
+    let mut root = parse_html("<a class=\"sidebar\"><div class=\"sidebar\">text</div></a>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(find_tag(&root, "a"), "<a> parent should be KEPT (not in scope)");
+    assert!(!find_tag(&root, "div"), "<div> child should be REMOVED (in scope)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_scope_restriction_keeps_li() {
+    let mut root = parse_html("<li class=\"sidebar\">list item</li>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(find_tag(&root, "li"), "<li class='sidebar'> should be KEPT (not in scope)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_separate_patterns_id_premium() {
+    let mut root = parse_html("<div id=\"premium-content\">premium</div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "<div id='premium-content'> should be REMOVED (id pattern)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_separate_patterns_class_footer() {
+    let mut root = parse_html("<div class=\"footer\">footer</div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "<div class='footer'> should be REMOVED (class pattern)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_separate_patterns_class_share_contains() {
+    let mut root = parse_html("<div class=\"share-icons\">share</div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "<div class='share-icons'> should be REMOVED (class pattern share-)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_separate_patterns_id_share_only() {
+    let mut root = parse_html("<div id=\"share-buttons\">share</div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "<div id='share-buttons'> should be REMOVED (id pattern share)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_separate_patterns_shared_sidebar() {
+    let mut root =
+        parse_html("<div class=\"panel-two-col-sidebar-right-mix\"><p>article content here</p></div>")
+            .unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "shared sidebar div should be REMOVED");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_role_nav_check() {
+    let mut root = parse_html("<div role=\"navigation\">nav</div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "<div role='navigation'> should be REMOVED (role contains nav)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_role_nav_check_non_matching() {
+    let mut root = parse_html("<div role=\"main\"><p>content</p></div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(find_tag(&root, "div"), "<div role='main'> should be KEPT (no nav match)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_noprint_class_removed() {
+    let mut root =
+        parse_html("<section class=\"top-article noprint\">nav stuff</section><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "section"), "section with noprint class should be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_scope_unrestricted_catches_any_tag() {
+    let mut root = parse_html("<figure class=\"noprint\">fig</figure><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "figure"), "figure with noprint should be removed (unrestricted)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_hide_class_removed() {
+    let mut root = parse_html("<div class=\"hide-ads\">ads</div><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "div with hide- class should be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_notloaded_removed() {
+    let mut root = parse_html("<div class=\"notloaded\">lazy</div><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "div with notloaded class should be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_akismet_id_removed() {
+    let mut root = parse_html("<div id=\"akismet\">spam</div><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "div with akismet id should be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_reply_prefix_removed() {
+    let mut root =
+        parse_html("<div class=\"reply-comment-123\">reply form</div><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "div with reply- class should be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_class_pattern_does_not_match_id() {
+    let mut root = parse_html("<div id=\"noprint\">should be kept</div><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(find_tag(&root, "div"), "div with id='noprint' should be KEPT (class-only pattern)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_hidden_id_removed() {
+    let mut root = parse_html("<div id=\"hidden-content\">hidden div</div><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "div with 'hidden' in id should be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_hidden_in_style_removed() {
+    let mut root = parse_html("<div style=\"visibility:hidden\">hidden</div><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "div with 'hidden' in style should be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_comments_title_removed() {
+    let mut root =
+        parse_html("<div class=\"comments-title\">comments</div><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "div with comments-title class should be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_suggest_links_removed() {
+    let mut root = parse_html("<div class=\"suggest-links\">suggest</div><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "div with suggest-links class should be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_preserves_body_html() {
+    let mut root = parse_html("<html lang=\"en\"><body><p>content</p></body></html>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(find_tag(&root, "html"), "<html> should never be removed");
+    assert!(find_tag(&root, "body"), "<body> should never be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_aria_hidden_structural_preserved() {
+    let mut root = parse_html("<main aria-hidden=\"true\"><p>main content</p></main>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(find_tag(&root, "main"), "<main aria-hidden='true'> should be preserved (structural guard)");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_aria_hidden_nonstructural_removed() {
+    let mut root = parse_html("<div aria-hidden=\"true\">hidden div</div><p>content</p>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "<div aria-hidden='true'> should be removed");
+}
+
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_xpath_pattern2_preserves_pattern1_sidebar() {
+    let mut root =
+        parse_html("<div class=\"panel-two-col-sidebar-right-mix\"><p>content</p></div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_remove_unlikely_candidates_xpath(n));
+    assert!(!find_tag(&root, "div"), "Pattern 1 sidebar removal should still work");
+}
+
+
 // ── tf_extract_script_templates ─────────────────────────────────
 
 #[test]
