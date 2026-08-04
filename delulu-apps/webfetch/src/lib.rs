@@ -122,6 +122,10 @@ pub async fn fetch_and_extract_with_status(
 /// Reddit, Discourse, arXiv, and Document all map to `Article` on successful
 /// extraction. The wrapper hardcodes `Article` for these via this single helper
 /// so the mapping cannot drift.
+///
+/// This is DELIBERATE, not an oversight: for a structured source, reaching this
+/// point means content was actually extracted, so `Article` is the correct
+/// status — there is no separate `Blocked`/`Empty` signal to consider here.
 pub(crate) fn structured_success_status() -> PageStatus {
     PageStatus::Article
 }

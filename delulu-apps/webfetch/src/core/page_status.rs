@@ -376,6 +376,10 @@ fn is_js_heavy(lower_html: &str, visible_len: usize, script_len: usize) -> bool 
 /// elements.
 #[allow(clippy::doc_overindented_list_items, clippy::doc_lazy_continuation)]
 pub fn classify_page(html: &str, visible_len: usize, script_len: usize) -> PageStatus {
+    // Article gate — a PRE-EXTRACTION signal. `visible_len` is the pre-pipeline
+    // visible byte length, so this can report `Article` for a body that later
+    // extracts empty. That is outside `classify_page`'s contract: it runs before
+    // extraction and cannot observe post-extraction emptiness.
     if visible_len >= MEANINGFUL_CONTENT_THRESHOLD {
         return PageStatus::Article;
     }

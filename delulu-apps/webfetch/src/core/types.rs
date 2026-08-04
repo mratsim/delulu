@@ -140,6 +140,9 @@ pub enum ExtractionResult {
         /// `RedditExtractor::MAX_COMMENTS` (500). This is NOT the thread's
         /// total comment count on the server; when comments were truncated,
         /// `comments_truncated` is `true`.
+        ///
+        /// Surfaced (not redundant) in the Reddit frontmatter output
+        /// in `src/core/markdown.rs`.
         comment_count: usize,
         /// Whether the returned comments were truncated (capped at
         /// `RedditExtractor::MAX_COMMENTS`, or a `more`/deep-depth marker
@@ -152,6 +155,11 @@ pub enum ExtractionResult {
         topic_id: u64,
         posts: Vec<DiscoursePost>,
         post_count: u64,
+        /// Number of posts RETURNED in `posts` (the Discourse JSON API can
+        /// return fewer than the topic's `post_count`).
+        ///
+        /// Surfaced (not redundant) in the Discourse frontmatter output
+        /// in `src/core/markdown.rs`.
         posts_returned: usize,
     },
     GenericHtml {
