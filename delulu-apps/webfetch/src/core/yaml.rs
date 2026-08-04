@@ -13,7 +13,7 @@
 /// literal `\n` escape), and values that would otherwise be ambiguous (a
 /// leading YAML indicator char, or containing `: ` or `#`) are wrapped in
 /// double quotes with internal backslashes/quotes escaped.
-pub fn yaml_escape(value: &str) -> String {
+pub(crate) fn yaml_escape(value: &str) -> String {
     let single_line = value.replace('\r', " ").replace('\n', "\\n");
     let needs_quotes = single_line.starts_with(|c: char| {
         matches!(

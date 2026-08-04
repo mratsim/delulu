@@ -18,9 +18,7 @@ use delulu_rate_limited_crawler::RateLimitedCrawler;
 use delulu_webfetch::{MAX_BODY_SIZE, MarkdownDocument, fetch_and_extract, fetch_raw_html};
 
 // Shared Markdown output formatting (one definition, included here via #[path]).
-#[path = "core/markdown.rs"]
-mod markdown;
-use crate::markdown::md_doc_to_string;
+use delulu_webfetch::core::markdown::md_doc_to_string;
 use std::io::Read;
 use std::time::Duration;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};

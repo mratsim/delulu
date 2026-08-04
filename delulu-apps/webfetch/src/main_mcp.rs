@@ -34,9 +34,7 @@ use delulu_webfetch::webfetch_raw_response;
 use delulu_webfetch::{MAX_BODY_SIZE, fetch_and_extract, fetch_and_extract_with_status};
 
 // Shared Markdown output formatting (one definition, included here via #[path]).
-#[path = "core/markdown.rs"]
-mod markdown;
-use crate::markdown::md_doc_to_string;
+use delulu_webfetch::core::markdown::md_doc_to_string;
 use delulu_webfetch::{is_private_ip, same_subnet_16};
 use serde::{Deserialize, Serialize};
 use serde_json::json;

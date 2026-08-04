@@ -12,9 +12,9 @@
 //! absolute crate name (`delulu_webfetch::`), which resolves the library from
 //! inside either binary.
 
+use crate::core::types::{ExtractionResult, RedditComment};
+use crate::core::yaml::yaml_escape;
 use chrono::Utc;
-use delulu_webfetch::core::types::{ExtractionResult, RedditComment};
-use delulu_webfetch::core::yaml::yaml_escape;
 
 /// Convert an `ExtractionResult` into a Markdown string with YAML frontmatter.
 pub fn md_doc_to_string(result: ExtractionResult) -> String {

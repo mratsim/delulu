@@ -1,5 +1,5 @@
 use super::*;
-use delulu_webfetch::core::types::MarkdownDocument;
+use crate::core::types::MarkdownDocument;
 
 fn generic_html(frontmatter: &str, body: &str) -> ExtractionResult {
     ExtractionResult::GenericHtml {
@@ -237,7 +237,7 @@ fn test_yaml_escape_neutralizes_delimiter_and_key_injection() {
     // frontmatter or inject a key. yaml_escape collapses newlines (so a `---`
     // cannot close the block) and quotes ambiguous values.
     let payload = "hi\n---\nmalicious: true";
-    let escaped = delulu_webfetch::core::yaml::yaml_escape(payload);
+    let escaped = crate::core::yaml::yaml_escape(payload);
     // No literal newline survives (the `---` and `malicious:` are on one line,
     // inside quotes) — so it cannot close the block or inject a bare key line.
     assert!(
