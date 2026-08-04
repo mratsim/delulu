@@ -76,7 +76,7 @@ async fn test_fetch_doc_iacr_2010_354() -> Result<()> {
     let result = fetch_doc(&url, &crawler).await?;
 
     match result {
-        delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
+        delulu_webfetch::ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.len() > 100,
                 "Output too short: {} chars",
@@ -104,7 +104,7 @@ async fn test_fetch_doc_iacr_2023_kzg() -> Result<()> {
     let result = fetch_doc(&url, &crawler).await?;
 
     match result {
-        delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
+        delulu_webfetch::ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.len() > 200,
                 "Output too short: {} chars",
@@ -130,7 +130,7 @@ async fn test_fetch_doc_iacr_2023_das() -> Result<()> {
     let result = fetch_doc(&url, &crawler).await?;
 
     match result {
-        delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
+        delulu_webfetch::ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.len() > 200,
                 "Output too short: {} chars",
@@ -158,7 +158,7 @@ async fn test_fetch_doc_pubmed_alphafold3() -> Result<()> {
     let result = fetch_doc(&url, &crawler).await?;
 
     match result {
-        delulu_webfetch::ExtractionResult::GenericHtml { content_md } => {
+        delulu_webfetch::ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.len() > 200,
                 "Output too short: {} chars",

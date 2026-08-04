@@ -17,3 +17,12 @@
 
 ## reddit/
 - `reddit-thread-simple.json.zst` — Reddit API response (simple thread with nested replies).
+
+## js-challenge/
+- `google-enablejs.html.zst` — Faithful synthetic reproduction of the Google
+  "enable JavaScript" interstitial: a `<script>` containing ≫200 chars of
+  escaped JS (`\u003c`-style), near-zero visible text (total visible budget
+  < 200 bytes), **marker-scrubbed** (no anti-bot/consent/paywall markers) and
+  **JSON-LD-free**. No SPA-shell or enable-js marker is present, so it classifies
+  `JSHeavy` **by script-dominance measurement alone** through the real
+  `filter_trafilatura` pipeline (SC-2/SC-3).

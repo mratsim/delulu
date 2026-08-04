@@ -2178,7 +2178,7 @@ mod tests {
         // producing 'teaser'; the text content must not drive the match.
         let doc = make_elem(
             "div",
-            vec![("class", "TEaser")],
+            vec![("class", "TEaser")], // typos: ignore (intentional mixed-case test value)
             vec![make_text("this teaser text should not drive the match")],
         );
         let compiled = XPath::compile("contains(translate(@class, 'TE', 'te'), 'teaser')").unwrap();

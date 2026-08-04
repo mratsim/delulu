@@ -30,9 +30,14 @@ use delulu_mcp_server_helper::{
     McpServerConfig, PeerAddr, impl_server_handler, run_http, run_stdio, setup_tracing,
 };
 use delulu_rate_limited_crawler::RateLimitedCrawler;
-use delulu_webfetch::{ExtractionResult, MAX_BODY_SIZE, RedditComment, fetch_and_extract};
+use delulu_webfetch::webfetch_raw_response;
+use delulu_webfetch::{MAX_BODY_SIZE, fetch_and_extract, fetch_and_extract_with_status};
+
+// Shared Markdown output formatting (one definition, included here via #[path]).
+use delulu_webfetch::core::markdown::md_doc_to_string;
 use delulu_webfetch::{is_private_ip, same_subnet_16};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -151,15 +156,22 @@ impl WebfetchServer {
             local_addr,
         )
         .await?;
-        match fetch_and_extract(
+        match fetch_and_extract_with_status(
             &input.url,
             &self.crawler,
             &[delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability],
         )
         .await
         {
-            Ok(result) => Ok(serde_json::to_string(&result).unwrap_or_default()),
-            Err(e) => Ok(format!("{{\"error\": true, \"error_type\": \"{:?}\"}}", e)),
+            // Serialize the ExtractionResult at top level plus a sibling
+            // `page_status` key. Never nested under a
+            // `result` wrapper.
+            Ok((result, status)) => Ok(webfetch_raw_response(&result, &status)),
+            Err(e) => Ok(json!({
+                "error": true,
+                "error_type": e.to_string(),
+            })
+            .to_string()),
         }
     }
 
@@ -277,83 +289,6 @@ async fn validate_url(
     }
 }
 
-// Check if an IP address is in a private/internal range.
-// ---------------------------------------------------------------------------
-// md_doc_to_string: Convert ExtractionResult to a Markdown string
-// ---------------------------------------------------------------------------
-
-/// Convert an `ExtractionResult` into a Markdown string with YAML frontmatter.
-fn md_doc_to_string(result: ExtractionResult) -> String {
-    match result {
-        ExtractionResult::GenericHtml { content_md } => {
-            let mut out = String::new();
-            if !content_md.frontmatter.is_empty() {
-                out.push_str("---\n");
-                out.push_str(&content_md.frontmatter);
-                if !content_md.frontmatter.ends_with('\n') {
-                    out.push('\n');
-                }
-                out.push_str("---\n\n");
-            }
-            out.push_str(&content_md.body);
-            out
-        }
-        ExtractionResult::Reddit {
-            title,
-            selftext,
-            author,
-            score,
-            permalink,
-            comments,
-        } => {
-            let frontmatter = format!(
-                "title: {}\nauthor: {}\nscore: {}\nsource_type: reddit\npermalink: {}",
-                title, author, score, permalink
-            );
-            let mut out = format!("---\n{frontmatter}\n---\n\n");
-            out.push_str(&selftext);
-            out.push('\n');
-            for comment in &comments {
-                format_reddit_comment(&mut out, comment, 0);
-            }
-            out
-        }
-        ExtractionResult::Discourse {
-            title,
-            topic_id,
-            posts,
-        } => {
-            let frontmatter = format!(
-                "title: {}\ntopic_id: {}\nsource_type: discourse",
-                title, topic_id
-            );
-            let mut out = format!("---\n{frontmatter}\n---\n\n");
-            for post in &posts {
-                out.push_str(&format!(
-                    "**{}** (post #{}):\n\n{}\n\n",
-                    post.username, post.post_number, post.raw
-                ));
-            }
-            out
-        }
-    }
-}
-
-/// Format a reddit comment recursively into markdown.
-fn format_reddit_comment(out: &mut String, comment: &RedditComment, depth: u32) {
-    // TODO: fuzz/hardening — unbounded recursion on attacker-controlled Reddit
-    // comment trees. Add MAX_DEPTH guard (e.g. 50) to prevent stack exhaustion.
-    // See https://github.com/mratsim/delulu/pull/7
-    let prefix = "> ".repeat(depth as usize);
-    out.push_str(&format!(
-        "{}**{}** (score: {}): {}\n\n",
-        prefix, comment.author, comment.score, comment.body
-    ));
-    for reply in &comment.replies {
-        format_reddit_comment(out, reply, depth + 1);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -391,7 +326,3 @@ async fn main() -> Result<(), Error> {
 
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Anti-regression tests
-// ---------------------------------------------------------------------------

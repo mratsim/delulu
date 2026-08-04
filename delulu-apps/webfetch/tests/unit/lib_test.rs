@@ -152,7 +152,7 @@ async fn test_fetch_and_extract_generic_html() {
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.contains("Hello") || content_md.body.contains("Test Page"),
                 "body should contain lowered content: {}",
@@ -186,7 +186,7 @@ async fn test_fetch_and_extract_non_2xx_status_returns_body() {
     // Non-2xx responses are now returned as Ok with the body content
     assert!(result.is_ok(), "expected Ok, got {:?}", result);
     match result.unwrap() {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.contains("Not Found"),
                 "body should contain the response text, got: {}",
@@ -647,4 +647,490 @@ fn test_same_subnet_v4_diff() {
         443,
     );
     assert!(!crate::same_subnet_16(a, b));
+}
+
+// ── Body-injection: blocked hard-fail equivalence ─────────────
+// These tests inject a raw body past the fetch step via the #[cfg(test)]
+// seam `fetch_and_extract_inner_with_body`, proving the blocked hard-fail
+// equivalence without network or host-override.
+
+fn test_crawler_no_network() -> RateLimitedCrawler {
+    RateLimitedCrawler::builder().build().unwrap()
+}
+
+#[tokio::test]
+async fn test_injected_generic_html_bot_blocked_equiv() {
+    let crawler = test_crawler_no_network();
+    let url = "https://example.com/article";
+    let bot_body = "<html><body><div class=\"cf-turnstile\"></div></body></html>";
+    let (result, status) =
+        fetch_and_extract_inner_with_body(url, &crawler, &[], bot_body.to_string())
+            .await
+            .expect("inner should return Ok with a Blocked status");
+    assert!(
+        matches!(
+            status,
+            PageStatus::Blocked {
+                by: BlockedBy::CloudflareTurnstile
+            }
+        ),
+        "expected Blocked(CloudflareTurnstile), got {status:?}"
+    );
+    // fetch_and_extract (wrapper) maps Blocked -> Err.
+    assert!(
+        wrap_blocked_status(result, status).is_err(),
+        "wrapper must hard-fail on a Blocked status"
+    );
+}
+
+#[tokio::test]
+async fn test_injected_reddit_bot_blocked_both_err() {
+    let crawler = test_crawler_no_network();
+    let url = "https://www.reddit.com/r/test/comments/abc123/hello_world/";
+    let bot_body = "<html>Just a moment... <div class=\"cf-turnstile\"></div></html>";
+    let err = fetch_and_extract_inner_with_body(url, &crawler, &[], bot_body.to_string())
+        .await
+        .expect_err("Reddit keeps its hard-fail on bot-blocked bodies");
+    assert!(
+        matches!(&err, WebfetchError::Fetch(m) if m == BLOCKED_MSG),
+        "expected Fetch(BLOCKED_MSG), got {err:?}"
+    );
+    // Both fetch_and_extract and fetch_and_extract_with_status delegate to the
+    // inner, which errored, so both return Err.
+}
+
+#[tokio::test]
+async fn test_injected_reddit_fixture_metadata_fields() {
+    // Full-pipeline assertion of the Reddit metadata fields added under RID:
+    // `comment_count` and `source_url`, sourced from the REAL fixture
+    // (`tests/fixtures-webfetch/reddit/reddit-thread-simple.json.zst`) rather
+    // than a synthetic page. The fixture contains exactly 2 top-level comments
+    // (the nested reply lives inside the 2nd comment's `replies` and is NOT
+    // counted by `comment_count`), below the MAX_COMMENTS=500 cap, and its
+    // permalink is `/r/test/comments/abc123/hello_world/`.
+    let crawler = test_crawler_no_network();
+    let url = "https://www.reddit.com/r/test/comments/abc123/hello_world/";
+
+    let path: std::path::PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "tests",
+        "fixtures-webfetch",
+        "reddit",
+        "reddit-thread-simple.json.zst",
+    ]
+    .iter()
+    .collect();
+    let compressed = std::fs::read(&path).expect("failed to read reddit fixture");
+    let body = String::from_utf8(zstd::decode_all(compressed.as_slice()).expect("decompress"))
+        .expect("utf-8");
+
+    let (result, _status) = fetch_and_extract_inner_with_body(url, &crawler, &[], body)
+        .await
+        .expect("full-pipeline reddit extraction should succeed");
+
+    match result {
+        ExtractionResult::Reddit {
+            comment_count,
+            comments_truncated,
+            source_url,
+            ..
+        } => {
+            // 2 top-level comments in the fixture (known constant, not derived
+            // from the code under test).
+            assert_eq!(comment_count, 2, "fixture has 2 top-level comments");
+            // Below the MAX_COMMENTS=500 cap, so truncation must be false.
+            assert!(
+                !comments_truncated,
+                "fixture is below cap, must not truncate"
+            );
+            // source_url is the permalink-derived well-formed URL.
+            assert_eq!(
+                source_url,
+                "https://reddit.com/r/test/comments/abc123/hello_world/",
+            );
+        }
+        other => panic!("Expected ExtractionResult::Reddit, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_injected_reddit_source_url_normalization() {
+    // BUG-B-002: builds a well-formed `source_url` even when the Reddit body's
+    // `permalink` is empty or lacks the leading `/`. Before the fix, an empty
+    // permalink yielded the bare `https://reddit.com` (no path) and a
+    // non-`/`-prefixed permalink yielded `https://reddit.comnonslash`.
+    //
+    // Non-tautological: with an empty permalink the old code produced exactly
+    // `https://reddit.com`, failing the `starts_with("https://reddit.com/")`
+    // and `/`-separator assertions below.
+    let crawler = test_crawler_no_network();
+
+    // Case 1: permalink empty -> falls back to the original `url`.
+    let url = "https://reddit.com/r/t/comments/x/";
+    let post_listing = serde_json::json!({
+        "kind": "Listing",
+        "data": { "children": [{
+            "kind": "t3",
+            "data": {
+                "title": "T", "author": "a", "score": 1, "selftext": "",
+                "created_utc": 1.0, "permalink": ""
+            }
+        }] }
+    });
+    let comments_listing = serde_json::json!({ "kind": "Listing", "data": { "children": [] } });
+    let body = serde_json::to_string(&vec![post_listing, comments_listing]).unwrap();
+    let (result, _status) = fetch_and_extract_inner_with_body(url, &crawler, &[], body)
+        .await
+        .expect("extraction should succeed");
+    match result {
+        ExtractionResult::Reddit { source_url, .. } => {
+            assert_eq!(source_url, "https://reddit.com/r/t/comments/x/");
+            assert!(source_url.starts_with("https://reddit.com/"));
+            assert_ne!(source_url, "https://reddit.com");
+            assert!(source_url.contains("reddit.com/"));
+        }
+        other => panic!("Expected ExtractionResult::Reddit, got {other:?}"),
+    }
+
+    // Case 2: permalink missing the leading `/`.
+    let url2 = "https://www.reddit.com/r/t/comments/y/";
+    let post_listing2 = serde_json::json!({
+        "kind": "Listing",
+        "data": { "children": [{
+            "kind": "t3",
+            "data": {
+                "title": "T", "author": "a", "score": 1, "selftext": "",
+                "created_utc": 1.0, "permalink": "r/t/comments/y/"
+            }
+        }] }
+    });
+    let comments_listing2 = serde_json::json!({ "kind": "Listing", "data": { "children": [] } });
+    let body2 = serde_json::to_string(&vec![post_listing2, comments_listing2]).unwrap();
+    let (result2, _status) = fetch_and_extract_inner_with_body(url2, &crawler, &[], body2)
+        .await
+        .expect("extraction should succeed");
+    match result2 {
+        ExtractionResult::Reddit { source_url, .. } => {
+            assert_eq!(source_url, "https://reddit.com/r/t/comments/y/");
+            assert!(source_url.starts_with("https://reddit.com/"));
+            assert_ne!(source_url, "https://reddit.com");
+            assert!(source_url.contains("reddit.com/"));
+        }
+        other => panic!("Expected ExtractionResult::Reddit, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_injected_reddit_over_cap_truncates_and_flags() {
+    // Synthetic body with 510 top-level comments (above MAX_COMMENTS=500):
+    // exercises the truncation path end-to-end through the same `lib.rs` seam,
+    // proving `comments_truncated` is populated from the extractor's flag.
+    let mut comments = Vec::new();
+    for i in 0..510 {
+        comments.push(serde_json::json!({
+            "kind": "t1",
+            "data": {
+                "body": format!("comment {i}"),
+                "author": format!("user{i}"),
+                "score": i,
+                "depth": 0,
+                "replies": ""
+            }
+        }));
+    }
+    let post_listing = serde_json::json!({
+        "kind": "Listing",
+        "data": { "children": [{
+            "kind": "t3",
+            "data": {
+                "title": "T", "author": "a", "score": 1, "selftext": "",
+                "created_utc": 1.0, "permalink": "/r/t/comments/x/"
+            }
+        }] }
+    });
+    let comments_listing = serde_json::json!({
+        "kind": "Listing", "data": { "children": comments }
+    });
+    let body = serde_json::to_string(&vec![post_listing, comments_listing]).unwrap();
+
+    let crawler = test_crawler_no_network();
+    let url = "https://www.reddit.com/r/t/comments/x/";
+    let (result, _status) = fetch_and_extract_inner_with_body(url, &crawler, &[], body)
+        .await
+        .expect("extraction should succeed");
+    match result {
+        ExtractionResult::Reddit {
+            comment_count,
+            comments_truncated,
+            ..
+        } => {
+            assert_eq!(comment_count, 500, "capped at MAX_COMMENTS");
+            assert!(comments_truncated, ">500 comments must set the flag");
+        }
+        other => panic!("Expected ExtractionResult::Reddit, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_injected_content_bearing_bot_body_is_article() {
+    // Differential fixture 1: content-bearing (>=200) bot body -> Ok((_, Article))
+    // from both functions (content beats the bot marker).
+    let crawler = test_crawler_no_network();
+    let url = "https://example.com/article";
+    let content = "x".repeat(300);
+    let body =
+        format!("<html><body><div class=\"cf-turnstile\"></div><p>{content}</p></body></html>");
+    let (result, status) = fetch_and_extract_inner_with_body(url, &crawler, &[], body)
+        .await
+        .unwrap();
+    assert_eq!(status, PageStatus::Article, "content beats the bot marker");
+    assert!(
+        wrap_blocked_status(result, status).is_ok(),
+        "content-bearing blocked page must not hard-fail"
+    );
+}
+
+#[tokio::test]
+async fn test_injected_thin_consent_wall_err_and_blocked() {
+    // Differential fixture 2: thin consent-walled body -> Err from
+    // fetch_and_extract, Ok((_, Blocked{CookieConsent})) from
+    // fetch_and_extract_with_status (consent-walled thin pages hard-fail).
+    let crawler = test_crawler_no_network();
+    let url = "https://example.com/article";
+    let body = r#"<html><body><script src="https://consent.google.com/x"></script></body></html>"#;
+    let (result, status) = fetch_and_extract_inner_with_body(url, &crawler, &[], body.to_string())
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            status,
+            PageStatus::Blocked {
+                by: BlockedBy::CookieConsent
+            }
+        ),
+        "expected Blocked(CookieConsent), got {status:?}"
+    );
+    assert!(
+        wrap_blocked_status(result, status).is_err(),
+        "consent-walled thin page must hard-fail in fetch_and_extract"
+    );
+}
+
+// ── fetch_and_extract contract (ARCH-A-004) ───────────────────
+
+#[test]
+fn test_wrap_blocked_status_contract() {
+    // Pins the public `fetch_and_extract` contract: a `Blocked` status maps
+    // to `Err` with the message EXACTLY `BLOCKED_MSG` ("Blocked"); every other
+    // status (incl. `Article`) maps to `Ok`. Changing the error string or the
+    // Ok/Err mapping fails this test (non-tautological).
+    let article = ExtractionResult::GenericHtml {
+        content_md: MarkdownDocument {
+            frontmatter: String::new(),
+            body: String::new(),
+        },
+        raw_html_len: 0,
+        filtered_html_len: 0,
+    };
+
+    // (a) Blocked -> Err with the exact BLOCKED_MSG string.
+    let blocked = wrap_blocked_status(
+        article.clone(),
+        PageStatus::Blocked {
+            by: BlockedBy::CloudflareTurnstile,
+        },
+    );
+    match blocked {
+        Err(WebfetchError::Fetch(msg)) => {
+            // (c) the error string equals BLOCKED_MSG ("Blocked") exactly.
+            assert_eq!(msg, BLOCKED_MSG);
+            assert_eq!(msg, "Blocked");
+        }
+        other => panic!("expected Err(Fetch(BLOCKED_MSG)), got {other:?}"),
+    }
+
+    // (b) Article -> Ok.
+    let ok = wrap_blocked_status(article.clone(), PageStatus::Article);
+    match ok {
+        Ok(ExtractionResult::GenericHtml { .. }) => {}
+        other => panic!("expected Ok for Article, got {other:?}"),
+    }
+
+    // A non-blocked non-article status (e.g. Partial) also maps to Ok.
+    let partial = wrap_blocked_status(article, PageStatus::Partial);
+    assert!(partial.is_ok(), "Partial must map to Ok");
+}
+
+// ── Pure status mapper ───────────────────────────────────────
+
+#[test]
+fn test_structured_success_status_is_article() {
+    // Reddit/Discourse/arXiv/Document all map to Article via this single helper.
+    assert_eq!(structured_success_status(), PageStatus::Article);
+}
+
+// ── Production-path: JSHeavy measurement (Phase 2) ────────────────
+// These tests drive the REAL `filter_trafilatura` pipeline through the
+// #[cfg(test)] seam `fetch_and_extract_inner_with_body`, pinning the URL to a
+// GenericHtml route and self-verifying the pre-pipeline measurement
+// preconditions before asserting the status.
+
+fn load_js_challenge_fixture() -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures-webfetch/js-challenge/google-enablejs.html.zst");
+    let compressed = std::fs::read(&path).unwrap_or_else(|e| panic!("read fixture {path:?}: {e}"));
+    let decompressed = zstd::decode_all(compressed.as_slice())
+        .unwrap_or_else(|e| panic!("decompress {path:?}: {e}"));
+    String::from_utf8(decompressed).expect("fixture is UTF-8")
+}
+
+/// The body must contain none of the anti-bot/consent/paywall markers so
+/// no higher-priority signal fires before `is_js_heavy`. This drives the REAL
+/// detectors in `src/core/page_status.rs` (rather than a hardcoded marker
+/// list) so it can never drift out of sync with what `classify_page` matches.
+fn assert_no_bot_consent_paywall_markers(body: &str) {
+    let lower = body.to_lowercase();
+    assert!(
+        crate::core::page_status::detect_anti_bot(&lower).is_none()
+            && !crate::core::page_status::detect_cookie_consent(&lower)
+            && !crate::core::page_status::detect_paywall(&lower),
+        "body must be free of anti-bot/consent/paywall markers so JSHeavy fires first"
+    );
+}
+
+#[tokio::test]
+async fn test_prod_path_js_challenge() {
+    // Pin the URL to a GenericHtml route so the modified call site is exercised.
+    let url = "https://example.com/js-challenge";
+    assert_eq!(detect_source_type(url), SourceType::GenericHtml);
+
+    let body = load_js_challenge_fixture();
+    // Marker-free (no anti-bot/consent/paywall).
+    assert_no_bot_consent_paywall_markers(&body);
+    // Script-dominance preconditions (visible < 200, script > visible), recomputed PRE-pipeline.
+    let dom = parse_html(&body).expect("fixture parses");
+    let visible_len = dom.visible_text_len();
+    let script_len = dom.script_len();
+    assert!(
+        visible_len < 200,
+        "pre-pipeline visible_text_len must be < 200, got {visible_len}"
+    );
+    assert!(
+        script_len > visible_len,
+        "script_len must exceed visible_len ({script_len} vs {visible_len})"
+    );
+
+    let crawler = test_crawler_no_network();
+    let (_, status) = fetch_and_extract_inner_with_body(
+        url,
+        &crawler,
+        &[crate::pipelines::trafilatura::filter_trafilatura],
+        body,
+    )
+    .await
+    .expect("inner should return Ok with a JSHeavy status");
+
+    assert_eq!(
+        status,
+        PageStatus::JSHeavy,
+        "JS-challenge must be JSHeavy, not Article/Empty, got {status:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_prod_path_script_only_jsheavy() {
+    // A pure script-only page with no enable-js marker and no SPA marker
+    // -> JSHeavy by measurement alone (no marker required).
+    let url = "https://example.com/script-only";
+    assert_eq!(detect_source_type(url), SourceType::GenericHtml);
+
+    let script = "var heavy = ".to_string() + &"x".repeat(2000) + ";";
+    let body = format!(
+        "<html><head><title>Script</title></head><body><script>{script}</script></body></html>"
+    );
+    let dom = parse_html(&body).expect("parses");
+    let visible_len = dom.visible_text_len();
+    let script_len = dom.script_len();
+    assert!(visible_len < 200, "visible: {visible_len}");
+    assert!(script_len > visible_len, "script-dominant");
+    assert_no_bot_consent_paywall_markers(&body);
+
+    let crawler = test_crawler_no_network();
+    let (_, status) = fetch_and_extract_inner_with_body(
+        url,
+        &crawler,
+        &[crate::pipelines::trafilatura::filter_trafilatura],
+        body,
+    )
+    .await
+    .expect("Ok");
+    assert_eq!(
+        status,
+        PageStatus::JSHeavy,
+        "script-only marker-free -> JSHeavy by measurement, got {status:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_prod_path_style_only_empty() {
+    // Miss path: a style-only thin page (CSS, no script, no marker)
+    // -> Empty, NOT JSHeavy.
+    let url = "https://example.com/style-only";
+    assert_eq!(detect_source_type(url), SourceType::GenericHtml);
+    let body = r#"<html><head><style>body{color:red;margin:0;}</style></head><body></body></html>"#
+        .to_string();
+
+    let crawler = test_crawler_no_network();
+    let (_, status) = fetch_and_extract_inner_with_body(
+        url,
+        &crawler,
+        &[crate::pipelines::trafilatura::filter_trafilatura],
+        body,
+    )
+    .await
+    .expect("Ok");
+    assert_eq!(
+        status,
+        PageStatus::Empty,
+        "style-only thin page -> Empty, not JSHeavy, got {status:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_prod_path_readable_article_no_regression() {
+    // A readable article (visible text >= 200) with script/style
+    // + consent/paywall/SPA + enable-js markers -> Article (Article-first).
+    let url = "https://example.com/article";
+    assert_eq!(detect_source_type(url), SourceType::GenericHtml);
+
+    let content = "x".repeat(500);
+    let body = format!(
+        "<html><head><title>Article</title>\
+         <script src=\"https://consent.google.com/x\"></script>\
+         <style>body{{}}</style></head>\
+         <body><div id=\"root\"></div>\
+         <div data-x=\"httpservice/retry/enablejs\"></div>\
+         <article>{content}</article></body></html>"
+    );
+    let dom = parse_html(&body).expect("parses");
+    let visible_len = dom.visible_text_len();
+    assert!(
+        visible_len >= 200,
+        "precondition: pre-pipeline visible_len must be >= 200, got {visible_len}"
+    );
+
+    let crawler = test_crawler_no_network();
+    let (_, status) = fetch_and_extract_inner_with_body(
+        url,
+        &crawler,
+        &[crate::pipelines::trafilatura::filter_trafilatura],
+        body,
+    )
+    .await
+    .expect("Ok");
+    assert_eq!(
+        status,
+        PageStatus::Article,
+        "readable article must be Article (Article-first), got {status:?}"
+    );
 }

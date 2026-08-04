@@ -47,6 +47,24 @@ fn discourse_json_fixture_body() -> String {
     load_fixture("forum-discourse/ethresear.ch/reed-solomon.json.zst")
 }
 
+/// Discourse JSON body where the server reports MORE posts than are actually
+/// delivered (`posts_count` = 12, but only 3 posts are in the response).
+///
+/// The real fixture has `posts_count == 12` and delivers all 12 posts, so it
+/// cannot distinguish `post_count` (server total) from `posts_returned`
+/// (returned count) — a swapped-field bug in `lib.rs` would go undetected.
+/// Trimming the delivered posts (and keeping `posts_count`) makes the two
+/// values differ, so the assertions below fail if the fields are swapped.
+fn discourse_trimmed_json_fixture_body() -> String {
+    let mut value: serde_json::Value =
+        serde_json::from_str(&discourse_json_fixture_body()).expect("fixture is valid JSON");
+    let posts = value["post_stream"]["posts"]
+        .as_array_mut()
+        .expect("fixture has a posts array");
+    posts.truncate(3);
+    serde_json::to_string(&value).expect("serialize trimmed JSON")
+}
+
 fn generic_html_fixture_body() -> String {
     load_fixture("blog/dankrad.de/pcs-multiproofs.html.zst")
 }
@@ -86,7 +104,7 @@ async fn spawn_test_server(
 }
 
 /// Create a RateLimitedCrawler pointed at a local test server.
-fn test_crawler_for(_addr: std::net::SocketAddr) -> RateLimitedCrawler {
+fn test_crawler_for() -> RateLimitedCrawler {
     let raw_client = wreq::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -119,6 +137,11 @@ async fn test_fetch_and_extract_reddit_from_fixture() {
     assert_eq!(data.selftext, "This is the post body content");
     assert_eq!(data.permalink, "/r/test/comments/abc123/hello_world/");
     assert!(!data.comments.is_empty(), "should have comments");
+    // The fixture contains exactly 2 top-level comments (the nested reply
+    // lives inside the 2nd comment's `replies` and is NOT counted). This is a
+    // known fixture constant, pinning the value `comment_count` is derived from
+    // (`data.comments.len()` in lib.rs) — well below the MAX_COMMENTS=500 cap.
+    assert_eq!(data.comments.len(), 2, "fixture has 2 top-level comments");
     assert!(
         data.comments[0].body.contains("First comment body"),
         "first comment body mismatch: {}",
@@ -151,7 +174,10 @@ async fn test_fetch_and_extract_reddit_replies_are_threaded() {
 #[tokio::test]
 async fn test_fetch_and_extract_discourse_from_fixture() {
     let html_body = discourse_html_fixture_body();
-    let json_body = discourse_json_fixture_body();
+    // Use a trimmed JSON body: server reports posts_count=12 but only 3 posts
+    // are delivered, so post_count (server total) and posts_returned (returned)
+    // differ and a swapped-field bug in lib.rs would be caught.
+    let json_body = discourse_trimmed_json_fixture_body();
 
     // Discourse tests need two fetches: first HTML, then JSON.
     // We use a multi-response server approach: first request gets HTML, second gets JSON.
@@ -183,7 +209,7 @@ async fn test_fetch_and_extract_discourse_from_fixture() {
         }
     });
 
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
 
     // Use a URL that triggers Discourse detection
     let original_url = format!("http://{}/t/reed-solomon-erasure-code-recovery/3039", addr);
@@ -201,13 +227,27 @@ async fn test_fetch_and_extract_discourse_from_fixture() {
             title,
             topic_id,
             posts,
+            post_count,
+            posts_returned,
+            ..
         } => {
+            // Fixture has posts_count=12 on the server, but this test trims the
+            // delivered posts down to 3 (known constants, not derived from the
+            // code under test): post_count is the server total, posts_returned is
+            // what was fetched. The two must differ so a swapped-field bug in
+            // lib.rs cannot slip through.
+            assert_eq!(post_count, 12, "fixture posts_count is 12");
+            assert_eq!(posts_returned, 3, "only 3 posts delivered in trimmed body");
+            assert_ne!(
+                post_count, posts_returned as u64,
+                "post_count (server total) must differ from posts_returned (returned)"
+            );
             assert_eq!(
                 title,
                 "Reed-Solomon erasure code recovery in n*log^2(n) time with FFTs"
             );
             assert_eq!(topic_id, 3039);
-            assert_eq!(posts.len(), 12, "expected 12 posts in fixture");
+            assert_eq!(posts.len(), 3, "expected 3 posts in trimmed fixture");
             assert_eq!(posts[0].username, "vbuterin");
             assert_eq!(posts[1].username, "sourabhniyogi");
         }
@@ -245,7 +285,7 @@ async fn test_fetch_and_extract_discourse_posts_have_raw_markdown() {
         }
     });
 
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let original_url = format!("http://{}/t/reed-solomon-erasure-code-recovery/3039", addr);
 
     let result = fetch_and_extract(
@@ -281,7 +321,7 @@ async fn test_fetch_and_extract_discourse_posts_have_raw_markdown() {
 async fn test_fetch_and_extract_generic_html_from_fixture() {
     let body = generic_html_fixture_body();
     let addr = spawn_test_server(200, "text/html".to_string(), body.clone()).await;
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let url = format!("http://{}/article", addr);
 
     let result = fetch_and_extract(
@@ -293,7 +333,7 @@ async fn test_fetch_and_extract_generic_html_from_fixture() {
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.contains("PCS multiproofs"),
                 "body should contain the article's h1 heading, got: {}",
@@ -337,7 +377,7 @@ async fn test_fetch_and_extract_generic_html_from_fixture() {
 async fn test_fetch_and_extract_empty_body_returns_generic_html() {
     let body = "<html><head></head><body></body></html>";
     let addr = spawn_test_server(200, "text/html".to_string(), body.to_string()).await;
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let url = format!("http://{}/empty", addr);
 
     let result = fetch_and_extract(
@@ -349,7 +389,7 @@ async fn test_fetch_and_extract_empty_body_returns_generic_html() {
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.body.trim().is_empty(),
                 "empty HTML body should produce empty markdown, got: {:?}",
@@ -371,7 +411,7 @@ async fn test_fetch_and_extract_generic_html_title_from_h1() {
     // correctly with a real fixture through the full pipeline.
     let body = generic_html_fixture_body();
     let addr = spawn_test_server(200, "text/html".to_string(), body.clone()).await;
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let url = format!("http://{}/article", addr);
 
     let result = fetch_and_extract(
@@ -383,7 +423,7 @@ async fn test_fetch_and_extract_generic_html_title_from_h1() {
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             // After readability converts h1→h2, the title comes from the
             // <title> tag fallback (not from an h1). Verify the pipeline
             // produced a valid GenericHtml result.
@@ -401,7 +441,7 @@ async fn test_fetch_and_extract_generic_html_title_from_h1() {
 #[tokio::test]
 async fn test_fetch_and_extract_non_2xx_status_returns_error() {
     let addr = spawn_test_server(404, "text/plain".to_string(), "Not Found".to_string()).await;
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let url = format!("http://{}/notfound", addr);
 
     let err = fetch_and_extract(
@@ -425,8 +465,8 @@ async fn test_fetch_and_extract_non_2xx_status_returns_error() {
 #[tokio::test]
 async fn test_fetch_and_extract_https_only_scheme_rejected() {
     // URL validation moved to crawler; crawler errors map to WebfetchError::Fetch
-    let addr = spawn_test_server(200, "text/plain".to_string(), "ok".to_string()).await;
-    let crawler = test_crawler_for(addr);
+    // No server is needed: the request is rejected at URL-validation time.
+    let crawler = test_crawler_for();
 
     let err = fetch_and_extract(
         "ftp://example.com/file",
@@ -464,7 +504,7 @@ async fn test_fetch_and_extract_non_discourse_t_url_is_generic_html() {
     // URL matches old DISCOURSE_URL_RE pattern (/t/<slug>/<digits>) but has NO Discourse markers.
     let body = "<html><body><p>Regular page on a /t/ URL</p></body></html>";
     let addr = spawn_test_server(200, "text/html".to_string(), body.to_string()).await;
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let url = format!("http://{}/t/foo/123", addr);
 
     let result = fetch_and_extract(
@@ -476,7 +516,7 @@ async fn test_fetch_and_extract_non_discourse_t_url_is_generic_html() {
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.frontmatter.contains("source_type: generic_html"),
                 "should be GenericHtml, got frontmatter: {}",
@@ -532,7 +572,7 @@ async fn test_fetch_and_extract_discourse_detected_from_html_content() {
         }
     });
 
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let original_url = format!("http://{}/page", addr);
 
     let result = fetch_and_extract(
@@ -548,6 +588,7 @@ async fn test_fetch_and_extract_discourse_detected_from_html_content() {
             title,
             topic_id,
             posts,
+            ..
         } => {
             assert_eq!(title, "Detected Discourse Topic");
             assert_eq!(topic_id, 54321);
@@ -588,7 +629,7 @@ async fn test_fetch_and_extract_discourse_with_simple_fixture() {
         }
     });
 
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let original_url = format!("http://{}/t/reed-solomon-erasure-code-recovery/3039", addr);
 
     let result = fetch_and_extract(
@@ -604,6 +645,7 @@ async fn test_fetch_and_extract_discourse_with_simple_fixture() {
             title,
             topic_id,
             posts,
+            ..
         } => {
             assert_eq!(
                 title,
@@ -648,7 +690,7 @@ async fn test_fetch_and_extract_stale_discourse_markers_falls_back_to_generic_ht
         }
     });
 
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let original_url = format!("http://{}/t/stale-topic/999", addr);
 
     let result = fetch_and_extract(
@@ -660,7 +702,7 @@ async fn test_fetch_and_extract_stale_discourse_markers_falls_back_to_generic_ht
     .unwrap();
 
     match result {
-        ExtractionResult::GenericHtml { content_md } => {
+        ExtractionResult::GenericHtml { content_md, .. } => {
             assert!(
                 content_md.frontmatter.contains("source_type: generic_html"),
                 "should fall back to GenericHtml, got frontmatter: {}",

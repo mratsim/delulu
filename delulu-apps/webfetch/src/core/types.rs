@@ -134,15 +134,46 @@ pub enum ExtractionResult {
         author: String,
         score: i64,
         permalink: String,
+        source_url: String,
         comments: Vec<RedditComment>,
+        /// Number of comments RETURNED in `comments` — capped at
+        /// `RedditExtractor::MAX_COMMENTS` (500). This is NOT the thread's
+        /// total comment count on the server; when comments were truncated,
+        /// `comments_truncated` is `true`.
+        ///
+        /// Surfaced (not redundant) in the Reddit frontmatter output
+        /// in `src/core/markdown.rs`.
+        comment_count: usize,
+        /// Whether the returned comments were truncated (capped at
+        /// `RedditExtractor::MAX_COMMENTS`, or a `more`/deep-depth marker
+        /// was encountered). When `true`, `comment_count` is the capped
+        /// returned count, not the server total.
+        comments_truncated: bool,
     },
     Discourse {
         title: String,
         topic_id: u64,
+        /// The canonical thread URL this topic was fetched from (the original
+        /// `url` the caller passed in). Surfaced in the Discourse frontmatter
+        /// as `source_url` so the output never hardcodes a misleading `N/A`.
+        source_url: String,
         posts: Vec<DiscoursePost>,
+        post_count: u64,
+        /// Number of posts RETURNED in `posts` (the Discourse JSON API can
+        /// return fewer than the topic's `post_count`).
+        ///
+        /// Surfaced (not redundant) in the Discourse frontmatter output
+        /// in `src/core/markdown.rs`.
+        posts_returned: usize,
     },
     GenericHtml {
         content_md: MarkdownDocument,
+        /// Length in bytes of the raw HTML body (set at every construction site;
+        /// surfaced in the `webfetch_raw` JSON report via serde derive).
+        raw_html_len: usize,
+        /// Length in bytes of the extracted markdown body (post-pipeline;
+        /// surfaced in the `webfetch_raw` JSON report via serde derive).
+        filtered_html_len: usize,
     },
 }
 

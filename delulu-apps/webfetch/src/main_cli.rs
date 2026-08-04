@@ -15,10 +15,10 @@
 use anyhow::{Context, Error, Result};
 use clap::{Parser, Subcommand};
 use delulu_rate_limited_crawler::RateLimitedCrawler;
-use delulu_webfetch::{
-    ExtractionResult, MAX_BODY_SIZE, MarkdownDocument, RedditComment, fetch_and_extract,
-    fetch_raw_html,
-};
+use delulu_webfetch::{MAX_BODY_SIZE, MarkdownDocument, fetch_and_extract, fetch_raw_html};
+
+// Shared Markdown output formatting (one definition, included here via #[path]).
+use delulu_webfetch::core::markdown::md_doc_to_string;
 use std::io::Read;
 use std::time::Duration;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -92,82 +92,6 @@ struct DocArgs {
     timeout: u64,
 }
 
-// ---------------------------------------------------------------------------
-// Output formatting
-// ---------------------------------------------------------------------------
-
-/// Convert an `ExtractionResult` into a Markdown string with YAML frontmatter.
-fn md_doc_to_string(result: ExtractionResult) -> String {
-    match result {
-        ExtractionResult::GenericHtml { content_md } => {
-            let mut out = String::new();
-            if !content_md.frontmatter.is_empty() {
-                out.push_str("---\n");
-                out.push_str(&content_md.frontmatter);
-                if !content_md.frontmatter.ends_with('\n') {
-                    out.push('\n');
-                }
-                out.push_str("---\n\n");
-            }
-            out.push_str(&content_md.body);
-            out
-        }
-        ExtractionResult::Reddit {
-            title,
-            selftext,
-            author,
-            score,
-            permalink,
-            comments,
-        } => {
-            let frontmatter = format!(
-                "title: {}\nauthor: {}\nscore: {}\nsource_type: reddit\npermalink: {}",
-                title, author, score, permalink
-            );
-            let mut out = format!("---\n{frontmatter}\n---\n\n");
-            out.push_str(&selftext);
-            out.push('\n');
-            for comment in &comments {
-                format_reddit_comment(&mut out, comment, 0);
-            }
-            out
-        }
-        ExtractionResult::Discourse {
-            title,
-            topic_id,
-            posts,
-        } => {
-            let frontmatter = format!(
-                "title: {}\ntopic_id: {}\nsource_type: discourse",
-                title, topic_id
-            );
-            let mut out = format!("---\n{frontmatter}\n---\n\n");
-            for (i, post) in posts.iter().enumerate() {
-                if i > 0 {
-                    out.push_str("---\n\n");
-                }
-                out.push_str(&format!(
-                    "**{}** (post #{}):\n\n{}\n\n",
-                    post.username, post.post_number, post.raw
-                ));
-            }
-            out
-        }
-    }
-}
-
-/// Format a reddit comment recursively into markdown.
-fn format_reddit_comment(out: &mut String, comment: &RedditComment, depth: u32) {
-    let prefix = "> ".repeat(depth as usize);
-    out.push_str(&format!(
-        "{}**{}** (score: {}): {}\n\n",
-        prefix, comment.author, comment.score, comment.body
-    ));
-    for reply in &comment.replies {
-        format_reddit_comment(out, reply, depth + 1);
-    }
-}
-
 /// Select pipeline based on CLI argument.
 fn select_pipeline(name: &str) -> &'static [delulu_webfetch::pipelines::PassFn] {
     match name {
@@ -226,44 +150,31 @@ async fn run_fetch(args: Args) -> Result<(), Error> {
             pass(&mut dom);
         }
 
+        let body = delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(&dom, None);
+        let filtered_html_len = body.len();
+        let result = delulu_webfetch::ExtractionResult::GenericHtml {
+            content_md: MarkdownDocument {
+                frontmatter: String::new(),
+                body,
+            },
+            raw_html_len: html.len(),
+            filtered_html_len,
+        };
+
         match args.output_format.as_deref() {
             Some("html") => {
                 let out_html = delulu_webfetch::generators::gen_html::dom_nodes_to_html(&dom);
                 println!("{out_html}");
             }
             None if args.raw => {
-                let result = delulu_webfetch::ExtractionResult::GenericHtml {
-                    content_md: MarkdownDocument {
-                        frontmatter: String::new(),
-                        body: delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(
-                            &dom, None,
-                        ),
-                    },
-                };
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
             Some("markdown") | None => {
-                let result = delulu_webfetch::ExtractionResult::GenericHtml {
-                    content_md: MarkdownDocument {
-                        frontmatter: String::new(),
-                        body: delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(
-                            &dom, None,
-                        ),
-                    },
-                };
                 let md = md_doc_to_string(result);
                 println!("{md}");
             }
             _ => {
                 tracing::warn!("unknown output format, falling back to markdown");
-                let result = delulu_webfetch::ExtractionResult::GenericHtml {
-                    content_md: MarkdownDocument {
-                        frontmatter: String::new(),
-                        body: delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(
-                            &dom, None,
-                        ),
-                    },
-                };
                 let md = md_doc_to_string(result);
                 println!("{md}");
             }
@@ -347,7 +258,7 @@ async fn run_doc(args: DocArgs) -> Result<(), Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::Args;
+    use super::*;
     use clap::Parser;
 
     #[test]

@@ -30,7 +30,7 @@ static DOCUMENT_EXTENSION_RE: Lazy<Regex> =
 /// Bot-detection patterns (checked against response body).
 pub(crate) static BOT_DETECTION_PATTERNS: Lazy<Vec<&'static str>> = Lazy::new(|| {
     vec![
-        "Just a moment...",
+        "just a moment...",
         "cf-browser-verification",
         "challenge-platform",
         "turnstile",
@@ -176,8 +176,12 @@ pub fn arxiv_url_to_html_url(arxiv_url: &str) -> Result<String, WebfetchError> {
 
 /// Check whether a response body matches known bot-detection patterns.
 pub(crate) fn is_bot_detected(body: &str) -> bool {
+    // Case-insensitive: patterns are lowercase, so lower-case the input before
+    // matching. This is correct for both raw bodies (lib.rs) and pre-lowered
+    // inputs (detect_anti_bot's catch-all).
+    let lower = body.to_lowercase();
     for pattern in BOT_DETECTION_PATTERNS.iter() {
-        if body.contains(pattern) {
+        if lower.contains(pattern) {
             return true;
         }
     }

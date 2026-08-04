@@ -1,4 +1,6 @@
 pub mod core;
+pub use crate::core::page_status::{BlockedBy, PageStatus, classify_page};
+pub use crate::core::response::webfetch_raw_response;
 pub use crate::core::types;
 pub use crate::core::types::{ExtractionResult, MarkdownDocument, RedditComment};
 
@@ -10,15 +12,26 @@ pub use crate::core::detect::detect_source_type;
 pub use crate::core::types::WebfetchError;
 
 use crate::core::types::SourceType;
+use crate::core::yaml_escape;
 use crate::pipelines::DomNode;
 use crate::pipelines::PassFn;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use futures_util::StreamExt;
+
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use xberg::{ExtractInput, ExtractionConfig, OutputFormat, extract as xberg_extract};
 
 /// Maximum response body size (50 MB).
 pub const MAX_BODY_SIZE: usize = 50 * 1024 * 1024;
+
+/// Neutral hard-fail sentinel reported when a page is classified `Blocked`.
+///
+/// Cause-neutral on purpose: a consent wall must never report a
+/// bot-specific message; the structured `page_status` carries the specific
+/// `BlockedBy` cause. Shared by the wrapper, the Reddit branch, and
+/// `fetch_url_text` so they cannot diverge.
+pub const BLOCKED_MSG: &str = "Blocked";
 
 // ---------------------------------------------------------------------------
 // fetch_and_extract
@@ -37,15 +50,90 @@ pub const MAX_BODY_SIZE: usize = 50 * 1024 * 1024;
 /// - ArxivPdf: URL-based detection → rewrite to HTML URL → fetch HTML → filter_arxiv → lower to markdown
 /// - Document: URL-based detection → call fetch_doc() directly (no HTTP fetch needed)
 /// - GenericHtml: URL returns GenericHtml → MIME type check → content detection → pipeline → lower
+///
+/// # Contract (pinned by tests)
+///
+/// `fetch_and_extract` maps the page's [`PageStatus`] to its return value
+/// exactly as follows:
+/// - `Blocked` (thin consent-walled / anti-bot pages, plus Reddit/arXiv/
+///   Discourse bot hard-fails) → `Err(WebfetchError::Fetch(BLOCKED_MSG))`,
+///   where the error string is EXACTLY [`BLOCKED_MSG`] (the value `"Blocked"`).
+/// - `Article` (content-bearing bot pages) → `Ok(Article result)`.
+/// - All other statuses → `Ok(result)`.
+///
+/// This contract is pinned by `test_wrap_blocked_status_contract` so it
+/// cannot silently drift. Content-bearing pages always return `Ok`; only
+/// content-less `Blocked` pages hard-fail.
 pub async fn fetch_and_extract(
     url: &str,
     crawler: &RateLimitedCrawler,
     pipeline: &[PassFn],
 ) -> Result<ExtractionResult, WebfetchError> {
-    // Step 1: URL-based detection (primary dispatch)
-    let url_source_type = detect_source_type(url);
+    let (result, status) = fetch_and_extract_inner(url, crawler, pipeline).await?;
+    wrap_blocked_status(result, status)
+}
 
-    // Validate URL before any processing
+/// Map a `(result, status)` pair to the `fetch_and_extract` return value.
+///
+/// # Contract (pinned by tests)
+///
+/// Returns `Err(WebfetchError::Fetch(BLOCKED_MSG))` — error string exactly
+/// [`BLOCKED_MSG`] ("Blocked") — iff the status is `Blocked`; otherwise
+/// returns `Ok(result)`. Content-bearing bot pages (status `Article`) and all
+/// other statuses return `Ok`. Extracted so the body-injection equivalence
+/// test can exercise the exact same decision without network.
+pub(crate) fn wrap_blocked_status(
+    result: ExtractionResult,
+    status: PageStatus,
+) -> Result<ExtractionResult, WebfetchError> {
+    if matches!(status, PageStatus::Blocked { .. }) {
+        tracing::warn!("webfetch blocked (cause: {status:?}); collapsing to {BLOCKED_MSG:?}");
+        return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
+    }
+    Ok(result)
+}
+
+/// Fetch a URL and extract content, additionally returning the page status.
+///
+/// This is the additive variant of [`fetch_and_extract`]: it returns the
+/// `ExtractionResult` together with its [`PageStatus`] and never collapses a
+/// `Blocked` status into an error. Structured sources (Reddit, Discourse,
+/// arXiv, Document) still hard-fail on bot detection inside the fetch path.
+///
+/// # Contract
+///
+/// `fetch_and_extract_with_status` returns `Ok((result, status))` for **every**
+/// status — including `Blocked` — and never applies the `Blocked` → `Err`
+/// hard-fail mapping. That mapping is exclusively [`fetch_and_extract`]'s job
+/// (via [`wrap_blocked_status`]). The caller decides how to handle a `Blocked`
+/// status; this function deliberately surfaces it as data rather than an error.
+///
+/// This asymmetry is intentional: the same body that makes [`fetch_and_extract`]
+/// return `Err(BLOCKED_MSG)` (via [`wrap_blocked_status`]) is returned here as
+/// `Ok((result, Blocked))`.
+pub async fn fetch_and_extract_with_status(
+    url: &str,
+    crawler: &RateLimitedCrawler,
+    pipeline: &[PassFn],
+) -> Result<(ExtractionResult, PageStatus), WebfetchError> {
+    fetch_and_extract_inner(url, crawler, pipeline).await
+}
+
+/// Pure status mapper for structured/extraction successes.
+///
+/// Reddit, Discourse, arXiv, and Document all map to `Article` on successful
+/// extraction. The wrapper hardcodes `Article` for these via this single helper
+/// so the mapping cannot drift.
+///
+/// This is DELIBERATE, not an oversight: for a structured source, reaching this
+/// point means content was actually extracted, so `Article` is the correct
+/// status — there is no separate `Blocked`/`Empty` signal to consider here.
+pub(crate) fn structured_success_status() -> PageStatus {
+    PageStatus::Article
+}
+
+/// Validate a webfetch URL (length + http(s) scheme) before any processing.
+fn validate_webfetch_url(url: &str) -> Result<(), WebfetchError> {
     let trimmed_input = url.trim();
     if trimmed_input.len() > 2048 {
         return Err(WebfetchError::Fetch(
@@ -58,6 +146,19 @@ pub async fn fetch_and_extract(
             trimmed_input.split(':').next().unwrap_or("")
         )));
     }
+    Ok(())
+}
+
+async fn fetch_and_extract_inner(
+    url: &str,
+    crawler: &RateLimitedCrawler,
+    pipeline: &[PassFn],
+) -> Result<(ExtractionResult, PageStatus), WebfetchError> {
+    // Step 1: URL-based detection (primary dispatch)
+    let url_source_type = detect_source_type(url);
+
+    // Validate URL before any processing
+    validate_webfetch_url(url)?;
 
     // Step 2: Check source type BEFORE HTTP fetch
     match url_source_type {
@@ -69,19 +170,28 @@ pub async fn fetch_and_extract(
             let title = extract_title(&dom);
             pipelines::dl_arxiv::filter_arxiv(&mut dom);
             let content_md = generators::gen_md::MarkdownLowerer::lower(&dom, None);
-            return Ok(ExtractionResult::GenericHtml {
-                content_md: MarkdownDocument {
-                    frontmatter: format!(
-                        "title: {}\nsource_type: generic_html\nsource_url: {}",
-                        title, url
-                    ),
-                    body: content_md,
+            let raw_html_len = body.len();
+            let filtered_html_len = content_md.len();
+            return Ok((
+                ExtractionResult::GenericHtml {
+                    content_md: MarkdownDocument {
+                        frontmatter: format!(
+                            "title: {}\nsource_type: generic_html\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
+                            yaml_escape(&title),
+                            yaml_escape(url)
+                        ),
+                        body: content_md,
+                    },
+                    raw_html_len,
+                    filtered_html_len,
                 },
-            });
+                structured_success_status(),
+            ));
         }
         SourceType::Document => {
             // Direct document fetch via xberg — no HTTP fetch needed
-            return fetch_doc(url, crawler).await;
+            let r = fetch_doc(url, crawler).await?;
+            return Ok((r, structured_success_status()));
         }
         _ => {
             // Reddit and GenericHtml: proceed to HTTP fetch below
@@ -146,14 +256,25 @@ pub async fn fetch_and_extract(
             }
             body.extend_from_slice(&chunk);
         }
+        let raw_bytes_len = body.len();
         let html = doc_to_html(body, url).await?;
         let markdown = doc_html_to_markdown(&html, None)?;
-        return Ok(ExtractionResult::GenericHtml {
-            content_md: MarkdownDocument {
-                frontmatter: format!("title: {}\nsource_type: document\nsource_url: {}", "", url),
-                body: markdown,
+        let filtered_html_len = markdown.len();
+        return Ok((
+            ExtractionResult::GenericHtml {
+                content_md: MarkdownDocument {
+                    frontmatter: format!(
+                        "title: {}\nsource_type: document\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
+                        yaml_escape(""),
+                        yaml_escape(url)
+                    ),
+                    body: markdown,
+                },
+                raw_html_len: raw_bytes_len,
+                filtered_html_len,
             },
-        });
+            structured_success_status(),
+        ));
     }
 
     // Step 4: Consume body as text (safe now — confirmed not a document MIME)
@@ -162,22 +283,58 @@ pub async fn fetch_and_extract(
         .await
         .map_err(|e| WebfetchError::Fetch(format!("Failed to read response: {e}")))?;
 
-    // Bot detection is webfetch-specific (content-level check)
-    if crate::core::detect::is_bot_detected(&body) {
-        return Err(WebfetchError::Fetch("Blocked by bot detection".to_string()));
-    }
+    process_text_body(url, url_source_type, body, pipeline, crawler).await
+}
 
+/// Process a raw text (HTML/JSON) response body past the fetch step.
+///
+/// Handles Reddit dispatch (with its bot hard-fail), Discourse dispatch (with
+/// the pre-JSON-fetch bot check on the HTML body), and the GenericHtml fallback
+/// (whose status comes from `classify_page` — `Blocked` is reported as a status,
+/// not a hard-fail).
+async fn process_text_body(
+    url: &str,
+    url_source_type: SourceType,
+    body: String,
+    pipeline: &[PassFn],
+    crawler: &RateLimitedCrawler,
+) -> Result<(ExtractionResult, PageStatus), WebfetchError> {
     // Step 5: If Reddit, dispatch immediately — no content detection needed
     if url_source_type == SourceType::Reddit {
+        // Reddit keeps its hard-fail on bot-blocked bodies.
+        if crate::core::detect::is_bot_detected(&body) {
+            tracing::warn!("reddit page bot-blocked; collapsing to {BLOCKED_MSG:?}");
+            return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
+        }
         let data = sources::reddit::RedditExtractor::extract(&body)?;
-        return Ok(ExtractionResult::Reddit {
-            title: data.title,
-            selftext: data.selftext,
-            author: data.author,
-            score: data.score,
-            permalink: data.permalink,
-            comments: data.comments,
-        });
+        // Build a well-formed source_url from the permalink. A missing or
+        // non-`/`-prefixed permalink would otherwise yield a malformed URL
+        // (`https://reddit.com` bare, or `https://reddit.comnonslash`).
+        // Normalize: an empty permalink falls back to the original full `url`
+        // the caller fetched (already well-formed); a non-`/`-prefixed
+        // permalink gets `/` prepended so the separator is never lost.
+        let source_url = if data.permalink.trim().is_empty() {
+            url.trim().to_string()
+        } else if data.permalink.starts_with('/') {
+            format!("https://reddit.com{}", data.permalink)
+        } else {
+            format!("https://reddit.com/{}", data.permalink)
+        };
+        let comment_count = data.comments.len();
+        return Ok((
+            ExtractionResult::Reddit {
+                title: data.title,
+                selftext: data.selftext,
+                author: data.author,
+                score: data.score,
+                permalink: data.permalink,
+                source_url,
+                comments: data.comments,
+                comment_count,
+                comments_truncated: data.comments_truncated,
+            },
+            structured_success_status(),
+        ));
     }
 
     // Step 6: Detect from content (checks for Discourse markers in HTML)
@@ -185,6 +342,12 @@ pub async fn fetch_and_extract(
 
     match detected {
         Some(SourceType::Discourse) => {
+            // Discourse-path bot check: a bot-marked HTML body must
+            // hard-fail even with a clean JSON API.
+            if crate::core::detect::is_bot_detected(&body) {
+                tracing::warn!("discourse page bot-blocked; collapsing to {BLOCKED_MSG:?}");
+                return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
+            }
             // Step 6a: Second fetch — get Discourse JSON API
             let api_url = crate::core::detect::discourse_url_to_api_url(url);
 
@@ -200,15 +363,40 @@ pub async fn fetch_and_extract(
 
             // Step 6b: Parse Discourse JSON
             let data = sources::discourse::DiscourseExtractor::extract(&api_body)?;
-            Ok(ExtractionResult::Discourse {
-                title: data.title,
-                topic_id: data.topic_id,
-                posts: data.posts,
-            })
+            let posts_returned = data.posts.len();
+            Ok((
+                ExtractionResult::Discourse {
+                    title: data.title,
+                    topic_id: data.topic_id,
+                    source_url: url.to_string(),
+                    posts: data.posts,
+                    post_count: data.post_count,
+                    posts_returned,
+                },
+                structured_success_status(),
+            ))
         }
         // No Discourse detected — treat as GenericHtml
         _ => fallback_to_generic_html(url, body, pipeline),
     }
+}
+
+/// Body-injection seam for tests: process a raw body past the fetch step.
+///
+/// `#[cfg(test)]`-gated internal helper that lets the blocked hard-fail
+/// equivalence be proven without network or host-override. The `crawler` is
+/// passed only so the Discourse second-fetch branch compiles; the injected-body
+/// tests target GenericHtml and Reddit bodies, which never need it.
+#[cfg(test)]
+async fn fetch_and_extract_inner_with_body(
+    url: &str,
+    crawler: &RateLimitedCrawler,
+    pipeline: &[PassFn],
+    body: String,
+) -> Result<(ExtractionResult, PageStatus), WebfetchError> {
+    let url_source_type = detect_source_type(url);
+    validate_webfetch_url(url)?;
+    process_text_body(url, url_source_type, body, pipeline, crawler).await
 }
 
 // ---------------------------------------------------------------------------
@@ -417,11 +605,18 @@ pub async fn fetch_doc(
 ) -> Result<ExtractionResult, WebfetchError> {
     let html = fetch_doc_as_html(url, crawler).await?;
     let markdown = doc_html_to_markdown(&html, None)?;
+    let filtered_html_len = markdown.len();
     Ok(ExtractionResult::GenericHtml {
         content_md: MarkdownDocument {
-            frontmatter: format!("title: {}\nsource_type: document\nsource_url: {}", "", url),
+            frontmatter: format!(
+                "title: {}\nsource_type: document\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
+                yaml_escape(""),
+                yaml_escape(url)
+            ),
             body: markdown,
         },
+        raw_html_len: html.len(),
+        filtered_html_len,
     })
 }
 
@@ -442,8 +637,6 @@ pub async fn fetch_doc(
 //
 // NOTE: Only use this for endpoints known to return text (arXiv HTML,
 // Discourse JSON). For arbitrary URLs, use fetch_and_extract which checks
-
-use std::net::{IpAddr, SocketAddr};
 // Content-Type before consuming the body.
 async fn fetch_url_text(
     url: &str,
@@ -456,7 +649,8 @@ async fn fetch_url_text(
 
     // Bot detection is webfetch-specific (content-level check)
     if crate::core::detect::is_bot_detected(&body) {
-        return Err(WebfetchError::Fetch("Blocked by bot detection".to_string()));
+        tracing::warn!("page bot-blocked in fetch_url_text; collapsing to {BLOCKED_MSG:?}");
+        return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
     }
 
     Ok((body, content_type))
@@ -514,27 +708,49 @@ pub async fn fetch_raw_html(
 // ---------------------------------------------------------------------------
 
 // Shared logic for GenericHtml extraction.
+//
+// Returns the `GenericHtml` result together with its `PageStatus` computed via
+// `classify_page(&body, visible_len, script_len)` from PRE-pipeline
+// measurements (while `<script>` is still present). A bot-blocked body →
+// `Blocked{by}`; a consent-walled body → `Blocked{by: CookieConsent}` — both
+// only when visible content is below the threshold. Note that classification
+// uses pre-pipeline `visible_len`/`script_len`, while `filtered_html_len`
+// below remains markdown bytes (post-pipeline) — intentionally different.
 fn fallback_to_generic_html(
     url: &str,
     body: String,
     pipeline: &[PassFn],
-) -> Result<ExtractionResult, WebfetchError> {
+) -> Result<(ExtractionResult, PageStatus), WebfetchError> {
+    let raw_html_len = body.len();
     let mut dom = pipelines::parse_html(&body)?;
+    // Classification measurements are taken PRE-pipeline, while `<script>` is
+    // still present. Post-pipeline passes strip `<script>`, so script content
+    // would be gone.
+    let visible_len = dom.visible_text_len();
+    let script_len = dom.script_len();
     for pass in pipeline {
         pass(&mut dom);
     }
     let content_md = generators::gen_md::MarkdownLowerer::lower(&dom, None);
     let title = extract_title(&dom);
+    let filtered_html_len = content_md.len();
+    let status = classify_page(&body, visible_len, script_len);
 
-    Ok(ExtractionResult::GenericHtml {
-        content_md: MarkdownDocument {
-            frontmatter: format!(
-                "title: {}\nsource_type: generic_html\nsource_url: {}",
-                title, url
-            ),
-            body: content_md,
+    Ok((
+        ExtractionResult::GenericHtml {
+            content_md: MarkdownDocument {
+                frontmatter: format!(
+                    "title: {}\nsource_type: generic_html\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
+                    yaml_escape(&title),
+                    yaml_escape(url)
+                ),
+                body: content_md,
+            },
+            raw_html_len,
+            filtered_html_len,
         },
-    })
+        status,
+    ))
 }
 
 // ---------------------------------------------------------------------------

@@ -502,6 +502,35 @@ fn test_visible_text_len_excludes_script() {
 }
 
 #[test]
+fn test_visible_text_len_case_insensitive_tags() {
+    // HTML tags are case-insensitive: <SCRIPT>, <Style>, <SVG> must be skipped too.
+    let node = DomNode::Element {
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("visible ".to_string()),
+            DomNode::Element {
+                tag: "SCRIPT".to_string(),
+                attrs: vec![],
+                children: vec![DomNode::Text("hidden".to_string())],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+            DomNode::Element {
+                tag: "Style".to_string(),
+                attrs: vec![],
+                children: vec![DomNode::Text("css".to_string())],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+        ],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
+    };
+    assert_eq!(node.visible_text_len(), 8); // "visible " = 8
+}
+
+#[test]
 fn test_visible_text_len_excludes_style() {
     let node = DomNode::Element {
         tag: "div".to_string(),
@@ -568,6 +597,119 @@ fn test_visible_text_len_deeply_nested() {
     assert_eq!(node.visible_text_len(), 2); // "A" + "B" = 2
 }
 
+// ── DomNode::script_len ─────────────────────────────────
+// Counts text inside <script> subtrees only; text outside contributes 0.
+
+#[test]
+fn test_script_len_counts_text_inside_script_only() {
+    // <script>abc</script> -> script_len==3, visible_text_len==0
+    let node = DomNode::Element {
+        tag: "script".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Text("abc".to_string())],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
+    };
+    assert_eq!(node.script_len(), 3);
+    assert_eq!(node.visible_text_len(), 0);
+}
+
+#[test]
+fn test_script_len_case_insensitive_tag() {
+    // HTML tags are case-insensitive: <SCRIPT> must still count as script.
+    let node = DomNode::Element {
+        tag: "SCRIPT".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Text("abc".to_string())],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
+    };
+    assert_eq!(node.script_len(), 3);
+    assert_eq!(node.visible_text_len(), 0);
+}
+
+#[test]
+fn test_script_len_does_not_count_text_outside_script() {
+    // <script>abc</script><p>hello</p> -> script_len==3, visible_text_len==5
+    let node = DomNode::Element {
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Element {
+                tag: "script".to_string(),
+                attrs: vec![],
+                children: vec![DomNode::Text("abc".to_string())],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+            DomNode::Element {
+                tag: "p".to_string(),
+                attrs: vec![],
+                children: vec![DomNode::Text("hello".to_string())],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+        ],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
+    };
+    assert_eq!(node.script_len(), 3);
+    assert_eq!(node.visible_text_len(), 5);
+}
+
+#[test]
+fn test_script_len_no_script_is_zero() {
+    let node = DomNode::Element {
+        tag: "p".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Text("hello".to_string())],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
+    };
+    assert_eq!(node.script_len(), 0);
+    assert_eq!(DomNode::Comment("x".to_string()).script_len(), 0);
+    assert_eq!(DomNode::Doctype("html".to_string()).script_len(), 0);
+}
+
+#[test]
+fn test_script_len_nested_script_sums_subtree() {
+    // A <script> containing nested text (and even a nested element with text)
+    // sums its whole subtree via text_len_inner.
+    let node = DomNode::Element {
+        tag: "script".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("ab".to_string()),
+            DomNode::Element {
+                tag: "div".to_string(),
+                attrs: vec![],
+                children: vec![DomNode::Text("cd".to_string())],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+        ],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
+    };
+    assert_eq!(node.script_len(), 4);
+}
+
+#[test]
+fn test_script_len_parse_html_pipeline_present() {
+    // Measured on a script-bearing body via parse_html (pre-pipeline
+    // scripts are present), script_len is non-zero while visible is small.
+    let body = r#"<html><head><title>Enable JavaScript</title></head><body><script>var escaped = '\u003ciframe\u003e'.repeat(50);</script><p>hi</p></body></html>"#;
+    let dom = parse_html(body).unwrap();
+    assert!(
+        dom.script_len() > 0,
+        "script_len must be non-zero pre-pipeline"
+    );
+    assert!(
+        dom.script_len() > dom.visible_text_len(),
+        "script-dominant on this body"
+    );
+}
+
 // ── DomNode::link_text_len ────────────────────────────────────────
 
 #[test]
@@ -579,6 +721,29 @@ fn test_link_text_len_counts_only_a() {
             DomNode::Text("before ".to_string()),
             DomNode::Element {
                 tag: "a".to_string(),
+                attrs: vec![],
+                children: vec![DomNode::Text("link".to_string())],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+            DomNode::Text(" after".to_string()),
+        ],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
+    };
+    assert_eq!(node.link_text_len(), 4); // only "link"
+}
+
+#[test]
+fn test_link_text_len_case_insensitive_tag() {
+    // HTML tags are case-insensitive: <A> must still count as a link.
+    let node = DomNode::Element {
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("before ".to_string()),
+            DomNode::Element {
+                tag: "A".to_string(),
                 attrs: vec![],
                 children: vec![DomNode::Text("link".to_string())],
                 scores: HashMap::new(),

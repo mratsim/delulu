@@ -1981,9 +1981,10 @@ fn test_collect_p_elements_empty_tree() {
 
 #[test]
 fn test_tf_filter_by_link_density_removes_high_density_div() {
-    let mut root =
-        parse_html("<div><a href='x'>link</a><a href='y'>link2</a><span>short text</span></div>")
-            .unwrap();
+    let mut root = parse_html(
+        "<div><a href='x'>link</a><a href='y'>link2</a><a href='z'>link3</a><span>hi</span></div>",
+    )
+    .unwrap();
     walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
     assert!(
         !find_tag(&root, "div"),
@@ -2010,6 +2011,46 @@ fn test_tf_filter_by_link_density_zero_total_text() {
     assert!(
         find_tag(&root, "div"),
         "empty <div> should be kept (no division by zero)"
+    );
+}
+
+#[test]
+fn test_tf_filter_by_link_density_keeps_mid_density_in_05_08() {
+    // Non-tautological: pins the Trafilatura-parity 0.8 threshold.
+    // `link` (4 chars) + `ab` (2 chars) => density 4/6 ≈ 0.667, which is in
+    // (0.5, 0.8]. With the correct `> 0.8` cutoff this element is KEPT; if
+    // the threshold were regressed to the old 0.5, density 0.667 > 0.5 would
+    // REMOVE it and this test would fail.
+    let mut root = parse_html("<div><a href='x'>link</a><span>ab</span></div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
+    assert!(
+        find_tag(&root, "div"),
+        "density 0.667 in (0.5, 0.8] must be KEPT under the 0.8 threshold"
+    );
+}
+
+#[test]
+fn test_tf_filter_by_link_density_removes_above_08() {
+    // Non-tautological: `linklink` (8 chars) + `a` (1 char) => density 8/9 ≈
+    // 0.889 > 0.8, which must be REMOVED. If the threshold were raised to 1.0
+    // this element would be kept and the test would fail.
+    let mut root = parse_html("<div><a href='x'>linklink</a><span>a</span></div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
+    assert!(
+        !find_tag(&root, "div"),
+        "density 0.889 > 0.8 must be REMOVED"
+    );
+}
+
+#[test]
+fn test_tf_filter_by_link_density_keeps_exactly_08_boundary() {
+    // Pins the strict `> 0.8` comparison: density exactly 0.8 (4/5) is NOT > 0.8
+    // and must be KEPT. A change to `>= 0.8` (or to 0.5) would fail this test.
+    let mut root = parse_html("<div><a href='x'>link</a><span>a</span></div>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_filter_by_link_density(n));
+    assert!(
+        find_tag(&root, "div"),
+        "density exactly 0.8 must be KEPT (strictly greater than 0.8 removes)"
     );
 }
 
