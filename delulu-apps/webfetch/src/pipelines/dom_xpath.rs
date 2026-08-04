@@ -1245,17 +1245,38 @@ fn string_value_of_expr<'a>(
                 Ok(format!("{}", n))
             }
         }
-        XPathExpr::FunctionCall { name, args: _args } => {
+        XPathExpr::FunctionCall { name, args } => {
+            let ctx = candidates.first().copied().unwrap_or(root);
             if name == "text" || name == "text()" {
                 if let Some(node) = candidates.first() {
                     Ok(direct_text_content(node))
                 } else {
                     Ok(String::new())
                 }
+            } else if name == "translate" {
+                if args.len() < 3 {
+                    return Err(XPathError(format!("wrong argument count for translate: expected 3, found {}", args.len())));
+                }
+                let source_str = string_value_of_expr(&args[0], candidates, root, regex_cache, depth + 1)?;
+                let from_str = string_value_of_expr(&args[1], candidates, root, regex_cache, depth + 1)?;
+                let to_str = string_value_of_expr(&args[2], candidates, root, regex_cache, depth + 1)?;
+                Ok(translate_string(&source_str, &from_str, &to_str))
+            } else if name == "contains" || name == "starts-with" {
+                if args.len() < 2 {
+                    return Err(XPathError(format!("wrong argument count for {}: expected 2, found {}", name, args.len())));
+                }
+                let haystack_str = string_value_of_expr(&args[0], candidates, root, regex_cache, depth + 1)?;
+                let needle_str = string_value_of_expr(&args[1], candidates, root, regex_cache, depth + 1)?;
+                let matched = if name == "contains" {
+                    haystack_str.contains(&needle_str)
+                } else {
+                    haystack_str.starts_with(&needle_str)
+                };
+                Ok(if matched { "true".to_string() } else { "false".to_string() })
             } else {
                 let result = eval_expr(
                     expr,
-                    candidates.first().copied().unwrap_or(root),
+                    ctx,
                     root,
                     regex_cache,
                     depth + 1,
@@ -1792,6 +1813,33 @@ mod tests {
         let compiled = XPath::compile("contains(@class, 'main')").unwrap();
         let result = compiled.eval(&doc).unwrap();
         assert_eq!(result.len(), 1);
+    }
+
+    // Test: contains(translate(...)) matches against the translated attribute, not text content
+    #[test]
+    fn test_contains_translate_class() {
+        // class has uppercase T/E which translate(@class,'TE','te') maps to lowercase,
+        // producing 'teaser'; the text content must not drive the match.
+        let doc = make_elem(
+            "div",
+            vec![("class", "TEaser")],
+            vec![make_text("this teaser text should not drive the match")],
+        );
+        let compiled = XPath::compile("contains(translate(@class, 'TE', 'te'), 'teaser')").unwrap();
+        let result = compiled.eval(&doc).unwrap();
+        // Should match: translate(@class,'TE','te') -> 'teaser' contains 'teaser'
+        assert_eq!(result.len(), 1);
+
+        // A node whose text content contains 'teaser' but whose translated class does not
+        // must NOT match: the predicate must test the attribute value, not the element text.
+        let doc2 = make_elem(
+            "div",
+            vec![("class", "other")],
+            vec![make_text("this is a teaser in the text content")],
+        );
+        let compiled2 = XPath::compile("contains(translate(@class, 'TE', 'te'), 'teaser')").unwrap();
+        let result2 = compiled2.eval(&doc2).unwrap();
+        assert_eq!(result2.len(), 0);
     }
 
     // Test: contains no match
