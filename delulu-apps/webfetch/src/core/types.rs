@@ -153,6 +153,10 @@ pub enum ExtractionResult {
     Discourse {
         title: String,
         topic_id: u64,
+        /// The canonical thread URL this topic was fetched from (the original
+        /// `url` the caller passed in). Surfaced in the Discourse frontmatter
+        /// as `source_url` so the output never hardcodes a misleading `N/A`.
+        source_url: String,
         posts: Vec<DiscoursePost>,
         post_count: u64,
         /// Number of posts RETURNED in `posts` (the Discourse JSON API can

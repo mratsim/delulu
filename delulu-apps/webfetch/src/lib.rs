@@ -12,6 +12,7 @@ pub use crate::core::detect::detect_source_type;
 pub use crate::core::types::WebfetchError;
 
 use crate::core::types::SourceType;
+use crate::core::yaml_escape;
 use crate::pipelines::DomNode;
 use crate::pipelines::PassFn;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
@@ -86,6 +87,7 @@ pub(crate) fn wrap_blocked_status(
     status: PageStatus,
 ) -> Result<ExtractionResult, WebfetchError> {
     if matches!(status, PageStatus::Blocked { .. }) {
+        tracing::warn!("webfetch blocked (cause: {status:?}); collapsing to {BLOCKED_MSG:?}");
         return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
     }
     Ok(result)
@@ -175,7 +177,8 @@ async fn fetch_and_extract_inner(
                     content_md: MarkdownDocument {
                         frontmatter: format!(
                             "title: {}\nsource_type: generic_html\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
-                            title, url
+                            yaml_escape(&title),
+                            yaml_escape(url)
                         ),
                         body: content_md,
                     },
@@ -262,7 +265,8 @@ async fn fetch_and_extract_inner(
                 content_md: MarkdownDocument {
                     frontmatter: format!(
                         "title: {}\nsource_type: document\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
-                        "", url
+                        yaml_escape(""),
+                        yaml_escape(url)
                     ),
                     body: markdown,
                 },
@@ -299,6 +303,7 @@ async fn process_text_body(
     if url_source_type == SourceType::Reddit {
         // Reddit keeps its hard-fail on bot-blocked bodies.
         if crate::core::detect::is_bot_detected(&body) {
+            tracing::warn!("reddit page bot-blocked; collapsing to {BLOCKED_MSG:?}");
             return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
         }
         let data = sources::reddit::RedditExtractor::extract(&body)?;
@@ -340,6 +345,7 @@ async fn process_text_body(
             // Discourse-path bot check: a bot-marked HTML body must
             // hard-fail even with a clean JSON API.
             if crate::core::detect::is_bot_detected(&body) {
+                tracing::warn!("discourse page bot-blocked; collapsing to {BLOCKED_MSG:?}");
                 return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
             }
             // Step 6a: Second fetch — get Discourse JSON API
@@ -362,6 +368,7 @@ async fn process_text_body(
                 ExtractionResult::Discourse {
                     title: data.title,
                     topic_id: data.topic_id,
+                    source_url: url.to_string(),
                     posts: data.posts,
                     post_count: data.post_count,
                     posts_returned,
@@ -603,7 +610,8 @@ pub async fn fetch_doc(
         content_md: MarkdownDocument {
             frontmatter: format!(
                 "title: {}\nsource_type: document\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
-                "", url
+                yaml_escape(""),
+                yaml_escape(url)
             ),
             body: markdown,
         },
@@ -641,6 +649,7 @@ async fn fetch_url_text(
 
     // Bot detection is webfetch-specific (content-level check)
     if crate::core::detect::is_bot_detected(&body) {
+        tracing::warn!("page bot-blocked in fetch_url_text; collapsing to {BLOCKED_MSG:?}");
         return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
     }
 
@@ -732,7 +741,8 @@ fn fallback_to_generic_html(
             content_md: MarkdownDocument {
                 frontmatter: format!(
                     "title: {}\nsource_type: generic_html\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A",
-                    title, url
+                    yaml_escape(&title),
+                    yaml_escape(url)
                 ),
                 body: content_md,
             },

@@ -14,6 +14,7 @@
 
 use chrono::Utc;
 use delulu_webfetch::core::types::{ExtractionResult, RedditComment};
+use delulu_webfetch::core::yaml::yaml_escape;
 
 /// Convert an `ExtractionResult` into a Markdown string with YAML frontmatter.
 pub fn md_doc_to_string(result: ExtractionResult) -> String {
@@ -70,6 +71,7 @@ pub fn md_doc_to_string(result: ExtractionResult) -> String {
         ExtractionResult::Discourse {
             title,
             topic_id,
+            source_url,
             posts,
             post_count,
             posts_returned,
@@ -78,9 +80,10 @@ pub fn md_doc_to_string(result: ExtractionResult) -> String {
             // TODO: date_of_publication should be extracted from the first post's
             // created_at (thread through ExtractionResult::Discourse) instead of N/A.
             let frontmatter = format!(
-                "title: {}\ntopic_id: {}\nsource_type: discourse\nsource_url: N/A\ndate_of_publication: N/A\ndate_of_retrieval: N/A\npost_count: {}\nposts_returned: {}",
+                "title: {}\ntopic_id: {}\nsource_type: discourse\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A\npost_count: {}\nposts_returned: {}",
                 yaml_escape(&title),
                 topic_id,
+                yaml_escape(&source_url),
                 post_count,
                 posts_returned
             );
@@ -119,8 +122,11 @@ pub fn enrich_date_of_retrieval(out: &mut String, now_iso: &str) {
     let fm_region = &out[..fm_end];
 
     if fm_region.contains("date_of_retrieval:") {
-        // Field already present — only rewrite the exact `N/A` placeholder.
-        *out = out.replace("date_of_retrieval: N/A", &replacement);
+        // Field already present — only rewrite the exact `N/A` placeholder,
+        // and ONLY within the frontmatter region (a body occurrence of the
+        // placeholder text must never be rewritten).
+        let rewritten = fm_region.replace("date_of_retrieval: N/A", &replacement);
+        out.replace_range(..fm_end, &rewritten);
         return;
     }
 
@@ -133,47 +139,6 @@ pub fn enrich_date_of_retrieval(out: &mut String, now_iso: &str) {
 
     // No frontmatter at all: create one that carries the field.
     *out = format!("---\n{}\n---\n\n{}", replacement, out);
-}
-
-/// Make a string safe to embed as a YAML scalar value in the frontmatter.
-///
-/// Attacker-controlled page metadata (title, author, permalink, source_url)
-/// must never break out of the `---` frontmatter block or inject a new
-/// `key: value` line. Embedded CR/LF are collapsed onto a single line (as a
-/// literal `\n` escape), and values that would otherwise be ambiguous (a
-/// leading YAML indicator char, or containing `: ` or `#`) are wrapped in
-/// double quotes with internal backslashes/quotes escaped.
-fn yaml_escape(value: &str) -> String {
-    let single_line = value.replace('\r', " ").replace('\n', "\\n");
-    let needs_quotes = single_line.starts_with(|c: char| {
-        matches!(
-            c,
-            '-' | '?'
-                | ':'
-                | '{'
-                | '}'
-                | '['
-                | ']'
-                | '#'
-                | '&'
-                | '*'
-                | '!'
-                | '|'
-                | '>'
-                | '\''
-                | '"'
-                | '%'
-                | '@'
-                | '`'
-        )
-    }) || single_line.contains(": ")
-        || single_line.contains('#');
-    if needs_quotes {
-        let escaped = single_line.replace('\\', "\\\\").replace('"', "\\\"");
-        format!("\"{escaped}\"")
-    } else {
-        single_line
-    }
 }
 
 /// Format a reddit comment recursively into markdown.

@@ -230,3 +230,56 @@ fn test_md_doc_to_string_reddit_escapes_frontmatter_metadata() {
         "payload injected a key:\n{fm}"
     );
 }
+
+#[test]
+fn test_yaml_escape_neutralizes_delimiter_and_key_injection() {
+    // A2 regression: page-controlled metadata must never break out of the YAML
+    // frontmatter or inject a key. yaml_escape collapses newlines (so a `---`
+    // cannot close the block) and quotes ambiguous values.
+    let payload = "hi\n---\nmalicious: true";
+    let escaped = delulu_webfetch::core::yaml::yaml_escape(payload);
+    // No literal newline survives (the `---` and `malicious:` are on one line,
+    // inside quotes) — so it cannot close the block or inject a bare key line.
+    assert!(
+        !escaped.contains('\n'),
+        "escaped value must be single-line: {escaped:?}"
+    );
+    assert!(
+        escaped.starts_with('"'),
+        "ambiguous value must be quoted: {escaped:?}"
+    );
+    // Embedding it in a frontmatter line must keep the block intact.
+    assert!(
+        !escaped.contains("\n---"),
+        "injected --- must not form a bare line: {escaped:?}"
+    );
+    // Embedding it in a frontmatter block keeps the block intact: the injected
+    // `---` is now inside the quoted value, so the real closing `---` follows
+    // `source_type:` and the body survives.
+    let frontmatter = format!("title: {escaped}\nsource_type: generic_html\n");
+    let out = format!("---\n{frontmatter}---\n\nBody");
+    assert!(out.starts_with("---\n"));
+    assert!(
+        out.contains("\nsource_type: generic_html\n---\n\nBody"),
+        "block must close after source_type with body intact, got: {out}"
+    );
+}
+
+#[test]
+fn test_enrich_date_of_retrieval_only_rewrites_frontmatter_placeholder() {
+    // A3 regression: the exact `date_of_retrieval: N/A` placeholder must be
+    // rewritten ONLY within the frontmatter region — a body occurrence must
+    // never be touched.
+    let mut out =
+        "---\ntitle: T\ndate_of_retrieval: N/A\n---\n\nBody has date_of_retrieval: N/A inside it."
+            .to_string();
+    let now = "2026-01-15T10:00:00+00:00";
+    enrich_date_of_retrieval(&mut out, now);
+    // Frontmatter occurrence replaced:
+    assert!(out.starts_with(&format!("---\ntitle: T\ndate_of_retrieval: {now}\n---\n\n")));
+    // Body occurrence untouched:
+    assert!(
+        out.contains("Body has date_of_retrieval: N/A inside it."),
+        "body placeholder must not be rewritten, got: {out}"
+    );
+}
