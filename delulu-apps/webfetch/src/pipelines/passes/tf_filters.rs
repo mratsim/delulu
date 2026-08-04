@@ -1329,6 +1329,36 @@ static BODY_XPATH_4: once_cell::sync::Lazy<XPath> = once_cell::sync::Lazy::new(|
 ///       subtree survives. Otherwise, the tree is unchanged.
 /// Reference: Trafilatura `main_extractor.py:597-647` `_extract()` (BODY_XPATH iteration)
 #[cfg(feature = "use-xpath")]
+/// Find the ancestor index path from `nodes` down to the node at `ptr`.
+/// On success, `path` is filled with the child index at each level from
+/// `nodes` down to the matched node (the same convention `apply_path` expects).
+fn find_node_path(nodes: &[DomNode], ptr: *const DomNode, path: &mut Vec<usize>) -> bool {
+    for (i, node) in nodes.iter().enumerate() {
+        if std::ptr::eq(node, ptr) {
+            path.push(i);
+            return true;
+        }
+        if let DomNode::Element { children, .. } = node {
+            path.push(i);
+            if find_node_path(children, ptr, path) {
+                return true;
+            }
+            path.pop();
+        }
+    }
+    false
+}
+
+/// Isolate content container using XPath BODY_XPATH patterns (use-xpath feature).
+///
+/// Iterates BODY_XPATH[0-4] in order, evaluates each against the root node,
+/// and isolates the first matching container (keeping only its subtree).
+///
+/// Pre: DOM tree is fully parsed, all cleaning passes have run.
+/// Post: If a container matched any BODY_XPATH pattern, only that container's
+///       subtree survives. Otherwise, the tree is unchanged.
+/// Reference: Trafilatura `main_extractor.py:597-647` `_extract()` (BODY_XPATH iteration)
+#[cfg(feature = "use-xpath")]
 pub fn tf_isolate_content_container_xpath(node: &mut DomNode) {
     let patterns: &[&once_cell::sync::Lazy<XPath>] = &[
         &BODY_XPATH_0,
@@ -1354,14 +1384,17 @@ pub fn tf_isolate_content_container_xpath(node: &mut DomNode) {
             }
         }
     }
-    // Now isolate the container (separate from eval borrow)
+    // Now isolate the container (separate from eval borrow). The XPath
+    // expressions use `.//*`, so the matched container may be a descendant at
+    // ANY depth. Record the full ancestor index path from `node` down to the
+    // matched node, then prune siblings at every level via `apply_path` — the
+    // same mechanism the manual `tf_isolate_content_container` uses — instead
+    // of only inspecting direct children.
     if let Some(ptr) = container_ptr {
         if let DomNode::Element { children, .. } = node {
-            let idx = children.iter().position(|c| std::ptr::eq(c, ptr));
-            if let Some(idx) = idx {
-                let matched_node = children.remove(idx);
-                children.clear();
-                children.push(matched_node);
+            let mut path = Vec::new();
+            if find_node_path(children, ptr, &mut path) {
+                apply_path(children, &path);
             }
         }
     }

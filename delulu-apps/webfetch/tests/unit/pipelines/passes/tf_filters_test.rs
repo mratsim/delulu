@@ -464,6 +464,45 @@ fn test_isolate_container_tag_scope() {
     assert!(find_tag(&nodes, "p"), "<p> should survive");
 }
 
+#[cfg(feature = "use-xpath")]
+#[test]
+fn test_isolate_content_container_xpath_nested_descendant() {
+    let p_text: String = "A".repeat(250);
+    // The <article> container is a DEEP descendant (great-grandchild of <html>),
+    // not a direct child of the root. BODY_XPATH expressions use `.//*`, so the
+    // container must be isolated wherever it sits: siblings pruned at EVERY
+    // ancestor level, matched content retained.
+    let mut nodes = parse_html(&format!(
+        "<html><body><div class=\"wrapper\"><section><article><p>{}</p></article></section></div><nav>junk</nav></body></html>",
+        p_text
+    ))
+    .unwrap();
+    tf_isolate_content_container_xpath(&mut nodes);
+    assert!(
+        find_tag(&nodes, "article"),
+        "<article> container should be kept"
+    );
+    assert!(find_tag(&nodes, "p"), "<p> content should be kept");
+    // Sibling at the root level (<nav>) must be pruned even though the matched
+    // container is not a direct child of the root.
+    assert!(
+        !find_tag(&nodes, "nav"),
+        "<nav> sibling should be pruned at the root level"
+    );
+    // Ancestor-chain siblings (<div class=wrapper>, <section>) collapse so the
+    // matched container is isolated at every level.
+    let text = nodes.text_content();
+    assert!(
+        text.contains("AAAA"),
+        "matched container content should be retained"
+    );
+    assert!(
+        !text.contains("junk"),
+        "matched container should be isolated (no sibling text)"
+    );
+}
+
+
 #[test]
 fn test_isolate_container_itemprop_articleBody() {
     let p_text: String = "A".repeat(250);
