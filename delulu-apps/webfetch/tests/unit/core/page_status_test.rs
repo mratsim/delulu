@@ -248,41 +248,38 @@ fn detect_anti_bot_is_superset_of_bot_detection_patterns() {
 
 #[test]
 fn detect_anti_bot_label_correctness_for_known_vendor_patterns() {
-    // Assert the *label* (not just is_some) for known vendor patterns so
-    // the step-4 catch-all mislabel is CI-visible.
+    // Assert the *label* (not just is_some) for each BOT_DETECTION_PATTERNS
+    // entry against an EXPLICIT hardcoded expected label, so a bug in the
+    // shared pattern-matching logic cannot pass silently by re-deriving the
+    // same expected value from that logic.
     use crate::core::detect::BOT_DETECTION_PATTERNS;
+    // (pattern, expected BlockedBy label) — derived by reading detect_anti_bot:
+    //   Captcha            <- g-recaptcha
+    //   CloudflareTurnstile <- cf-browser-verification / challenge-platform /
+    //                         data-sitekey / "just a moment..."
+    //   Unknown            <- bare "turnstile" (no Cloudflare anchoring)
+    let cases: &[(&str, BlockedBy)] = &[
+        ("just a moment...", BlockedBy::CloudflareTurnstile),
+        ("cf-browser-verification", BlockedBy::CloudflareTurnstile),
+        ("challenge-platform", BlockedBy::CloudflareTurnstile),
+        ("turnstile", BlockedBy::Unknown),
+        ("g-recaptcha", BlockedBy::Captcha),
+        ("data-sitekey", BlockedBy::CloudflareTurnstile),
+    ];
+    // Every BOT_DETECTION_PATTERNS entry must be covered by the explicit
+    // table above (keeps the hardcoded table in sync with the source of truth).
     for pattern in BOT_DETECTION_PATTERNS.iter() {
-        let html = format!("<html><body>{pattern}</body></html>");
-        let expected = if pattern.to_lowercase().contains("g-recaptcha")
-            || pattern.to_lowercase().contains("recaptcha")
-        {
-            BlockedBy::Captcha
-        } else if pattern.to_lowercase() == "turnstile" {
-            // Bare `turnstile` (no Cloudflare anchoring) is an unknown pattern.
-            BlockedBy::Unknown
-        } else {
-            BlockedBy::CloudflareTurnstile
-        };
-        assert_eq!(
-            anti_bot(&html),
-            Some(expected),
-            "pattern {pattern} should map to the expected label"
+        assert!(
+            cases.iter().any(|(p, _)| p == pattern),
+            "BOT_DETECTION_PATTERNS entry '{pattern}' missing from explicit table"
         );
     }
-}
-
-#[test]
-fn detect_anti_bot_differential_is_bot_detected_implies_some() {
-    use crate::core::detect::BOT_DETECTION_PATTERNS;
-    for pattern in BOT_DETECTION_PATTERNS.iter() {
+    for (pattern, expected) in cases {
         let html = format!("<html><body>{pattern}</body></html>");
-        assert!(
-            is_bot_detected(&html),
-            "precondition: is_bot_detected must be true for '{pattern}'"
-        );
-        assert!(
-            anti_bot(&html).is_some(),
-            "is_bot_detected ⇒ detect_anti_bot.is_some() failed for '{pattern}'"
+        assert_eq!(
+            anti_bot(&html),
+            Some(expected.clone()),
+            "pattern '{pattern}' should map to the expected label"
         );
     }
 }

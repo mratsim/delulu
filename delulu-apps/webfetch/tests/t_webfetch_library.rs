@@ -86,7 +86,7 @@ async fn spawn_test_server(
 }
 
 /// Create a RateLimitedCrawler pointed at a local test server.
-fn test_crawler_for(_addr: std::net::SocketAddr) -> RateLimitedCrawler {
+fn test_crawler_for() -> RateLimitedCrawler {
     let raw_client = wreq::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -188,7 +188,7 @@ async fn test_fetch_and_extract_discourse_from_fixture() {
         }
     });
 
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
 
     // Use a URL that triggers Discourse detection
     let original_url = format!("http://{}/t/reed-solomon-erasure-code-recovery/3039", addr);
@@ -259,7 +259,7 @@ async fn test_fetch_and_extract_discourse_posts_have_raw_markdown() {
         }
     });
 
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let original_url = format!("http://{}/t/reed-solomon-erasure-code-recovery/3039", addr);
 
     let result = fetch_and_extract(
@@ -295,7 +295,7 @@ async fn test_fetch_and_extract_discourse_posts_have_raw_markdown() {
 async fn test_fetch_and_extract_generic_html_from_fixture() {
     let body = generic_html_fixture_body();
     let addr = spawn_test_server(200, "text/html".to_string(), body.clone()).await;
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let url = format!("http://{}/article", addr);
 
     let result = fetch_and_extract(
@@ -351,7 +351,7 @@ async fn test_fetch_and_extract_generic_html_from_fixture() {
 async fn test_fetch_and_extract_empty_body_returns_generic_html() {
     let body = "<html><head></head><body></body></html>";
     let addr = spawn_test_server(200, "text/html".to_string(), body.to_string()).await;
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let url = format!("http://{}/empty", addr);
 
     let result = fetch_and_extract(
@@ -385,7 +385,7 @@ async fn test_fetch_and_extract_generic_html_title_from_h1() {
     // correctly with a real fixture through the full pipeline.
     let body = generic_html_fixture_body();
     let addr = spawn_test_server(200, "text/html".to_string(), body.clone()).await;
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let url = format!("http://{}/article", addr);
 
     let result = fetch_and_extract(
@@ -415,7 +415,7 @@ async fn test_fetch_and_extract_generic_html_title_from_h1() {
 #[tokio::test]
 async fn test_fetch_and_extract_non_2xx_status_returns_error() {
     let addr = spawn_test_server(404, "text/plain".to_string(), "Not Found".to_string()).await;
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let url = format!("http://{}/notfound", addr);
 
     let err = fetch_and_extract(
@@ -439,8 +439,8 @@ async fn test_fetch_and_extract_non_2xx_status_returns_error() {
 #[tokio::test]
 async fn test_fetch_and_extract_https_only_scheme_rejected() {
     // URL validation moved to crawler; crawler errors map to WebfetchError::Fetch
-    let addr = spawn_test_server(200, "text/plain".to_string(), "ok".to_string()).await;
-    let crawler = test_crawler_for(addr);
+    // No server is needed: the request is rejected at URL-validation time.
+    let crawler = test_crawler_for();
 
     let err = fetch_and_extract(
         "ftp://example.com/file",
@@ -478,7 +478,7 @@ async fn test_fetch_and_extract_non_discourse_t_url_is_generic_html() {
     // URL matches old DISCOURSE_URL_RE pattern (/t/<slug>/<digits>) but has NO Discourse markers.
     let body = "<html><body><p>Regular page on a /t/ URL</p></body></html>";
     let addr = spawn_test_server(200, "text/html".to_string(), body.to_string()).await;
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let url = format!("http://{}/t/foo/123", addr);
 
     let result = fetch_and_extract(
@@ -546,7 +546,7 @@ async fn test_fetch_and_extract_discourse_detected_from_html_content() {
         }
     });
 
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let original_url = format!("http://{}/page", addr);
 
     let result = fetch_and_extract(
@@ -603,7 +603,7 @@ async fn test_fetch_and_extract_discourse_with_simple_fixture() {
         }
     });
 
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let original_url = format!("http://{}/t/reed-solomon-erasure-code-recovery/3039", addr);
 
     let result = fetch_and_extract(
@@ -664,7 +664,7 @@ async fn test_fetch_and_extract_stale_discourse_markers_falls_back_to_generic_ht
         }
     });
 
-    let crawler = test_crawler_for(addr);
+    let crawler = test_crawler_for();
     let original_url = format!("http://{}/t/stale-topic/999", addr);
 
     let result = fetch_and_extract(
