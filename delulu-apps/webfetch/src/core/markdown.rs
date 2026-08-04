@@ -42,14 +42,21 @@ pub fn md_doc_to_string(result: ExtractionResult) -> String {
             permalink,
             source_url,
             comment_count,
+            comments_truncated,
             comments,
             ..
         } => {
             // TODO: date_of_publication should be extracted from created_utc (thread
             // it through ExtractionResult::Reddit) instead of hardcoded N/A.
             let frontmatter = format!(
-                "title: {}\nauthor: {}\nscore: {}\nsource_type: reddit\npermalink: {}\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A\ncomment_count: {}",
-                title, author, score, permalink, source_url, comment_count
+                "title: {}\nauthor: {}\nscore: {}\nsource_type: reddit\npermalink: {}\nsource_url: {}\ndate_of_publication: N/A\ndate_of_retrieval: N/A\ncomment_count: {}\ncomments_truncated: {}",
+                yaml_escape(&title),
+                yaml_escape(&author),
+                score,
+                yaml_escape(&permalink),
+                yaml_escape(&source_url),
+                comment_count,
+                comments_truncated
             );
             let mut out = format!("---\n{frontmatter}\n---\n\n");
             out.push_str(&selftext);
@@ -72,7 +79,10 @@ pub fn md_doc_to_string(result: ExtractionResult) -> String {
             // created_at (thread through ExtractionResult::Discourse) instead of N/A.
             let frontmatter = format!(
                 "title: {}\ntopic_id: {}\nsource_type: discourse\nsource_url: N/A\ndate_of_publication: N/A\ndate_of_retrieval: N/A\npost_count: {}\nposts_returned: {}",
-                title, topic_id, post_count, posts_returned
+                yaml_escape(&title),
+                topic_id,
+                post_count,
+                posts_returned
             );
             let mut out = format!("---\n{frontmatter}\n---\n\n");
             for (i, post) in posts.iter().enumerate() {
@@ -123,6 +133,47 @@ pub fn enrich_date_of_retrieval(out: &mut String, now_iso: &str) {
 
     // No frontmatter at all: create one that carries the field.
     *out = format!("---\n{}\n---\n\n{}", replacement, out);
+}
+
+/// Make a string safe to embed as a YAML scalar value in the frontmatter.
+///
+/// Attacker-controlled page metadata (title, author, permalink, source_url)
+/// must never break out of the `---` frontmatter block or inject a new
+/// `key: value` line. Embedded CR/LF are collapsed onto a single line (as a
+/// literal `\n` escape), and values that would otherwise be ambiguous (a
+/// leading YAML indicator char, or containing `: ` or `#`) are wrapped in
+/// double quotes with internal backslashes/quotes escaped.
+fn yaml_escape(value: &str) -> String {
+    let single_line = value.replace('\r', " ").replace('\n', "\\n");
+    let needs_quotes = single_line.starts_with(|c: char| {
+        matches!(
+            c,
+            '-' | '?'
+                | ':'
+                | '{'
+                | '}'
+                | '['
+                | ']'
+                | '#'
+                | '&'
+                | '*'
+                | '!'
+                | '|'
+                | '>'
+                | '\''
+                | '"'
+                | '%'
+                | '@'
+                | '`'
+        )
+    }) || single_line.contains(": ")
+        || single_line.contains('#');
+    if needs_quotes {
+        let escaped = single_line.replace('\\', "\\\\").replace('"', "\\\"");
+        format!("\"{escaped}\"")
+    } else {
+        single_line
+    }
 }
 
 /// Format a reddit comment recursively into markdown.
@@ -275,6 +326,7 @@ mod tests {
                 replies: Vec::new(),
             }],
             comment_count: 1,
+            comments_truncated: false,
         };
         let out = md_doc_to_string(result);
         assert!(
@@ -284,5 +336,50 @@ mod tests {
         assert!(out.contains("source_type: reddit"), "got:\n{out}");
         assert!(out.contains("**bob** (score: 2): A comment"), "got:\n{out}");
         assert!(out.contains("date_of_retrieval: "), "got:\n{out}");
+        assert!(out.contains("comments_truncated: false"), "got:\n{out}");
+    }
+
+    #[test]
+    fn test_md_doc_to_string_reddit_escapes_frontmatter_metadata() {
+        // Non-tautological: a title containing a newline, a `---` line, and a
+        // `malicious: true`-style payload must stay INSIDE the frontmatter as a
+        // single escaped scalar. Before the fix this payload was injected as its
+        // own frontmatter line (breaking the `---` delimiters and moving every
+        // subsequent field into the body).
+        let result = ExtractionResult::Reddit {
+            title: "hi\n---\nmalicious: true".to_string(),
+            selftext: "Body".to_string(),
+            author: "alice".to_string(),
+            score: 1,
+            permalink: "/r/x".to_string(),
+            source_url: "https://reddit.com/r/x".to_string(),
+            comments: vec![],
+            comment_count: 0,
+            comments_truncated: false,
+        };
+        let out = md_doc_to_string(result);
+        // The frontmatter still opens with `---`.
+        assert!(out.starts_with("---\n"), "got:\n{out}");
+        // The closing `---` is immediately followed by the intact body — this
+        // fails before the fix because the injected `---` closed the block early.
+        assert!(
+            out.contains("\n---\n\nBody"),
+            "body must follow a single closing delimiter, got:\n{out}"
+        );
+        // The frontmatter block (up to the first `---`) still contains all the
+        // real fields — before the fix the injected `---` pushed `author:` etc.
+        // into the body.
+        let fm_end = out.find("\n---").unwrap();
+        let fm = &out[..fm_end];
+        assert!(
+            fm.contains("author: alice"),
+            "author escaped frontmatter:\n{fm}"
+        );
+        assert!(fm.contains("comment_count: 0"), "got:\n{fm}");
+        // The injected payload is NOT its own frontmatter line.
+        assert!(
+            !fm.contains("\nmalicious: true\n"),
+            "payload injected a key:\n{fm}"
+        );
     }
 }

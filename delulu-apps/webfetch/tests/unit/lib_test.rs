@@ -731,17 +731,74 @@ async fn test_injected_reddit_fixture_metadata_fields() {
     match result {
         ExtractionResult::Reddit {
             comment_count,
+            comments_truncated,
             source_url,
             ..
         } => {
             // 2 top-level comments in the fixture (known constant, not derived
             // from the code under test).
             assert_eq!(comment_count, 2, "fixture has 2 top-level comments");
+            // Below the MAX_COMMENTS=500 cap, so truncation must be false.
+            assert!(
+                !comments_truncated,
+                "fixture is below cap, must not truncate"
+            );
             // source_url is the permalink-derived well-formed URL.
             assert_eq!(
                 source_url,
                 "https://reddit.com/r/test/comments/abc123/hello_world/",
             );
+        }
+        other => panic!("Expected ExtractionResult::Reddit, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_injected_reddit_over_cap_truncates_and_flags() {
+    // Synthetic body with 510 top-level comments (above MAX_COMMENTS=500):
+    // exercises the truncation path end-to-end through the same `lib.rs` seam,
+    // proving `comments_truncated` is populated from the extractor's flag.
+    let mut comments = Vec::new();
+    for i in 0..510 {
+        comments.push(serde_json::json!({
+            "kind": "t1",
+            "data": {
+                "body": format!("comment {i}"),
+                "author": format!("user{i}"),
+                "score": i,
+                "depth": 0,
+                "replies": ""
+            }
+        }));
+    }
+    let post_listing = serde_json::json!({
+        "kind": "Listing",
+        "data": { "children": [{
+            "kind": "t3",
+            "data": {
+                "title": "T", "author": "a", "score": 1, "selftext": "",
+                "created_utc": 1.0, "permalink": "/r/t/comments/x/"
+            }
+        }] }
+    });
+    let comments_listing = serde_json::json!({
+        "kind": "Listing", "data": { "children": comments }
+    });
+    let body = serde_json::to_string(&vec![post_listing, comments_listing]).unwrap();
+
+    let crawler = test_crawler_no_network();
+    let url = "https://www.reddit.com/r/t/comments/x/";
+    let (result, _status) = fetch_and_extract_inner_with_body(url, &crawler, &[], body)
+        .await
+        .expect("extraction should succeed");
+    match result {
+        ExtractionResult::Reddit {
+            comment_count,
+            comments_truncated,
+            ..
+        } => {
+            assert_eq!(comment_count, 500, "capped at MAX_COMMENTS");
+            assert!(comments_truncated, ">500 comments must set the flag");
         }
         other => panic!("Expected ExtractionResult::Reddit, got {other:?}"),
     }
@@ -790,6 +847,51 @@ async fn test_injected_thin_consent_wall_err_and_blocked() {
         wrap_blocked_status(result, status).is_err(),
         "consent-walled thin page must hard-fail in fetch_and_extract"
     );
+}
+
+// ── fetch_and_extract contract (ARCH-A-004) ───────────────────
+
+#[test]
+fn test_wrap_blocked_status_contract() {
+    // Pins the public `fetch_and_extract` contract: a `Blocked` status maps
+    // to `Err` with the message EXACTLY `BLOCKED_MSG` ("Blocked"); every other
+    // status (incl. `Article`) maps to `Ok`. Changing the error string or the
+    // Ok/Err mapping fails this test (non-tautological).
+    let article = ExtractionResult::GenericHtml {
+        content_md: MarkdownDocument {
+            frontmatter: String::new(),
+            body: String::new(),
+        },
+        raw_html_len: 0,
+        filtered_html_len: 0,
+    };
+
+    // (a) Blocked -> Err with the exact BLOCKED_MSG string.
+    let blocked = wrap_blocked_status(
+        article.clone(),
+        PageStatus::Blocked {
+            by: BlockedBy::CloudflareTurnstile,
+        },
+    );
+    match blocked {
+        Err(WebfetchError::Fetch(msg)) => {
+            // (c) the error string equals BLOCKED_MSG ("Blocked") exactly.
+            assert_eq!(msg, BLOCKED_MSG);
+            assert_eq!(msg, "Blocked");
+        }
+        other => panic!("expected Err(Fetch(BLOCKED_MSG)), got {other:?}"),
+    }
+
+    // (b) Article -> Ok.
+    let ok = wrap_blocked_status(article.clone(), PageStatus::Article);
+    match ok {
+        Ok(ExtractionResult::GenericHtml { .. }) => {}
+        other => panic!("expected Ok for Article, got {other:?}"),
+    }
+
+    // A non-blocked non-article status (e.g. Partial) also maps to Ok.
+    let partial = wrap_blocked_status(article, PageStatus::Partial);
+    assert!(partial.is_ok(), "Partial must map to Ok");
 }
 
 // ── Pure status mapper ───────────────────────────────────────

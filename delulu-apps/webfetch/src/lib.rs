@@ -50,10 +50,19 @@ pub const BLOCKED_MSG: &str = "Blocked";
 /// - Document: URL-based detection → call fetch_doc() directly (no HTTP fetch needed)
 /// - GenericHtml: URL returns GenericHtml → MIME type check → content detection → pipeline → lower
 ///
-/// Hard-fail behavior: returns `Err(BLOCKED_MSG)` when the page is
-/// classified `Blocked` (content-less bot-blocked or consent-walled GenericHtml,
-/// plus Reddit/arXiv/Discourse bot hard-fails). Content-bearing pages always
-/// return `Ok`.
+/// # Contract (pinned by tests)
+///
+/// `fetch_and_extract` maps the page's [`PageStatus`] to its return value
+/// exactly as follows:
+/// - `Blocked` (thin consent-walled / anti-bot pages, plus Reddit/arXiv/
+///   Discourse bot hard-fails) → `Err(WebfetchError::Fetch(BLOCKED_MSG))`,
+///   where the error string is EXACTLY [`BLOCKED_MSG`] (the value `"Blocked"`).
+/// - `Article` (content-bearing bot pages) → `Ok(Article result)`.
+/// - All other statuses → `Ok(result)`.
+///
+/// This contract is pinned by `test_wrap_blocked_status_contract` so it
+/// cannot silently drift. Content-bearing pages always return `Ok`; only
+/// content-less `Blocked` pages hard-fail.
 pub async fn fetch_and_extract(
     url: &str,
     crawler: &RateLimitedCrawler,
@@ -65,10 +74,14 @@ pub async fn fetch_and_extract(
 
 /// Map a `(result, status)` pair to the `fetch_and_extract` return value.
 ///
-/// `Ok(result)` unless the status is `Blocked`, in which case it returns
-/// `Err(BLOCKED_MSG)`. Extracted so the body-injection equivalence
+/// # Contract (pinned by tests)
+///
+/// Returns `Err(WebfetchError::Fetch(BLOCKED_MSG))` — error string exactly
+/// [`BLOCKED_MSG`] ("Blocked") — iff the status is `Blocked`; otherwise
+/// returns `Ok(result)`. Content-bearing bot pages (status `Article`) and all
+/// other statuses return `Ok`. Extracted so the body-injection equivalence
 /// test can exercise the exact same decision without network.
-fn wrap_blocked_status(
+pub(crate) fn wrap_blocked_status(
     result: ExtractionResult,
     status: PageStatus,
 ) -> Result<ExtractionResult, WebfetchError> {
@@ -285,6 +298,7 @@ async fn process_text_body(
                 source_url,
                 comments: data.comments,
                 comment_count,
+                comments_truncated: data.comments_truncated,
             },
             structured_success_status(),
         ));

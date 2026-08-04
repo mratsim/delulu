@@ -136,7 +136,16 @@ pub enum ExtractionResult {
         permalink: String,
         source_url: String,
         comments: Vec<RedditComment>,
+        /// Number of comments RETURNED in `comments` — capped at
+        /// `RedditExtractor::MAX_COMMENTS` (500). This is NOT the thread's
+        /// total comment count on the server; when comments were truncated,
+        /// `comments_truncated` is `true`.
         comment_count: usize,
+        /// Whether the returned comments were truncated (capped at
+        /// `RedditExtractor::MAX_COMMENTS`, or a `more`/deep-depth marker
+        /// was encountered). When `true`, `comment_count` is the capped
+        /// returned count, not the server total.
+        comments_truncated: bool,
     },
     Discourse {
         title: String,

@@ -47,6 +47,7 @@ fn webfetch_raw_response_article_with_reddit() {
         source_url: "https://reddit.com/r/x/comments/1/".to_string(),
         comments: vec![],
         comment_count: 0,
+        comments_truncated: false,
     };
     let json = webfetch_raw_response(&result, &PageStatus::Article);
     let value: serde_json::Value = serde_json::from_str(&json).unwrap();
