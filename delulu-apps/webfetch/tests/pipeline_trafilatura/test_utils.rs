@@ -409,22 +409,29 @@ pub fn detect_backup_restore(html: &str) -> (bool, u32) {
     #[cfg(feature = "use-xpath")]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_unlikely_candidates_xpath as tf_remove_unlikely_candidates;
     use delulu_webfetch::pipelines::walk_pre_mut;
+    use delulu_webfetch::pipelines::trafilatura::with_backup;
+    use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_cleaned;
 
     let root = parse_html(html).expect("parse_html failed");
     let original_len = tf_count_text_chars(&root);
 
     // Clone A: run WITH backup (the real pipeline behavior)
-    let mut with_backup = root.clone();
+    let mut guarded = root.clone();
     {
-        let _old = tf_count_text_chars(&with_backup);
-        let _snapshot = with_backup.clone();
-        walk_pre_mut(&mut with_backup, &|n| tf_remove_unlikely_candidates(n));
-        let _new = tf_count_text_chars(&with_backup);
-        // If ≥80% removed (threshold 5×), the real pipeline would restore from snapshot
-        // We detect this: if the with-backup result matches original,
-        // backup triggered (the snapshot restore happened)
+        with_backup(
+            &mut guarded,
+            |n| walk_pre_mut(n, &|n| tf_remove_unlikely_candidates(n)),
+            // 5x threshold: >=80% text removed triggers restore (matches production
+            // apply_tf_remove_unlikely_candidates_with_backup, trafilatura.rs:155-159)
+            5,
+            // Production restore closure (trafilatura.rs:133-136): full restore + clean
+            |node, backup| {
+                *node = backup.clone();
+                walk_pre_mut(node, &|n| tf_remove_cleaned(n));
+            },
+        );
     }
-    let after_backup_len = tf_count_text_chars(&with_backup);
+    let after_backup_len = tf_count_text_chars(&guarded);
 
     // Clone B: run WITHOUT backup to count actual removals
     let mut without_backup = root;
