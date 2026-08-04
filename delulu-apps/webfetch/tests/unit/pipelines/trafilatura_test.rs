@@ -385,3 +385,23 @@ fn test_bal_pipeline_preserves_recovered_p_after_backup() {
         "recovered <p> (ECHOFOXTROT) must survive the TF_BALANCED pipeline"
     );
 }
+
+/// Issue D: `TF_BALANCED_NAMES` must stay aligned index-for-index with
+/// `TF_BALANCED` and contain no empty labels. If a pass is added/removed/renamed
+/// in `TF_BALANCED` without updating `TF_BALANCED_NAMES`, this test fails, catching
+/// the drift that used to silently mislabel the per-pass trace.
+#[test]
+fn test_tf_balanced_names_aligned_with_passes() {
+    let passes = *super::TF_BALANCED;
+    let names = *super::TF_BALANCED_NAMES;
+    assert_eq!(
+        names.len(),
+        passes.len(),
+        "TF_BALANCED_NAMES ({}) must have one entry per TF_BALANCED pass ({})",
+        names.len(),
+        passes.len(),
+    );
+    for (i, name) in names.iter().enumerate() {
+        assert!(!name.is_empty(), "TF_BALANCED_NAMES[{i}] must be non-empty");
+    }
+}

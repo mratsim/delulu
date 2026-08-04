@@ -226,8 +226,14 @@ pub fn compute_confusion_matrix(
 ) -> ConfusionMatrix {
     let mut cm = ConfusionMatrix::default();
 
+    // `output_text` is already normalized (via `normalize_output`), so each
+    // annotation must be normalized too before matching (Issue F). Otherwise an
+    // annotation containing a newline, double space, NBSP, or decomposed char
+    // never matches the normalized output, inflating fn_/fp and skewing
+    // precision/recall.
     for w in &annotations.with {
-        if output_text.contains(w.as_str()) {
+        let w_norm = normalize_output(w);
+        if output_text.contains(&w_norm) {
             cm.tp += 1;
         } else {
             cm.fn_ += 1;
@@ -235,7 +241,8 @@ pub fn compute_confusion_matrix(
     }
 
     for wo in &annotations.without {
-        if !output_text.contains(wo.as_str()) {
+        let wo_norm = normalize_output(wo);
+        if !output_text.contains(&wo_norm) {
             cm.tn += 1;
         } else {
             cm.fp += 1;
@@ -850,6 +857,22 @@ mod tests {
         assert_eq!(cm.fn_, 0);
     }
 
+    #[test]
+    fn compute_confusion_matrix_normalizes_annotations() {
+        // Annotations contain a double space and a non-breaking space; the output
+        // is normalized (single spaces). Raw substring matching would miss them;
+        // normalizing each annotation makes them match.
+        let ann = Annotations {
+            with: vec!["hello  world".to_string(), "foo\u{00a0}bar".to_string()],
+            without: vec!["spam  eggs".to_string()],
+        };
+        let output = normalize_output("hello  world  foo\u{00a0}bar");
+        let cm = compute_confusion_matrix(&output, "", &ann);
+        assert_eq!(cm.tp, 2, "normalized annotations should match normalized output");
+        assert_eq!(cm.fn_, 0);
+        assert_eq!(cm.tn, 1, "'spam eggs' absent from normalized output");
+        assert_eq!(cm.fp, 0);
+    }
     // ── load_test_case_tf ─────────────────────────────────────────────────
 
     #[test]

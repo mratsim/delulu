@@ -306,6 +306,54 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
     ]
 });
 
+/// Human-readable names for each pass in [`TF_BALANCED`], aligned index-for-index.
+///
+/// Diagnostic/test-only export. Kept in lockstep with `TF_BALANCED` so the
+/// per-pass trace tooling never has to hardcode a parallel list that can drift.
+///
+/// Pre: Same feature-gating as `TF_BALANCED` so both slices stay aligned under
+///      both `use-xpath` and non-`use-xpath` builds.
+/// Post: `TF_BALANCED_NAMES.len() == TF_BALANCED.len()`, each name non-empty.
+///
+/// Does not affect extraction behavior in any way.
+pub static TF_BALANCED_NAMES: Lazy<&[&str]> = Lazy::new(|| {
+    &[
+        "tf_extract_script_templates",
+        "tf_remove_cleaned",
+        #[cfg(not(feature = "use-xpath"))]
+        "tf_remove_teaser",
+        #[cfg(feature = "use-xpath")]
+        "tf_remove_teaser_xpath",
+        #[cfg(not(feature = "use-xpath"))]
+        "apply_tf_remove_unlikely_candidates_with_backup",
+        #[cfg(feature = "use-xpath")]
+        "apply_tf_remove_unlikely_candidates_xpath_with_backup",
+        "tf_strip_unwrapped",
+        "tf_remove_empty_cut",
+        #[cfg(not(feature = "use-xpath"))]
+        "apply_tf_filter_by_link_density_with_backup",
+        #[cfg(feature = "use-xpath")]
+        "apply_tf_filter_by_link_density_xpath_with_backup",
+        "tf_convert_headings",
+        "tf_convert_lists",
+        "tf_convert_quotes",
+        "tf_convert_formatting",
+        "tf_convert_breaks",
+        "tf_convert_refs_and_details",
+        "tf_canonicalize_strip_non_content",
+        #[cfg(not(feature = "use-xpath"))]
+        "apply_tf_isolate_container_with_backup",
+        #[cfg(feature = "use-xpath")]
+        "apply_tf_isolate_container_xpath_with_backup",
+        #[cfg(not(feature = "use-xpath"))]
+        "tf_discard_image_elements",
+        #[cfg(feature = "use-xpath")]
+        "tf_discard_image_elements_xpath",
+        "tf_canonicalize_unwrap_containers",
+        "tf_filter_tag_catalog",
+    ]
+});
+
 /// Level: Recall — same as Balanced but WITHOUT `tf_remove_empty_cut` and WITH `apply_tf_filter_tag_catalog`.
 ///
 /// Pre: `node` is a valid DOM tree. `rd_analysis::mark_data_tables_by_structure` has been called.

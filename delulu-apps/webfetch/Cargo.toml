@@ -72,6 +72,10 @@ name = "diag_tf_pipeline"
 path = "tests/pipeline_trafilatura/diag_tf_pipeline.rs"
 
 [[test]]
+name = "diag_tf_trace"
+path = "tests/pipeline_trafilatura/diag_tf_trace.rs"
+
+[[test]]
 name = "t_webfetch_mcp"
 path = "tests/t_webfetch_mcp.rs"
 required-features = ["mcp"]

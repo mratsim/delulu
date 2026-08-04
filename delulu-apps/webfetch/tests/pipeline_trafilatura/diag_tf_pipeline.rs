@@ -490,6 +490,13 @@ fn diag_main() {
 
 /// Count characters that are in exact duplicate paragraphs.
 /// Splits text on double newlines and sums lengths of paragraphs
+/// that appear more than once.
+///
+/// Each duplicate paragraph's length is NORMALIZED (via `normalize_output`)
+/// before summing, so `dup_chars` is in the same units as `norm_expected.len()`
+/// which `run_batch` subtracts it from (Issue E). Without this, the raw byte
+/// length of a whitespace/NFC-normalized duplicate paragraph was inconsistent
+/// with the normalized expected length and skewed the over/under-filtering ratio.
 fn count_dup_paragraphs(text: &str) -> usize {
     let paragraphs: Vec<&str> = text.split("\n\n").collect();
     let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -501,8 +508,33 @@ fn count_dup_paragraphs(text: &str) -> usize {
     let mut dup_total = 0usize;
     for (key, count) in &seen {
         if *count > 1 {
-            dup_total += key.len() * (count - 1);
+            let norm_len = normalize_output(key).len();
+            dup_total += norm_len * (count - 1);
         }
     }
     dup_total
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn count_dup_paragraphs_uses_normalized_length() {
+        // A duplicated paragraph whose RAW length differs from its NORMALIZED
+        // length: a run of spaces collapses to a single space under normalize_output.
+        let para = format!("alpha{}beta", " ".repeat(30));
+        assert!(para.len() > 20, "paragraph must exceed the >20 filter");
+        let raw_len = para.len();
+        let norm_len = normalize_output(&para).len();
+        assert!(raw_len > norm_len, "raw length should exceed normalized length");
+
+        // The paragraph appears twice (one duplicate) plus a trailing unique one.
+        let raw = format!("{para}\n\n{para}\n\nfinal");
+        assert_eq!(
+            count_dup_paragraphs(&raw),
+            norm_len,
+            "dup_chars should reflect the NORMALIZED duplicate length, not the raw length"
+        );
+    }
 }

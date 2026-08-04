@@ -1,14 +1,12 @@
 //! Per-pass length measurement for a single fixture.
 //! Run: DIAG_ARGS="politico-com-retirement" cargo test -p delulu-webfetch --test diag_tf_trace --features diagnostic -- --nocapture --ignored
 
-use std::path::PathBuf;
-
-use delulu_webfetch::pipelines::trafilatura::TF_BALANCED;
+use delulu_webfetch::pipelines::trafilatura::{TF_BALANCED, TF_BALANCED_NAMES};
 use delulu_webfetch::pipelines::DomNode;
 
 #[path = "test_utils.rs"]
 mod test_utils;
-use test_utils::{fixture_dir, load_test_case_tf, tf_count_text_chars};
+use test_utils::{fixture_dir, load_test_case_tf};
 
 fn count_text_chars(node: &DomNode) -> usize {
     match node {
@@ -49,30 +47,10 @@ fn diag_tf_trace() {
     // Measure initial state
     print_tree_stats(&nodes, "Initial (raw DOM)");
 
-    // Run each pass manually with length measurement
-    let names = [
-        "tf_extract_script_templates",
-        "tf_remove_cleaned",
-        "tf_remove_teaser",
-        "tf_remove_unlikely_candidates",
-        "tf_strip_unwrapped",
-        "tf_remove_empty_cut",
-        "tf_filter_by_link_density",
-        "tf_convert_headings",
-        "tf_convert_lists",
-        "tf_convert_quotes",
-        "tf_convert_formatting",
-        "tf_convert_breaks",
-        "tf_convert_refs_and_details",
-        "tf_canonicalize_strip_non_content",
-        "tf_isolate_content_container",
-        "tf_canonicalize_unwrap_containers",
-        "tf_filter_tag_catalog",
-    ];
-
-    // We need to import the actual functions
-    // Since they're module-level functions, let's use the TF_BALANCED passes
-    // but measure between each one
+    // Name labels come from the same source as the pass list so they cannot
+    // drift (Issue D: the old hardcoded 17-entry list diverged from the real
+    // TF_BALANCED set, which includes *_with_backup wrappers).
+    let names = *TF_BALANCED_NAMES;
 
     let mut tree = nodes;
     let passes = *TF_BALANCED;
