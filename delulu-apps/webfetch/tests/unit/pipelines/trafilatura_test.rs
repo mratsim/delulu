@@ -290,3 +290,48 @@ fn test_recover_wild_paragraphs_exact_duplicates_dedupped() {
     // So appended should be 0 (no new unique text)
     assert_eq!(appended, 0, "exact duplicate should not be appended");
 }
+
+// ── Fix 1: Last-resort fallback returns a CLEANED tree ────────────
+
+#[test]
+fn test_fallback_returns_cleaned_tree() {
+    // A small doc whose cascade produces <500 chars triggers the last-resort
+    // fallback. The fallback must return a CLEANED clone of the original tree,
+    // i.e. <script>/<aside> text removed while <p> content is retained.
+    let html = "<html><body><script>var x = 1;</script><aside>sidebar junk</aside><p>short content</p></body></html>";
+    let mut doc = parse_html(html).unwrap();
+    filter_trafilatura(&mut doc);
+    let text = doc.text_content();
+    assert!(
+        !text.contains("var x = 1"),
+        "fallback output must not contain <script> text"
+    );
+    assert!(
+        !text.contains("sidebar junk"),
+        "fallback output must not contain <aside> text"
+    );
+    assert!(
+        text.contains("short content"),
+        "fallback output must retain <p> content"
+    );
+}
+
+// ── Fix 3: Recall all-<p> safety net ─────────────────────────────────
+
+#[test]
+fn test_recall_cleaning_preserves_all_p() {
+    // A doc whose ONLY <p> lives inside a cleaned tag (<aside>). The recall
+    // cleaning would remove <aside> (and with it the only <p>). The safety net
+    // must restore a <p>-bearing tree rather than emptying it.
+    let html = "<html><body><aside><p>only paragraph</p></aside></body></html>";
+    let mut doc = parse_html(html).unwrap();
+    super::apply_recall_with_p_guard(&mut doc);
+    assert!(
+        super::count_p_elements(&doc) > 0,
+        "recall cleaning must not empty a tree whose only <p> is inside a cleaned tag"
+    );
+    assert!(
+        doc.text_content().contains("only paragraph"),
+        "the <p> content must be retained"
+    );
+}

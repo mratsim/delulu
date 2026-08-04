@@ -429,6 +429,36 @@ fn recover_wild_paragraphs(best_tree: &mut DomNode, original: &DomNode, min_p_le
     appended
 }
 
+/// Count `<p>` elements in a tree (via the same collector used by paragraph recovery).
+fn count_p_elements(node: &DomNode) -> usize {
+    let mut ps = Vec::new();
+    collect_p_elements(node, &mut ps);
+    ps.len()
+}
+
+/// Run the TF_RECALL level with a `<p>`-preservation safety net.
+///
+/// Mirrors Python's `tree_cleaning` safety net (htmlprocessing.py:66-72): if the
+/// recall cleaning would remove EVERY `<p>` element while the pre-clean tree had at
+/// least one, the cleaned (`<p>`-less) result is discarded and the previous
+/// `<p>`-bearing tree is restored. This only triggers in the rare case where cleaning
+/// nukes all `<p>`; normal pages are unaffected.
+fn apply_recall_with_p_guard(node: &mut DomNode) {
+    let pre_count = count_p_elements(node);
+    let backup = node.clone();
+    for pass in *TF_RECALL {
+        pass(node);
+    }
+    let post_count = count_p_elements(node);
+    if pre_count > 0 && post_count == 0 {
+        tracing::warn!(
+            "recall: cleaning would remove all <p> elements ({} before, 0 after); restoring <p>-bearing tree",
+            pre_count,
+        );
+        *node = backup;
+    }
+}
+
 /// Run the Trafilatura extraction pipeline on a parsed DOM tree.
 ///
 /// Pre: `node` is a fully parsed DOM tree with `<html>` root.
@@ -456,8 +486,13 @@ pub fn filter_trafilatura(node: &mut DomNode) {
 
     for (i, level) in levels.iter().enumerate() {
         let mut attempt = original.clone();
-        for pass in *level {
-            pass(&mut attempt);
+        if i == 1 {
+            // Recall level: guard against cleaning that would nuke all <p> elements.
+            apply_recall_with_p_guard(&mut attempt);
+        } else {
+            for pass in *level {
+                pass(&mut attempt);
+            }
         }
 
         let len = attempt.text_len();
@@ -559,7 +594,14 @@ pub fn filter_trafilatura(node: &mut DomNode) {
             "filter_trafilatura: all cascade levels produced <500 chars ({}), falling back to original tree",
             best_len,
         );
-        *node = original;
+        // Last-resort fallback returns a CLEANED clone of the original tree (scripts,
+        // boilerplate containers, etc. removed) rather than the raw, uncleaned DOM.
+        // Mirrors the normal pipeline's cleaning so the fallback output is not polluted
+        // with script/boilerplate text.
+        let mut fallback = original;
+        tf_extract_script_templates(&mut fallback);
+        walk_pre_mut(&mut fallback, &|n| tf_remove_cleaned(n));
+        *node = fallback;
     } else {
         *node = best_tree;
     }

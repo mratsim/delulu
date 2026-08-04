@@ -141,13 +141,6 @@ pub fn tf_extract_script_templates(node: &mut DomNode) {
 /// Reference: Trafilatura `htmlprocessing.py:47-79` `tree_cleaning()`
 pub fn tf_remove_cleaned(node: &mut DomNode) -> WalkerAction {
     match node {
-        // Preserve <head> elements with a rend attribute (converted headings like <head rend="h1">).
-        // Use case-insensitive check for robustness.
-        DomNode::Element { tag, attrs, .. }
-            if tag == "head" && attrs.iter().any(|(k, _)| k.eq_ignore_ascii_case("rend")) =>
-        {
-            WalkerAction::Continue
-        }
         DomNode::Element { tag, .. } if TF_CLEANED_TAGS.contains(&tag.as_str()) => {
             WalkerAction::Remove
         }

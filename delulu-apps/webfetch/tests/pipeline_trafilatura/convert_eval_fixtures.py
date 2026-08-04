@@ -9,7 +9,7 @@ Reads HTML files from ``_references_fetch/trafilatura/tests/eval/`` (and
 For each selected page:
   1. Compress HTML → ``source.html.zst``
   2. Run ``trafilatura.extract(html, output_format="markdown")`` → ``expected.md.zst``
-  3. Write ``with[]`` / ``without[]`` → ``annotations.json``
+  3. Write ``with[]`` / ``without[]`` → ``annotations.json.zst``
 
 Usage:
     python convert_eval_fixtures.py
@@ -18,7 +18,7 @@ Output:
     tests/fixtures-trafilatura/<slug>/
         source.html.zst
         expected.md.zst
-        annotations.json
+        annotations.json.zst
 """
 
 import ast
@@ -312,8 +312,9 @@ def create_fixture(filename, info, force=False):
         "with": info.get("with", []),
         "without": info.get("without", []),
     }
-    with open(os.path.join(fixture_dir, "annotations.json"), "w", encoding="utf-8") as f:
-        json.dump(annotations, f, ensure_ascii=False, indent=2)
+    annotations_compressed = cctx.compress(json.dumps(annotations, ensure_ascii=False, indent=2).encode("utf-8"))
+    with open(os.path.join(fixture_dir, "annotations.json.zst"), "wb") as f:
+        f.write(annotations_compressed)
 
     print(f"  OK   {slug} ({len(html_content)}B HTML, {len(expected_md)}B MD, "
           f"{len(annotations['with'])} with, {len(annotations['without'])} without)")

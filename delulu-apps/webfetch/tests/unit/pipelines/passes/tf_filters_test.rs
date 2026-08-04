@@ -1,6 +1,9 @@
 use super::*;
 use crate::pipelines::parse_html;
 use crate::pipelines::walk_pre_mut;
+use crate::pipelines::passes::tf_transforms::{
+    tf_canonicalize_strip_non_content, tf_convert_headings,
+};
 use std::collections::HashMap;
 
 // ── tf_remove_cleaned ────────────────────────────────────────────────
@@ -28,12 +31,12 @@ fn test_tf_remove_cleaned_keeps_unlisted() {
     assert!(find_tag(&root, "div"), "<div> should be kept");
 }
 #[test]
-fn test_tf_remove_cleaned_preserves_head_with_rend() {
+fn test_tf_remove_cleaned_removes_head_with_rend() {
     let mut root = parse_html("<head rend=\"h1\">Title</head><p>text</p>").unwrap();
     walk_pre_mut(&mut root, &|n| tf_remove_cleaned(n));
     assert!(
-        find_tag(&root, "head"),
-        "<head rend=\"h1\"> should be preserved"
+        !find_tag(&root, "head"),
+        "<head rend=\"h1\"> should be removed (all <head> is cleaned)"
     );
     assert!(find_tag(&root, "p"), "<p> should survive");
 }
@@ -44,6 +47,25 @@ fn test_tf_remove_cleaned_removes_bare_head() {
     walk_pre_mut(&mut root, &|n| tf_remove_cleaned(n));
     assert!(!find_tag(&root, "head"), "bare <head> should be removed");
     assert!(find_tag(&root, "p"), "<p> should survive");
+}
+
+#[test]
+fn test_converted_heading_head_rend_survives_canonicalization() {
+    // A legitimately converted heading (h1 -> <head rend="h1"> via tf_convert_headings)
+    // must still survive tf_canonicalize_strip_non_content. This proves real headings
+    // do NOT depend on the removed <head rend> special-case in tf_remove_cleaned.
+    let mut root = parse_html("<html><body><h1>Real Heading</h1><p>body text</p></body></html>").unwrap();
+    walk_pre_mut(&mut root, &|n| tf_convert_headings(n));
+    assert!(find_tag(&root, "head"), "h1 should be converted to <head rend=h1>");
+    tf_canonicalize_strip_non_content(&mut root);
+    assert!(
+        find_tag(&root, "head"),
+        "converted heading (<head rend=h1>) must survive tf_canonicalize_strip_non_content"
+    );
+    assert!(
+        root.text_content().contains("Real Heading"),
+        "heading text must be retained"
+    );
 }
 
 #[test]
