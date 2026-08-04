@@ -16,9 +16,9 @@
 //! - `detect_retry_level()`: Which retry level produced the best output
 use std::path::PathBuf;
 
+use delulu_webfetch::pipelines::passes::tf_filters::PATTERN_CHECKS;
 use delulu_webfetch::pipelines::{DomNode, parse_html};
 use serde::Deserialize;
-use delulu_webfetch::pipelines::passes::tf_filters::PATTERN_CHECKS;
 
 // ---------------------------------------------------------------------------
 // Fixture directory
@@ -445,15 +445,16 @@ pub fn first_diff_position(a: &str, b: &str) -> Option<(usize, String, String)> 
 ///
 /// - `backup_triggered`: true if ≥80% text was removed and restored
 /// - `items_removed_count`: how many elements `tf_remove_unlikely_candidates`
-///    removed (before any restore) — 0 means nothing matched
+///   removed (before any restore) — 0 means nothing matched
+#[allow(dead_code)]
 pub fn detect_backup_restore(html: &str) -> (bool, u32) {
+    use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_cleaned;
     #[cfg(not(feature = "use-xpath"))]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_unlikely_candidates;
     #[cfg(feature = "use-xpath")]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_unlikely_candidates_xpath as tf_remove_unlikely_candidates;
-    use delulu_webfetch::pipelines::walk_pre_mut;
     use delulu_webfetch::pipelines::trafilatura::with_backup;
-    use delulu_webfetch::pipelines::passes::tf_filters::tf_remove_cleaned;
+    use delulu_webfetch::pipelines::walk_pre_mut;
 
     let root = parse_html(html).expect("parse_html failed");
     let original_len = tf_count_text_chars(&root);
@@ -490,6 +491,7 @@ pub fn detect_backup_restore(html: &str) -> (bool, u32) {
 }
 
 /// Count element nodes in a DOM tree (recursive).
+#[allow(dead_code)]
 fn count_elements(node: &DomNode) -> u32 {
     match node {
         DomNode::Element { children, .. } => 1 + children.iter().map(count_elements).sum::<u32>(),
@@ -512,6 +514,7 @@ fn count_elements(node: &DomNode) -> u32 {
 /// Returns Some(0-4) if a match is found, or None if no container identified.
 /// A Pattern 0 match = strong signal (page structure is well-known).
 /// A Pattern 4 match = weak signal (page may have unusual structure).
+#[allow(dead_code)]
 pub fn detect_body_xpath_pattern(html: &str) -> Option<usize> {
     #[cfg(not(feature = "use-xpath"))]
     use delulu_webfetch::pipelines::passes::tf_filters::tf_isolate_content_container;
@@ -535,6 +538,7 @@ pub fn detect_body_xpath_pattern(html: &str) -> Option<usize> {
 
 /// Walk the tree to determine which BODY_XPATH pattern matched the
 /// surviving container after `tf_isolate_content_container`.
+#[allow(dead_code)]
 fn find_matching_pattern(node: &DomNode) -> Option<usize> {
     match node {
         DomNode::Element {
@@ -568,6 +572,7 @@ fn find_matching_pattern(node: &DomNode) -> Option<usize> {
 }
 
 /// Get an attribute value by name from an attribute list.
+#[allow(dead_code)]
 fn get_attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
     attrs
         .iter()
@@ -581,10 +586,9 @@ fn get_attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
 /// Reporting which level won tells you whether the page needed relaxed
 /// filtering. Frequent Recall wins suggest the Balanced pass is over-filtering
 /// and may need pattern refinement.
+#[allow(dead_code)]
 pub fn detect_retry_level(html: &str) -> usize {
-    use delulu_webfetch::pipelines::trafilatura::{
-        TF_BALANCED, TF_MIN_OUTPUT_CHARS, TF_RECALL,
-    };
+    use delulu_webfetch::pipelines::trafilatura::{TF_BALANCED, TF_MIN_OUTPUT_CHARS, TF_RECALL};
 
     let original = parse_html(html).expect("parse_html failed");
 
@@ -625,6 +629,7 @@ pub fn detect_retry_level(html: &str) -> usize {
 /// Run each pass in the TF_BALANCED pipeline with timing, returning
 /// `(pass_name, duration)` pairs. Only available with the `diagnostic` feature.
 #[cfg(feature = "diagnostic")]
+#[allow(dead_code)]
 pub fn time_passes(html: &str) -> Vec<(String, std::time::Duration)> {
     use delulu_webfetch::pipelines::trafilatura::TF_BALANCED;
     use std::time::Instant;
@@ -660,6 +665,8 @@ pub fn time_passes(html: &str) -> Vec<(String, std::time::Duration)> {
 
 /// Run a slice of passes with retry logic, returning output + metadata.
 /// Mimics `filter_trafilatura`'s retry cascade but allows passing arbitrary passes.
+#[allow(clippy::type_complexity)]
+#[allow(dead_code)]
 pub fn run_passes_with_retry(
     html: &str,
     levels: &[&[&dyn Fn(&mut DomNode)]],
@@ -714,7 +721,8 @@ mod tests {
         let data = "Hello, trafilatura diagnostic!";
         let compressed = zstd::encode_all(data.as_bytes(), 3).expect("compress");
         // Unique per-process path to avoid collisions across concurrent test runs.
-        let tmp = std::env::temp_dir().join(format!("test_decompress_zst_{}.zst", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("test_decompress_zst_{}.zst", std::process::id()));
         std::fs::write(&tmp, &compressed).unwrap();
         let result = decompress_zst(&tmp);
         assert_eq!(result, data);
@@ -873,7 +881,10 @@ mod tests {
         };
         let output = normalize_output("hello  world  foo\u{00a0}bar");
         let cm = compute_confusion_matrix(&output, "", &ann);
-        assert_eq!(cm.tp, 2, "normalized annotations should match normalized output");
+        assert_eq!(
+            cm.tp, 2,
+            "normalized annotations should match normalized output"
+        );
         assert_eq!(cm.fn_, 0);
         assert_eq!(cm.tn, 1, "'spam eggs' absent from normalized output");
         assert_eq!(cm.fp, 0);
@@ -996,7 +1007,11 @@ mod tests {
     fn tf_count_text_chars_counts_chars_not_bytes() {
         // "日本語" is 9 bytes but 3 chars — must count chars.
         let node = text_node("日本語");
-        assert_eq!(tf_count_text_chars(&node), 3, "CJK must count as 3 chars, not 9 bytes");
+        assert_eq!(
+            tf_count_text_chars(&node),
+            3,
+            "CJK must count as 3 chars, not 9 bytes"
+        );
         // "héllo" is 6 bytes but 5 chars.
         assert_eq!(tf_count_text_chars(&text_node("héllo")), 5);
         // Recursive over children.
@@ -1014,7 +1029,11 @@ mod tests {
     fn tf_count_text_bytes_counts_bytes_not_chars() {
         // "日本語" is 9 bytes but 3 chars — must count bytes.
         let node = text_node("日本語");
-        assert_eq!(tf_count_text_bytes(&node), 9, "日本語 must count as 9 bytes, not 3 chars");
+        assert_eq!(
+            tf_count_text_bytes(&node),
+            9,
+            "日本語 must count as 9 bytes, not 3 chars"
+        );
         assert_eq!(tf_count_text_bytes(&text_node("héllo")), 6);
         // Recursive over children.
         let parent = DomNode::Element {

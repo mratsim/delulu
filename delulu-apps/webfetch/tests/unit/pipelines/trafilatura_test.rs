@@ -75,12 +75,7 @@ fn test_with_backup_overflow_safe() {
     // checked_mul returns None -> keep modified tree (no restore, no panic)
     let restored = std::cell::Cell::new(false);
     let mut doc = make_doc(10);
-    with_backup(
-        &mut doc,
-        noop_pass,
-        usize::MAX,
-        |_, _| restored.set(true),
-    );
+    with_backup(&mut doc, noop_pass, usize::MAX, |_, _| restored.set(true));
     assert!(
         !restored.get(),
         "overflow must keep modified tree (no restore)"
@@ -139,15 +134,10 @@ fn test_backup_restore_does_not_reintroduce_cleaned_tags() {
     // `with_backup_wrapper!`. The pass removes >=80% of the text, so the
     // threshold triggers and recovery restores the UNCLEANED backup and
     // re-applies tf_remove_cleaned.
-    with_backup(
-        &mut doc,
-        cleaning_pass,
-        5,
-        |node, backup| {
-            *node = backup.clone();
-            walk_pre_mut(node, &|n| tf_remove_cleaned(n));
-        },
-    );
+    with_backup(&mut doc, cleaning_pass, 5, |node, backup| {
+        *node = backup.clone();
+        walk_pre_mut(node, &|n| tf_remove_cleaned(n));
+    });
 
     // After restore + re-clean, cleaned tags must still be gone,
     // and content must survive.
@@ -437,7 +427,7 @@ fn test_tf_balanced_names_aligned_with_passes() {
 // `crate::wrap_pass!` / `crate::wrap_pass_void!` here failed to compile because
 // their expansions referenced those names unqualified.
 mod hygiene {
-    fn pass(n: &mut crate::pipelines::DomNode) -> crate::pipelines::WalkerAction {
+    fn pass(_n: &mut crate::pipelines::DomNode) -> crate::pipelines::WalkerAction {
         crate::pipelines::WalkerAction::Continue
     }
 

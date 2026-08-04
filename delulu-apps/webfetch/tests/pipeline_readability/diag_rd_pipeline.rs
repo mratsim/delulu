@@ -141,12 +141,7 @@ fn find_first_diff(a: &str, b: &str) -> Option<usize> {
     let chars_a: Vec<char> = a.chars().collect();
     let chars_b: Vec<char> = b.chars().collect();
     let min_len = chars_a.len().min(chars_b.len());
-    for i in 0..min_len {
-        if chars_a[i] != chars_b[i] {
-            return Some(i);
-        }
-    }
-    None
+    (0..min_len).find(|&i| chars_a[i] != chars_b[i])
 }
 
 // ---------------------------------------------------------------------------

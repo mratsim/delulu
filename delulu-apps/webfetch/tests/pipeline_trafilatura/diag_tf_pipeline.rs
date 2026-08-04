@@ -550,7 +550,10 @@ mod tests {
         assert!(para.len() > 20, "paragraph must exceed the >20 filter");
         let raw_len = para.len();
         let norm_len = normalize_output(&para).len();
-        assert!(raw_len > norm_len, "raw length should exceed normalized length");
+        assert!(
+            raw_len > norm_len,
+            "raw length should exceed normalized length"
+        );
 
         // The paragraph appears twice (one duplicate) plus a trailing unique one.
         let raw = format!("{para}\n\n{para}\n\nfinal");

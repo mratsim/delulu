@@ -25,7 +25,6 @@ static HTML_TAG_RE: Lazy<Regex> =
 /// Note: This function is recursive. Stack overflow may occur on DOM trees deeper than ~1000 nodes.
 ///
 /// Reference: Trafilatura `baseline()` in `baseline.py:24-58` (JSON-LD articleBody extraction portion, lines 41-58)
-
 pub(crate) fn extract_jsonld_article_body(node: &DomNode) -> Option<String> {
     match node {
         DomNode::Text(_) => None,

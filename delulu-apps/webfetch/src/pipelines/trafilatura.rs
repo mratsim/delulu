@@ -195,10 +195,10 @@ pub fn apply_tf_isolate_container_with_backup(node: &mut DomNode) {
     );
 }
 
-/// Remove unlikely candidates with backup/restore safety net (XPath version).
-///
-/// Pre: `node` is a valid DOM tree. The tree has been parsed and basic cleaning applied.
-/// Post: Elements matching OVERALL_DISCARD_XPATH patterns are removed. If >=80% of text is removed (threshold: 5×), the node is restored to the backup state.
+// Remove unlikely candidates with backup/restore safety net (XPath version).
+//
+// Pre: `node` is a valid DOM tree. The tree has been parsed and basic cleaning applied.
+// Post: Elements matching OVERALL_DISCARD_XPATH patterns are removed. If >=80% of text is removed (threshold: 5×), the node is restored to the backup state.
 #[cfg(feature = "use-xpath")]
 with_backup_wrapper!(
     apply_tf_remove_unlikely_candidates_xpath_with_backup,
@@ -206,10 +206,10 @@ with_backup_wrapper!(
     5
 );
 
-/// Filter by link density with backup/restore safety net (XPath version).
-///
-/// Pre: `node` is a valid DOM tree. Unlikely candidates have been removed.
-/// Post: Elements with link density >50% are removed. If >=95% of text is removed (threshold: 19×), the node is restored to the backup state.
+// Filter by link density with backup/restore safety net (XPath version).
+//
+// Pre: `node` is a valid DOM tree. Unlikely candidates have been removed.
+// Post: Elements with link density >50% are removed. If >=95% of text is removed (threshold: 19×), the node is restored to the backup state.
 #[cfg(feature = "use-xpath")]
 with_backup_wrapper!(
     apply_tf_filter_by_link_density_xpath_with_backup,

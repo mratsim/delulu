@@ -290,8 +290,10 @@ pub(crate) enum XPathExpr {
     /// A literal number
     Number(f64),
     /// The `text()` node test or function
+    #[allow(dead_code)]
     TextNode,
     /// The `position()` function
+    #[allow(dead_code)]
     Position,
     /// A predicate expression
     Predicate(Box<XPathExpr>),
@@ -330,7 +332,7 @@ pub(crate) enum Axis {
     /// `descendant-or-self::`
     DescendantOrSelf,
     /// `self::`
-    SelfAxis,
+    Self_,
 }
 
 /// A node test in a step.
@@ -351,7 +353,6 @@ pub(crate) enum NodeTest {
 pub(crate) struct Predicate {
     pub(crate) expr: Box<XPathExpr>,
 }
-
 
 // ---------------------------------------------------------------------------
 // Parser
@@ -438,7 +439,6 @@ fn parse_union_expr(
     }
     Ok(left)
 }
-
 
 /// Expand a `descendant-or-self::test[preds]` step into
 /// `descendant-or-self::node()/child::test[preds]` when the step carries a
@@ -615,10 +615,14 @@ fn parse_step_or_primary(
                     } else {
                         "end of input".to_string()
                     };
-                    return Err(XPathError(format!("unexpected token at position {pos}: expected ']', found {found}")));
+                    return Err(XPathError(format!(
+                        "unexpected token at position {pos}: expected ']', found {found}"
+                    )));
                 }
                 *pos += 1;
-                preds.push(Predicate { expr: Box::new(pexpr) });
+                preds.push(Predicate {
+                    expr: Box::new(pexpr),
+                });
             }
             if preds.is_empty() {
                 Ok(expr)
@@ -632,7 +636,7 @@ fn parse_step_or_primary(
             Ok(XPathExpr::Path(PathExpr {
                 initial: Box::new(XPathExpr::Literal(String::new())),
                 steps: vec![Step {
-                    axis: Axis::SelfAxis,
+                    axis: Axis::Self_,
                     node_test: NodeTest::Any,
                     predicates: Vec::new(),
                 }],
@@ -648,7 +652,7 @@ fn parse_step_or_primary(
                 let axis = match name.as_str() {
                     "child" => Axis::Child,
                     "descendant-or-self" => Axis::DescendantOrSelf,
-                    "self" => Axis::SelfAxis,
+                    "self" => Axis::Self_,
                     other => {
                         return Err(XPathError(format!(
                             "unexpected token at position {pos}: expected child, descendant-or-self, or self, found axis '{other}'"
@@ -727,10 +731,10 @@ fn parse_step_or_primary(
                 *pos += 1;
                 Ok(XPathExpr::Attribute(name))
             } else {
-                return Err(XPathError(format!(
+                Err(XPathError(format!(
                     "unexpected token at position {pos}: expected attribute name, found {:?}",
                     tokens[*pos]
-                )));
+                )))
             }
         }
         XPathToken::StringLiteral(s) => {
@@ -771,12 +775,10 @@ fn parse_step_or_primary(
             *pos += 1;
             Ok(XPathExpr::Predicate(Box::new(expr)))
         }
-        _ => {
-            return Err(XPathError(format!(
-                "unexpected token at position {pos}: expected expression (name, @attr, (, ., string, number), found {:?}",
-                tokens[*pos]
-            )));
-        }
+        _ => Err(XPathError(format!(
+            "unexpected token at position {pos}: expected expression (name, @attr, (, ., string, number), found {:?}",
+            tokens[*pos]
+        ))),
     }
 }
 
@@ -976,13 +978,13 @@ fn restore_re_test(
         XPathExpr::FunctionCall { name, args } => {
             if name == "re_test_placeholder" {
                 *name = "re:test".to_string();
-                if args.len() >= 2 {
-                    if let XPathExpr::Literal(pattern) = &args[1] {
-                        let re = Regex::new(pattern).map_err(|e| {
-                            XPathError(format!("invalid regex pattern '{pattern}': {e}"))
-                        })?;
-                        regex_cache.push((pattern.clone(), re));
-                    }
+                if args.len() >= 2
+                    && let XPathExpr::Literal(pattern) = &args[1]
+                {
+                    let re = Regex::new(pattern).map_err(|e| {
+                        XPathError(format!("invalid regex pattern '{pattern}': {e}"))
+                    })?;
+                    regex_cache.push((pattern.clone(), re));
                 }
             }
             for arg in args.iter_mut() {
@@ -1090,8 +1092,10 @@ fn eval_expr<'a>(
             if l_val.is_empty() && r_val.is_empty() {
                 Ok(vec![])
             } else {
-                let l_str = string_value_of_expr(left, &l_val, root, regex_cache, positions, depth + 1)?;
-                let r_str = string_value_of_expr(right, &r_val, root, regex_cache, positions, depth + 1)?;
+                let l_str =
+                    string_value_of_expr(left, &l_val, root, regex_cache, positions, depth + 1)?;
+                let r_str =
+                    string_value_of_expr(right, &r_val, root, regex_cache, positions, depth + 1)?;
                 if l_str == r_str {
                     Ok(vec![context])
                 } else {
@@ -1105,8 +1109,10 @@ fn eval_expr<'a>(
             if l_val.is_empty() && r_val.is_empty() {
                 Ok(vec![])
             } else {
-                let l_str = string_value_of_expr(left, &l_val, root, regex_cache, positions, depth + 1)?;
-                let r_str = string_value_of_expr(right, &r_val, root, regex_cache, positions, depth + 1)?;
+                let l_str =
+                    string_value_of_expr(left, &l_val, root, regex_cache, positions, depth + 1)?;
+                let r_str =
+                    string_value_of_expr(right, &r_val, root, regex_cache, positions, depth + 1)?;
                 if l_str != r_str {
                     Ok(vec![context])
                 } else {
@@ -1121,7 +1127,8 @@ fn eval_expr<'a>(
             // parenthesized forms like `(.//article)[1]`.
             let mut nodes = eval_expr(inner, context, root, regex_cache, positions, depth + 1)?;
             for pred in preds {
-                nodes = apply_predicate(&nodes, &pred.expr, root, regex_cache, positions, depth + 1)?;
+                nodes =
+                    apply_predicate(&nodes, &pred.expr, root, regex_cache, positions, depth + 1)?;
             }
             Ok(nodes)
         }
@@ -1144,7 +1151,14 @@ fn eval_path<'a>(
     }
 
     // Start with the context node(s) from the initial expression
-    let mut current = eval_expr(&pe.initial, context, root, regex_cache, positions, depth + 1)?;
+    let mut current = eval_expr(
+        &pe.initial,
+        context,
+        root,
+        regex_cache,
+        positions,
+        depth + 1,
+    )?;
     if current.is_empty() {
         // If initial is empty (e.g., Literal("") for a step-based path), start with context
         current = vec![context];
@@ -1185,7 +1199,7 @@ fn eval_step<'a>(
             v.extend(dom_descendants(node));
             v
         }
-        Axis::SelfAxis => vec![node],
+        Axis::Self_ => vec![node],
     };
 
     // Filter by node test
@@ -1242,8 +1256,15 @@ fn apply_predicate<'a>(
     // For other predicates, evaluate against each candidate
     let mut result = Vec::new();
     for (i, candidate) in candidates.iter().enumerate() {
-        let pred_result =
-            eval_predicate_expr(expr, candidate, root, regex_cache, positions, depth + 1, i + 1)?;
+        let pred_result = eval_predicate_expr(
+            expr,
+            candidate,
+            root,
+            regex_cache,
+            positions,
+            depth + 1,
+            i + 1,
+        )?;
         if pred_result {
             result.push(*candidate);
         }
@@ -1279,11 +1300,27 @@ fn eval_predicate_expr(
             Ok(!result.is_empty())
         }
         XPathExpr::Or(left, right) => {
-            let l = eval_predicate_expr(left, node, root, regex_cache, positions, depth + 1, position)?;
+            let l = eval_predicate_expr(
+                left,
+                node,
+                root,
+                regex_cache,
+                positions,
+                depth + 1,
+                position,
+            )?;
             if l {
                 return Ok(true);
             }
-            eval_predicate_expr(right, node, root, regex_cache, positions, depth + 1, position)
+            eval_predicate_expr(
+                right,
+                node,
+                root,
+                regex_cache,
+                positions,
+                depth + 1,
+                position,
+            )
         }
         XPathExpr::Attribute(name) => {
             let val = get_attr_value(node, name);
@@ -1307,18 +1344,24 @@ fn eval_predicate_expr(
             Ok(!text.is_empty())
         }
         XPathExpr::Equals(left, right) => {
-            let l_val = string_value_of_expr(left, &[node], root, regex_cache, positions, depth + 1)?;
-            let r_val = string_value_of_expr(right, &[node], root, regex_cache, positions, depth + 1)?;
+            let l_val =
+                string_value_of_expr(left, &[node], root, regex_cache, positions, depth + 1)?;
+            let r_val =
+                string_value_of_expr(right, &[node], root, regex_cache, positions, depth + 1)?;
             Ok(l_val == r_val)
         }
         XPathExpr::NotEquals(left, right) => {
-            let l_val = string_value_of_expr(left, &[node], root, regex_cache, positions, depth + 1)?;
-            let r_val = string_value_of_expr(right, &[node], root, regex_cache, positions, depth + 1)?;
+            let l_val =
+                string_value_of_expr(left, &[node], root, regex_cache, positions, depth + 1)?;
+            let r_val =
+                string_value_of_expr(right, &[node], root, regex_cache, positions, depth + 1)?;
             Ok(l_val != r_val)
         }
         XPathExpr::Position => Ok(true),
         XPathExpr::Predicate(_) => Ok(true),
-        XPathExpr::Group(_, _) => Ok(!eval_expr(expr, node, root, regex_cache, positions, depth + 1)?.is_empty()),
+        XPathExpr::Group(_, _) => {
+            Ok(!eval_expr(expr, node, root, regex_cache, positions, depth + 1)?.is_empty())
+        }
     }
 }
 
@@ -1363,33 +1406,72 @@ fn string_value_of_expr<'a>(
                 }
             } else if name == "translate" {
                 if args.len() < 3 {
-                    return Err(XPathError(format!("wrong argument count for translate: expected 3, found {}", args.len())));
+                    return Err(XPathError(format!(
+                        "wrong argument count for translate: expected 3, found {}",
+                        args.len()
+                    )));
                 }
-                let source_str = string_value_of_expr(&args[0], candidates, root, regex_cache, positions, depth + 1)?;
-                let from_str = string_value_of_expr(&args[1], candidates, root, regex_cache, positions, depth + 1)?;
-                let to_str = string_value_of_expr(&args[2], candidates, root, regex_cache, positions, depth + 1)?;
-                Ok(translate_string(&source_str, &from_str, &to_str))
-            } else if name == "contains" || name == "starts-with" {
-                if args.len() < 2 {
-                    return Err(XPathError(format!("wrong argument count for {}: expected 2, found {}", name, args.len())));
-                }
-                let haystack_str = string_value_of_expr(&args[0], candidates, root, regex_cache, positions, depth + 1)?;
-                let needle_str = string_value_of_expr(&args[1], candidates, root, regex_cache, positions, depth + 1)?;
-                let matched = if name == "contains" {
-                    haystack_str.contains(&needle_str)
-                } else {
-                    haystack_str.starts_with(&needle_str)
-                };
-                Ok(if matched { "true".to_string() } else { "false".to_string() })
-            } else {
-                let result = eval_expr(
-                    expr,
-                    ctx,
+                let source_str = string_value_of_expr(
+                    &args[0],
+                    candidates,
                     root,
                     regex_cache,
                     positions,
                     depth + 1,
                 )?;
+                let from_str = string_value_of_expr(
+                    &args[1],
+                    candidates,
+                    root,
+                    regex_cache,
+                    positions,
+                    depth + 1,
+                )?;
+                let to_str = string_value_of_expr(
+                    &args[2],
+                    candidates,
+                    root,
+                    regex_cache,
+                    positions,
+                    depth + 1,
+                )?;
+                Ok(translate_string(&source_str, &from_str, &to_str))
+            } else if name == "contains" || name == "starts-with" {
+                if args.len() < 2 {
+                    return Err(XPathError(format!(
+                        "wrong argument count for {}: expected 2, found {}",
+                        name,
+                        args.len()
+                    )));
+                }
+                let haystack_str = string_value_of_expr(
+                    &args[0],
+                    candidates,
+                    root,
+                    regex_cache,
+                    positions,
+                    depth + 1,
+                )?;
+                let needle_str = string_value_of_expr(
+                    &args[1],
+                    candidates,
+                    root,
+                    regex_cache,
+                    positions,
+                    depth + 1,
+                )?;
+                let matched = if name == "contains" {
+                    haystack_str.contains(&needle_str)
+                } else {
+                    haystack_str.starts_with(&needle_str)
+                };
+                Ok(if matched {
+                    "true".to_string()
+                } else {
+                    "false".to_string()
+                })
+            } else {
+                let result = eval_expr(expr, ctx, root, regex_cache, positions, depth + 1)?;
                 if let Some(node) = result.first() {
                     Ok(node.text_content())
                 } else {
@@ -1423,13 +1505,17 @@ fn string_value_of_expr<'a>(
             }
         }
         XPathExpr::Equals(left, right) => {
-            let l_val = string_value_of_expr(left, candidates, root, regex_cache, positions, depth + 1)?;
-            let r_val = string_value_of_expr(right, candidates, root, regex_cache, positions, depth + 1)?;
+            let l_val =
+                string_value_of_expr(left, candidates, root, regex_cache, positions, depth + 1)?;
+            let r_val =
+                string_value_of_expr(right, candidates, root, regex_cache, positions, depth + 1)?;
             Ok(format!("{}", l_val == r_val))
         }
         XPathExpr::NotEquals(left, right) => {
-            let l_val = string_value_of_expr(left, candidates, root, regex_cache, positions, depth + 1)?;
-            let r_val = string_value_of_expr(right, candidates, root, regex_cache, positions, depth + 1)?;
+            let l_val =
+                string_value_of_expr(left, candidates, root, regex_cache, positions, depth + 1)?;
+            let r_val =
+                string_value_of_expr(right, candidates, root, regex_cache, positions, depth + 1)?;
             Ok(format!("{}", l_val != r_val))
         }
         _ => {
@@ -1483,9 +1569,9 @@ fn eval_function<'a>(
             let pattern = match &args[1] {
                 XPathExpr::Literal(s) => s.clone(),
                 _ => {
-                    return Err(XPathError(format!(
-                        "type mismatch: expected string literal, found expression"
-                    )));
+                    return Err(XPathError(
+                        "type mismatch: expected string literal, found expression".to_string(),
+                    ));
                 }
             };
 
@@ -1494,10 +1580,10 @@ fn eval_function<'a>(
                 .iter()
                 .find(|(p, _)| p == &pattern)
                 .map(|(_, r)| r);
-            if let Some(re) = re {
-                if re.is_match(&string_val) {
-                    return Ok(vec![context]);
-                }
+            if let Some(re) = re
+                && re.is_match(&string_val)
+            {
+                return Ok(vec![context]);
             }
             Ok(Vec::new())
         }
@@ -1512,7 +1598,8 @@ fn eval_function<'a>(
             let needle = eval_expr(&args[1], context, root, regex_cache, positions, depth + 1)?;
             let haystack_str =
                 string_value_of_expr(&args[0], &haystack, root, regex_cache, positions, depth + 1)?;
-            let needle_str = string_value_of_expr(&args[1], &needle, root, regex_cache, positions, depth + 1)?;
+            let needle_str =
+                string_value_of_expr(&args[1], &needle, root, regex_cache, positions, depth + 1)?;
             if haystack_str.contains(&needle_str) {
                 return Ok(vec![context]);
             }
@@ -1529,7 +1616,8 @@ fn eval_function<'a>(
             let needle = eval_expr(&args[1], context, root, regex_cache, positions, depth + 1)?;
             let haystack_str =
                 string_value_of_expr(&args[0], &haystack, root, regex_cache, positions, depth + 1)?;
-            let needle_str = string_value_of_expr(&args[1], &needle, root, regex_cache, positions, depth + 1)?;
+            let needle_str =
+                string_value_of_expr(&args[1], &needle, root, regex_cache, positions, depth + 1)?;
             if haystack_str.starts_with(&needle_str) {
                 return Ok(vec![context]);
             }
@@ -1545,9 +1633,12 @@ fn eval_function<'a>(
             let source = eval_expr(&args[0], context, root, regex_cache, positions, depth + 1)?;
             let from = eval_expr(&args[1], context, root, regex_cache, positions, depth + 1)?;
             let to = eval_expr(&args[2], context, root, regex_cache, positions, depth + 1)?;
-            let source_str = string_value_of_expr(&args[0], &source, root, regex_cache, positions, depth + 1)?;
-            let from_str = string_value_of_expr(&args[1], &from, root, regex_cache, positions, depth + 1)?;
-            let to_str = string_value_of_expr(&args[2], &to, root, regex_cache, positions, depth + 1)?;
+            let source_str =
+                string_value_of_expr(&args[0], &source, root, regex_cache, positions, depth + 1)?;
+            let from_str =
+                string_value_of_expr(&args[1], &from, root, regex_cache, positions, depth + 1)?;
+            let to_str =
+                string_value_of_expr(&args[2], &to, root, regex_cache, positions, depth + 1)?;
             let translated = translate_string(&source_str, &from_str, &to_str);
             if !translated.is_empty() {
                 return Ok(vec![context]);
@@ -1638,7 +1729,7 @@ fn collect_text_children<'a>(node: &'a DomNode, result: &mut Vec<&'a DomNode>) {
 }
 
 /// Get children of a node.
-fn get_children<'a>(node: &'a DomNode) -> Vec<&'a DomNode> {
+fn get_children(node: &DomNode) -> Vec<&DomNode> {
     match node {
         DomNode::Element { children, .. } => children.iter().collect(),
         _ => Vec::new(),
@@ -1646,7 +1737,7 @@ fn get_children<'a>(node: &'a DomNode) -> Vec<&'a DomNode> {
 }
 
 /// Get all descendants (excluding self) in document order.
-fn dom_descendants<'a>(node: &'a DomNode) -> Vec<&'a DomNode> {
+fn dom_descendants(node: &DomNode) -> Vec<&DomNode> {
     let mut result = Vec::new();
     collect_descendants(node, &mut result, 0);
     result
@@ -1684,8 +1775,8 @@ fn sort_by_document_order<'a>(
     });
 }
 
-fn assign_positions<'a>(
-    node: &'a DomNode,
+fn assign_positions(
+    node: &DomNode,
     positions: &mut HashMap<*const DomNode, usize>,
     next: usize,
 ) -> usize {
@@ -1808,12 +1899,11 @@ mod tests {
                 ),
             ],
         );
-        let result = XPath::compile(
-            ".//*[self::div or self::section][@class='post' or @class='entry'][1]",
-        )
-        .unwrap()
-        .eval(&doc)
-        .unwrap();
+        let result =
+            XPath::compile(".//*[self::div or self::section][@class='post' or @class='entry'][1]")
+                .unwrap()
+                .eval(&doc)
+                .unwrap();
         // Per-parent first matching child: s1 -> c1, s2 -> c3.
         let ids = sorted_ids(&result);
         assert_eq!(ids, vec!["c1", "c3"]);
@@ -2103,7 +2193,8 @@ mod tests {
             vec![("class", "other")],
             vec![make_text("this is a teaser in the text content")],
         );
-        let compiled2 = XPath::compile("contains(translate(@class, 'TE', 'te'), 'teaser')").unwrap();
+        let compiled2 =
+            XPath::compile("contains(translate(@class, 'TE', 'te'), 'teaser')").unwrap();
         let result2 = compiled2.eval(&doc2).unwrap();
         assert_eq!(result2.len(), 0);
     }
@@ -2196,7 +2287,7 @@ mod tests {
         );
         let matched = result.unwrap();
         // Should find some 'a' elements but not all 1010 (limited by MAX_XPATH_DEPTH in collect_descendants)
-        assert!(matched.len() > 0, "should find some 'a' elements");
+        assert!(!matched.is_empty(), "should find some 'a' elements");
         assert!(
             matched.len() < MAX_XPATH_DEPTH + 10,
             "should be bounded by MAX_XPATH_DEPTH"

@@ -472,14 +472,7 @@ fn test_walk_post_mut_should_descend_data_table_guard() {
 
     // Guard: block descent into data tables
     fn is_data_table(node: &DomNode) -> bool {
-        match node {
-            DomNode::Element { metadata, .. }
-                if metadata.get("is_data_table").map(|s| s.as_str()) == Some("true") =>
-            {
-                false
-            }
-            _ => true,
-        }
+        !matches!(node, DomNode::Element { metadata, .. } if metadata.get("is_data_table").map(|s| s.as_str()) == Some("true"))
     }
 
     walk_post_mut(&mut tree, &mut filters, Some(is_data_table));
@@ -590,8 +583,7 @@ fn test_walk_pre_mut_remove_element_preserves_trailing_sibling_text() {
     // leaves the sibling Text node "tail" intact.
     //
     // HTML: <div><span>x</span>tail</div>
-    let mut tree =
-        crate::pipelines::parse_html("<div><span>x</span>tail</div>").expect("parse");
+    let mut tree = crate::pipelines::parse_html("<div><span>x</span>tail</div>").expect("parse");
 
     // Remove the <span> element in pre-order.
     walk_pre_mut(&mut tree, &|n: &mut DomNode| match n {
@@ -607,7 +599,11 @@ fn test_walk_pre_mut_remove_element_preserves_trailing_sibling_text() {
         .expect("div should remain");
     if let DomNode::Element { children, .. } = div {
         // After removing <span>, only the trailing sibling Text "tail" remains.
-        assert_eq!(children.len(), 1, "span removed, tail sibling should remain");
+        assert_eq!(
+            children.len(),
+            1,
+            "span removed, tail sibling should remain"
+        );
         match &children[0] {
             DomNode::Text(t) => assert_eq!(t, "tail", "trailing text must survive removal"),
             other => panic!("expected trailing Text node, got {:?}", other),

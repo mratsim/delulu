@@ -1,8 +1,8 @@
 //! Per-pass length measurement for a single fixture.
 //! Run: DIAG_ARGS="politico-com-retirement" cargo test -p delulu-webfetch --test diag_tf_trace --features diagnostic -- --nocapture --ignored
 
-use delulu_webfetch::pipelines::trafilatura::{TF_BALANCED, TF_BALANCED_NAMES};
 use delulu_webfetch::pipelines::DomNode;
+use delulu_webfetch::pipelines::trafilatura::{TF_BALANCED, TF_BALANCED_NAMES};
 
 #[path = "test_utils.rs"]
 mod test_utils;
@@ -38,7 +38,7 @@ fn diag_tf_trace() {
         return;
     }
 
-    let (mut nodes, _, _) = load_test_case_tf(fixture_name);
+    let (nodes, _, _) = load_test_case_tf(fixture_name);
 
     println!("================================================================");
     println!("  PER-PASS LENGTH TRACE: {}", fixture_name);

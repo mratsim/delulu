@@ -10,6 +10,7 @@ fn find_tag(node: &DomNode, tag: &str) -> bool {
 }
 
 /// Helper struct that captures tracing output into a shared buffer.
+#[allow(dead_code)]
 struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
 
 impl std::io::Write for CaptureWriter {
@@ -24,6 +25,7 @@ impl std::io::Write for CaptureWriter {
 
 /// Run a closure with a tracing subscriber that captures output into a buffer.
 /// Returns the captured buffer so callers can assert on its contents.
+#[allow(dead_code)]
 fn with_captured_tracing<F: FnOnce()>(f: F) -> Arc<Mutex<Vec<u8>>> {
     let buf: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let buf_clone = buf.clone();

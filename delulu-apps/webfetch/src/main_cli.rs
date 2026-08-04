@@ -355,7 +355,10 @@ mod tests {
         // Non-tautological: before the `value_parser = ["tf", "rd"]` fix,
         // `--pipeline=banana` parsed OK and silently fell back to trafilatura.
         let err = Args::try_parse_from(["delulu-fetch", "-i", "-", "--pipeline=banana"]);
-        assert!(err.is_err(), "unknown pipeline must be rejected at parse time");
+        assert!(
+            err.is_err(),
+            "unknown pipeline must be rejected at parse time"
+        );
     }
 
     #[test]

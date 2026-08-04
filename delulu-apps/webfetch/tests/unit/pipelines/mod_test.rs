@@ -1457,4 +1457,3 @@ fn test_link_density_stats_matches_get_inner_text_and_count_link_text() {
     };
     assert_eq!(multi_a.link_density_stats(), (11, 2), "multi_a");
 }
-

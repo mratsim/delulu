@@ -84,7 +84,7 @@ pub const TF_CLEANED_TAGS: &[&str] = &[
 /// be replaced with new ones.
 /// Note: No direct Python trafilatura equivalent — Rust-specific.
 pub fn tf_extract_script_templates(node: &mut DomNode) {
-    fn extract_inner(nodes: &mut Vec<DomNode>) {
+    fn extract_inner(nodes: &mut [DomNode]) {
         let mut i = 0;
         while i < nodes.len() {
             match &mut nodes[i] {
@@ -470,7 +470,7 @@ pub const TF_CUT_EMPTY_TAGS: &[&str] = &[
 /// An element is considered empty if:
 /// - It has no children, OR
 /// - All children are whitespace-only text nodes or void elements like `<br>`.
-/// Reference: Trafilatura `htmlprocessing.py:82-89` `prune_html()` (CUT_EMPTY_ELEMS)
+///   Reference: Trafilatura `htmlprocessing.py:82-89` `prune_html()` (CUT_EMPTY_ELEMS)
 pub fn tf_remove_empty_cut(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, children, .. } if TF_CUT_EMPTY_TAGS.contains(&tag.as_str()) => {
@@ -710,6 +710,7 @@ pub static BODY_XPATH_PATTERN_2_RE: once_cell::sync::Lazy<regex::Regex> =
 /// `(tag, class, id, role, itemprop)` -> bool. Shared by the production
 /// `tf_isolate_content_container` and the test helper `find_matching_pattern`
 /// so both always agree on which pattern matched.
+#[allow(clippy::type_complexity)]
 pub const PATTERN_CHECKS: [fn(&str, &str, &str, &str, &str) -> bool; 5] = [
     |_tag, cv, iv, rv, ipv| {
         ipv == "articleBody"
@@ -737,10 +738,7 @@ pub const PATTERN_CHECKS: [fn(&str, &str, &str, &str, &str) -> bool; 5] = [
             || cv.contains("page-content")
     },
     |tag, cv, iv, rv, _| {
-        tag == "main"
-            || cv.starts_with("main")
-            || iv.starts_with("main")
-            || rv.starts_with("main")
+        tag == "main" || cv.starts_with("main") || iv.starts_with("main") || rv.starts_with("main")
     },
 ];
 pub fn tf_isolate_content_container(node: &mut DomNode) {
@@ -1398,12 +1396,12 @@ pub fn tf_isolate_content_container_xpath(node: &mut DomNode) {
     // matched node, then prune siblings at every level via `apply_path` — the
     // same mechanism the manual `tf_isolate_content_container` uses — instead
     // of only inspecting direct children.
-    if let Some(ptr) = container_ptr {
-        if let DomNode::Element { children, .. } = node {
-            let mut path = Vec::new();
-            if find_node_path(children, ptr, &mut path) {
-                apply_path(children, &path);
-            }
+    if let Some(ptr) = container_ptr
+        && let DomNode::Element { children, .. } = node
+    {
+        let mut path = Vec::new();
+        if find_node_path(children, ptr, &mut path) {
+            apply_path(children, &path);
         }
     }
 }
