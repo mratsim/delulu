@@ -449,7 +449,7 @@ fn parse_path_expr(
     }
 
     // Check for leading / or //
-    let _initial_axis = if *pos < tokens.len() {
+    let initial_axis = if *pos < tokens.len() {
         match &tokens[*pos] {
             XPathToken::Slash => {
                 *pos += 1;
@@ -478,6 +478,14 @@ fn parse_path_expr(
     let expr = match initial {
         XPathExpr::Path(pe) => {
             let mut steps = pe.steps;
+            // Apply a leading / or // axis to the first step (e.g. `//div` ->
+            // descendant-or-self::div, `/div` -> child::div absolute). Preserves
+            // `.//div` (leading self-step) and rejects nothing.
+            if let Some(axis) = initial_axis {
+                if let Some(first) = steps.first_mut() {
+                    first.axis = axis;
+                }
+            }
             // Parse remaining /step or //step
             while *pos < tokens.len() {
                 match &tokens[*pos] {
@@ -1712,6 +1720,44 @@ mod tests {
         let compiled = XPath::compile(".//div").unwrap();
         let result = compiled.eval(&doc).unwrap();
         assert_eq!(result.len(), 1);
+    }
+
+    // Test: leading // matches NESTED descendants (not just direct children)
+    #[test]
+    fn test_eval_leading_double_slash_nested() {
+        // div > div > p : the inner div is a grandchild of the outer div
+        let doc = make_elem(
+            "div",
+            vec![],
+            vec![make_elem(
+                "div",
+                vec![],
+                vec![make_elem("p", vec![], vec![make_text("x")])],
+            )],
+        );
+        let compiled = XPath::compile("//div").unwrap();
+        let result = compiled.eval(&doc).unwrap();
+        // Both the outer div (descendant-or-self from root) and the NESTED inner div match
+        assert_eq!(result.len(), 2);
+    }
+
+    // Test: leading / applies child axis to the first step (absolute-style)
+    #[test]
+    fn test_eval_leading_slash_child() {
+        let doc = make_elem(
+            "html",
+            vec![],
+            vec![make_elem(
+                "body",
+                vec![],
+                vec![make_elem("div", vec![], vec![make_text("x")])],
+            )],
+        );
+        // /div from root: only a direct child div of the context matches
+        let compiled = XPath::compile("/div").unwrap();
+        let result = compiled.eval(&doc).unwrap();
+        // body is the only direct child of html; div is nested, so no match
+        assert_eq!(result.len(), 0);
     }
 
     // Test: self axis
