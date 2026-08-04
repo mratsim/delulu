@@ -1,8 +1,8 @@
 pub mod core;
-pub use crate::core::types;
-pub use crate::core::types::{ExtractionResult, MarkdownDocument, RedditComment};
 pub use crate::core::page_status::{BlockedBy, PageStatus, classify_page};
 pub use crate::core::response::webfetch_raw_response;
+pub use crate::core::types;
+pub use crate::core::types::{ExtractionResult, MarkdownDocument, RedditComment};
 
 pub mod generators;
 pub mod pipelines;
@@ -752,8 +752,6 @@ fn find_first_heading(node: &DomNode, tag: &str) -> Option<String> {
 
 /// Check if an IP address is in a private/internal range.
 /// Used for SSRF protection in the MCP server.
-
-
 pub fn is_private_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {

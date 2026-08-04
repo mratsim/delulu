@@ -51,7 +51,10 @@ fn webfetch_raw_response_article_with_reddit() {
     let json = webfetch_raw_response(&result, &PageStatus::Article);
     let value: serde_json::Value = serde_json::from_str(&json).unwrap();
     let obj = value.as_object().expect("top-level must be an object");
-    assert!(obj.contains_key("Reddit"), "Reddit key must stay at top level");
+    assert!(
+        obj.contains_key("Reddit"),
+        "Reddit key must stay at top level"
+    );
     assert_eq!(obj["page_status"], serde_json::json!({"status": "article"}));
 }
 
@@ -99,7 +102,13 @@ fn webfetch_raw_response_every_page_status_form() {
         let json = webfetch_raw_response(&result, &status);
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         let obj = value.as_object().unwrap();
-        assert!(obj.contains_key("page_status"), "missing page_status for {status:?}");
-        assert!(obj.contains_key("GenericHtml"), "missing GenericHtml for {status:?}");
+        assert!(
+            obj.contains_key("page_status"),
+            "missing page_status for {status:?}"
+        );
+        assert!(
+            obj.contains_key("GenericHtml"),
+            "missing GenericHtml for {status:?}"
+        );
     }
 }

@@ -31,8 +31,11 @@ use delulu_mcp_server_helper::{
     McpServerConfig, PeerAddr, impl_server_handler, run_http, run_stdio, setup_tracing,
 };
 use delulu_rate_limited_crawler::RateLimitedCrawler;
-use delulu_webfetch::{ExtractionResult, MAX_BODY_SIZE, RedditComment, fetch_and_extract, fetch_and_extract_with_status};
 use delulu_webfetch::webfetch_raw_response;
+use delulu_webfetch::{
+    ExtractionResult, MAX_BODY_SIZE, RedditComment, fetch_and_extract,
+    fetch_and_extract_with_status,
+};
 use delulu_webfetch::{is_private_ip, same_subnet_16};
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
@@ -471,7 +474,8 @@ mod tests {
 
     #[test]
     fn test_enrich_date_of_retrieval_preserves_existing_timestamp() {
-        let mut out = "---\ntitle: Test\ndate_of_retrieval: 2025-12-01T00:00:00+00:00\n---\n\nBody".to_string();
+        let mut out = "---\ntitle: Test\ndate_of_retrieval: 2025-12-01T00:00:00+00:00\n---\n\nBody"
+            .to_string();
         let now = "2026-01-15T10:00:00+00:00";
         enrich_date_of_retrieval(&mut out, now);
         // Only replaces exact "N/A" placeholder, not existing timestamps

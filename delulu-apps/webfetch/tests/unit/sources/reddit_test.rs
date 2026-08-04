@@ -236,4 +236,3 @@ fn test_extract_empty_comments() {
     assert!(result.comments.is_empty());
     assert!(!result.comments_truncated);
 }
-

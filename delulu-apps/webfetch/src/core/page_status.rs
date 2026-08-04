@@ -65,9 +65,7 @@ pub enum PageStatus {
     /// The body matched an anti-bot **or consent-wall** signal **and content is
     /// not found**. Occurs on a Cloudflare/CAPTCHA/Anubis challenge page or a
     /// cookie-consent wall.
-    Blocked {
-        by: BlockedBy,
-    },
+    Blocked { by: BlockedBy },
     /// Nothing recognizable. Occurs on a blank/JS-failed/otherwise-empty page.
     /// Documented catch-all that intentionally aggregates genuinely-blank,
     /// JS-failed, short-but-real, auth-required, and geo-blocked pages. This is
@@ -327,13 +325,14 @@ fn is_js_heavy(html: &str, visible_len: usize, script_len: usize) -> bool {
 /// 1. `visible_len >= MEANINGFUL_CONTENT_THRESHOLD` → `Article` (content found
 ///    outranks ALL `Blocked`/`Partial`/`JSHeavy`/`Gallery` signals).
 /// 2. else (content missing), in order:
-///    a. `detect_anti_bot(html)` → `Blocked { by }`;
-///    b. `detect_cookie_consent(html)` → `Blocked { by: CookieConsent }`;
-///    c. `detect_paywall(html)` → `Partial`;
-///    d. JS-heavy (script-dominance / SPA shell / JS-enforcement interstitial)
-///       → `JSHeavy`;
-///    e. `>= GALLERY_IMG_THRESHOLD` `<img>` tags → `Gallery`;
-///    f. else → `Empty`.
+///   a. `detect_anti_bot(html)` → `Blocked { by }`;
+///   b. `detect_cookie_consent(html)` → `Blocked { by: CookieConsent }`;
+///   c. `detect_paywall(html)` → `Partial`;
+///   d. JS-heavy (script-dominance / SPA shell / JS-enforcement interstitial)
+///     → `JSHeavy`;
+///   e. `>= GALLERY_IMG_THRESHOLD` `<img>` tags → `Gallery`;
+///   f. else → `Empty`.
+#[allow(clippy::doc_overindented_list_items, clippy::doc_lazy_continuation)]
 pub fn classify_page(html: &str, visible_len: usize, script_len: usize) -> PageStatus {
     if visible_len >= MEANINGFUL_CONTENT_THRESHOLD {
         return PageStatus::Article;

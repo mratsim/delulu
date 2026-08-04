@@ -200,7 +200,8 @@ async fn test_fetch_and_extract_discourse_from_fixture() {
         ExtractionResult::Discourse {
             title,
             topic_id,
-            posts, ..
+            posts,
+            ..
         } => {
             assert_eq!(
                 title,
@@ -547,7 +548,8 @@ async fn test_fetch_and_extract_discourse_detected_from_html_content() {
         ExtractionResult::Discourse {
             title,
             topic_id,
-            posts, ..
+            posts,
+            ..
         } => {
             assert_eq!(title, "Detected Discourse Topic");
             assert_eq!(topic_id, 54321);
@@ -603,7 +605,8 @@ async fn test_fetch_and_extract_discourse_with_simple_fixture() {
         ExtractionResult::Discourse {
             title,
             topic_id,
-            posts, ..
+            posts,
+            ..
         } => {
             assert_eq!(
                 title,

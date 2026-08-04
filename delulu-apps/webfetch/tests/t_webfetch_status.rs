@@ -8,8 +8,8 @@ use std::time::Duration;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use delulu_webfetch::sources::reddit::RedditExtractor;
 use delulu_webfetch::{
-    BLOCKED_MSG, ExtractionResult, PageStatus, fetch_and_extract,
-    fetch_and_extract_with_status, types::*,
+    BLOCKED_MSG, ExtractionResult, PageStatus, fetch_and_extract, fetch_and_extract_with_status,
+    types::*,
 };
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -52,7 +52,9 @@ async fn spawn_test_server(
     tokio::spawn(async move {
         // Serve an unbounded number of connections (each test may fetch several times).
         loop {
-            let Ok((mut socket, _)) = listener.accept().await else { break };
+            let Ok((mut socket, _)) = listener.accept().await else {
+                break;
+            };
             let _ = socket.write_all(&response).await;
             // Brief pause so the kernel flushes before the connection is closed.
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -134,7 +136,9 @@ async fn test_consent_wall_generic_html_err_and_blocked_cookie_consent() {
         [delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability];
 
     // fetch_and_extract: a content-less consent-walled page hard-fails (Err).
-    let err = fetch_and_extract(&url, &crawler, pipeline.as_slice()).await.unwrap_err();
+    let err = fetch_and_extract(&url, &crawler, pipeline.as_slice())
+        .await
+        .unwrap_err();
     assert!(
         matches!(&err, WebfetchError::Fetch(m) if m == BLOCKED_MSG),
         "expected Fetch(BLOCKED_MSG), got {err:?}"
@@ -193,7 +197,9 @@ async fn test_thin_consent_wall_err_and_blocked_cookie_consent() {
     let pipeline: [delulu_webfetch::pipelines::PassFn; 1] =
         [delulu_webfetch::pipelines::mozilla_readability::filter_mozilla_readability];
 
-    let err = fetch_and_extract(&url, &crawler, pipeline.as_slice()).await.unwrap_err();
+    let err = fetch_and_extract(&url, &crawler, pipeline.as_slice())
+        .await
+        .unwrap_err();
     assert!(matches!(&err, WebfetchError::Fetch(m) if m == BLOCKED_MSG));
 
     let (_, status) = fetch_and_extract_with_status(&url, &crawler, pipeline.as_slice())
@@ -213,7 +219,10 @@ async fn test_thin_consent_wall_err_and_blocked_cookie_consent() {
 
 #[tokio::test]
 async fn test_reddit_direct_extractor_status_article() {
-    let body = load_fixture("tests/fixtures-webfetch", "reddit/reddit-thread-simple.json.zst");
+    let body = load_fixture(
+        "tests/fixtures-webfetch",
+        "reddit/reddit-thread-simple.json.zst",
+    );
     let data = RedditExtractor::extract(&body).expect("RedditExtractor::extract should succeed");
     assert_eq!(data.title, "Hello World from Reddit");
 }
@@ -269,7 +278,11 @@ async fn test_discourse_domain_dispatched_status_article() {
     .expect("Discourse extraction should succeed");
 
     assert!(matches!(result, ExtractionResult::Discourse { .. }));
-    assert_eq!(status, PageStatus::Article, "Discourse success maps to Article");
+    assert_eq!(
+        status,
+        PageStatus::Article,
+        "Discourse success maps to Article"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -278,8 +291,7 @@ async fn test_discourse_domain_dispatched_status_article() {
 
 #[tokio::test]
 async fn test_arxiv_direct_pipeline_status_article() {
-    let fixture_path =
-        fixture_path("tests/fixtures-arxiv", "valida-isa/source.html.zst");
+    let fixture_path = fixture_path("tests/fixtures-arxiv", "valida-isa/source.html.zst");
     let compressed = std::fs::read(&fixture_path).unwrap();
     let decompressed = zstd::decode_all(compressed.as_slice()).unwrap();
     let html = String::from_utf8(decompressed).unwrap();
@@ -334,5 +346,9 @@ async fn test_document_fetch_status_article() {
     .expect("fetch_and_extract_with_status on a PDF should succeed (xberg available)");
 
     assert!(matches!(result, ExtractionResult::GenericHtml { .. }));
-    assert_eq!(status, PageStatus::Article, "Document success maps to Article");
+    assert_eq!(
+        status,
+        PageStatus::Article,
+        "Document success maps to Article"
+    );
 }

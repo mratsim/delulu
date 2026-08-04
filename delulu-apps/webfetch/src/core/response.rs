@@ -32,7 +32,10 @@ pub fn webfetch_raw_response(result: &ExtractionResult, status: &PageStatus) -> 
         "ExtractionResult and all fields are plain Serialize types with no \
          floats or non-string keys, so serialization cannot fail",
     );
-    debug_assert!(value.is_object(), "ExtractionResult must serialize to a JSON object");
+    debug_assert!(
+        value.is_object(),
+        "ExtractionResult must serialize to a JSON object"
+    );
     let obj = value.as_object_mut().expect(
         "ExtractionResult is an externally tagged enum and always serializes \
          to a JSON object",

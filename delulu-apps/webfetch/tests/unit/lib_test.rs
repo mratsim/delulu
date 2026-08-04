@@ -663,14 +663,10 @@ async fn test_injected_generic_html_bot_blocked_equiv() {
     let crawler = test_crawler_no_network();
     let url = "https://example.com/article";
     let bot_body = "<html><body><div class=\"cf-turnstile\"></div></body></html>";
-    let (result, status) = fetch_and_extract_inner_with_body(
-        url,
-        &crawler,
-        &[],
-        bot_body.to_string(),
-    )
-    .await
-    .expect("inner should return Ok with a Blocked status");
+    let (result, status) =
+        fetch_and_extract_inner_with_body(url, &crawler, &[], bot_body.to_string())
+            .await
+            .expect("inner should return Ok with a Blocked status");
     assert!(
         matches!(
             status,
@@ -692,14 +688,9 @@ async fn test_injected_reddit_bot_blocked_both_err() {
     let crawler = test_crawler_no_network();
     let url = "https://www.reddit.com/r/test/comments/abc123/hello_world/";
     let bot_body = "<html>Just a moment... <div class=\"cf-turnstile\"></div></html>";
-    let err = fetch_and_extract_inner_with_body(
-        url,
-        &crawler,
-        &[],
-        bot_body.to_string(),
-    )
-    .await
-    .expect_err("Reddit keeps its hard-fail on bot-blocked bodies");
+    let err = fetch_and_extract_inner_with_body(url, &crawler, &[], bot_body.to_string())
+        .await
+        .expect_err("Reddit keeps its hard-fail on bot-blocked bodies");
     assert!(
         matches!(&err, WebfetchError::Fetch(m) if m == BLOCKED_MSG),
         "expected Fetch(BLOCKED_MSG), got {err:?}"
@@ -715,17 +706,11 @@ async fn test_injected_content_bearing_bot_body_is_article() {
     let crawler = test_crawler_no_network();
     let url = "https://example.com/article";
     let content = "x".repeat(300);
-    let body = format!(
-        "<html><body><div class=\"cf-turnstile\"></div><p>{content}</p></body></html>"
-    );
-    let (result, status) = fetch_and_extract_inner_with_body(
-        url,
-        &crawler,
-        &[],
-        body,
-    )
-    .await
-    .unwrap();
+    let body =
+        format!("<html><body><div class=\"cf-turnstile\"></div><p>{content}</p></body></html>");
+    let (result, status) = fetch_and_extract_inner_with_body(url, &crawler, &[], body)
+        .await
+        .unwrap();
     assert_eq!(status, PageStatus::Article, "content beats the bot marker");
     assert!(
         wrap_blocked_status(result, status).is_ok(),
@@ -741,14 +726,9 @@ async fn test_injected_thin_consent_wall_err_and_blocked() {
     let crawler = test_crawler_no_network();
     let url = "https://example.com/article";
     let body = r#"<html><body><script src="https://consent.google.com/x"></script></body></html>"#;
-    let (result, status) = fetch_and_extract_inner_with_body(
-        url,
-        &crawler,
-        &[],
-        body.to_string(),
-    )
-    .await
-    .unwrap();
+    let (result, status) = fetch_and_extract_inner_with_body(url, &crawler, &[], body.to_string())
+        .await
+        .unwrap();
     assert!(
         matches!(
             status,
@@ -803,10 +783,7 @@ fn assert_no_bot_consent_paywall_markers(body: &str) {
     ];
     let lower = body.to_lowercase();
     for m in MARKERS {
-        assert!(
-            !lower.contains(m),
-            "body must be marker-free, found {m}"
-        );
+        assert!(!lower.contains(m), "body must be marker-free, found {m}");
     }
 }
 

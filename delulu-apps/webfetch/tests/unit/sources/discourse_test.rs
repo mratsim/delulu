@@ -184,4 +184,3 @@ fn test_extract_invalid_json_missing_fields() {
         other => panic!("expected WebfetchError::Parse, got {:?}", other),
     }
 }
-

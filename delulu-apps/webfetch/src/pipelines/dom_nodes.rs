@@ -114,11 +114,12 @@ impl DomNode {
         }
         match self {
             DomNode::Text(_) => 0,
-            DomNode::Element { tag, children, .. }
-                if tag.eq_ignore_ascii_case("script") =>
-                children.iter().map(|c| c.text_len_inner(depth - 1)).sum(),
-            DomNode::Element { children, .. } =>
-                children.iter().map(|c| c.script_len_inner(depth - 1)).sum(),
+            DomNode::Element { tag, children, .. } if tag.eq_ignore_ascii_case("script") => {
+                children.iter().map(|c| c.text_len_inner(depth - 1)).sum()
+            }
+            DomNode::Element { children, .. } => {
+                children.iter().map(|c| c.script_len_inner(depth - 1)).sum()
+            }
             DomNode::Comment(_) | DomNode::Doctype(_) => 0,
         }
     }

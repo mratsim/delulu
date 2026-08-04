@@ -4,31 +4,44 @@ use super::*;
 // exact JSON serialization forms
 // ---------------------------------------------------------------------------
 
-
-
 #[test]
 fn page_status_article_serializes_exact() {
-    assert_eq!(serde_json::to_string(&PageStatus::Article).unwrap(), r#"{"status":"article"}"#);
+    assert_eq!(
+        serde_json::to_string(&PageStatus::Article).unwrap(),
+        r#"{"status":"article"}"#
+    );
 }
 
 #[test]
 fn page_status_partial_serializes_exact() {
-    assert_eq!(serde_json::to_string(&PageStatus::Partial).unwrap(), r#"{"status":"partial"}"#);
+    assert_eq!(
+        serde_json::to_string(&PageStatus::Partial).unwrap(),
+        r#"{"status":"partial"}"#
+    );
 }
 
 #[test]
 fn page_status_js_heavy_serializes_exact() {
-    assert_eq!(serde_json::to_string(&PageStatus::JSHeavy).unwrap(), r#"{"status":"js_heavy"}"#);
+    assert_eq!(
+        serde_json::to_string(&PageStatus::JSHeavy).unwrap(),
+        r#"{"status":"js_heavy"}"#
+    );
 }
 
 #[test]
 fn page_status_gallery_serializes_exact() {
-    assert_eq!(serde_json::to_string(&PageStatus::Gallery).unwrap(), r#"{"status":"gallery"}"#);
+    assert_eq!(
+        serde_json::to_string(&PageStatus::Gallery).unwrap(),
+        r#"{"status":"gallery"}"#
+    );
 }
 
 #[test]
 fn page_status_empty_serializes_exact() {
-    assert_eq!(serde_json::to_string(&PageStatus::Empty).unwrap(), r#"{"status":"empty"}"#);
+    assert_eq!(
+        serde_json::to_string(&PageStatus::Empty).unwrap(),
+        r#"{"status":"empty"}"#
+    );
 }
 
 #[test]
@@ -256,13 +269,19 @@ fn detect_anti_bot_differential_is_bot_detected_implies_some() {
 
 #[test]
 fn cookie_consent_consent_google_com_true() {
-    assert!(detect_cookie_consent(r#"<script src="https://consent.google.com/..."></script>"#));
-    assert!(detect_cookie_consent(r#"<script src="https://consent.google/..."></script>"#));
+    assert!(detect_cookie_consent(
+        r#"<script src="https://consent.google.com/..."></script>"#
+    ));
+    assert!(detect_cookie_consent(
+        r#"<script src="https://consent.google/..."></script>"#
+    ));
 }
 
 #[test]
 fn cookie_consent_tcfapi_true() {
-    assert!(detect_cookie_consent(r#"<script>__tcfapi('addEventListener')</script>"#));
+    assert!(detect_cookie_consent(
+        r#"<script>__tcfapi('addEventListener')</script>"#
+    ));
 }
 
 #[test]
@@ -274,27 +293,39 @@ fn cookie_consent_id_cmp_true() {
 
 #[test]
 fn cookie_consent_onetrust_attr_true_bare_prose_false() {
-    assert!(detect_cookie_consent(r#"<div id="onetrust-consent-sdk"></div>"#));
-    assert!(detect_cookie_consent(r#"<div id="onetrust-banner-sdk"></div>"#));
+    assert!(detect_cookie_consent(
+        r#"<div id="onetrust-consent-sdk"></div>"#
+    ));
+    assert!(detect_cookie_consent(
+        r#"<div id="onetrust-banner-sdk"></div>"#
+    ));
     assert!(!detect_cookie_consent("we use onetrust to manage cookies"));
 }
 
 #[test]
 fn cookie_consent_bare_vendor_prose_false() {
     assert!(!detect_cookie_consent("Our vendor is didomi."));
-    assert!(!detect_cookie_consent("We integrate cookiebot for analytics."));
+    assert!(!detect_cookie_consent(
+        "We integrate cookiebot for analytics."
+    ));
     assert!(!detect_cookie_consent("Powered by consentmanager."));
 }
 
 #[test]
 fn cookie_consent_bare_consent_prose_false() {
-    assert!(!detect_cookie_consent("By continuing you agree to our cookie policy."));
-    assert!(!detect_cookie_consent("We use cookies, see our consent policy."));
+    assert!(!detect_cookie_consent(
+        "By continuing you agree to our cookie policy."
+    ));
+    assert!(!detect_cookie_consent(
+        "We use cookies, see our consent policy."
+    ));
 }
 
 #[test]
 fn cookie_consent_clean_false() {
-    assert!(!detect_cookie_consent("<html><body><p>Normal page</p></body></html>"));
+    assert!(!detect_cookie_consent(
+        "<html><body><p>Normal page</p></body></html>"
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -314,18 +345,24 @@ fn paywall_token_anchored_true() {
     assert!(detect_paywall(r#"<div class="premium-gate"></div>"#));
     assert!(detect_paywall(r#"<div data-premium="1"></div>"#));
     assert!(detect_paywall(r#"<div id="subscription"></div>"#));
-    assert!(detect_paywall(r#"<div class="subscription-gate-outer"></div>"#));
+    assert!(detect_paywall(
+        r#"<div class="subscription-gate-outer"></div>"#
+    ));
 }
 
 #[test]
 fn paywall_prose_only_false() {
-    assert!(!detect_paywall("We offer a premium subscription to all readers."));
+    assert!(!detect_paywall(
+        "We offer a premium subscription to all readers."
+    ));
     assert!(!detect_paywall("This article is behind a metered paywall."));
 }
 
 #[test]
 fn paywall_clean_false() {
-    assert!(!detect_paywall("<html><body><p>Free content</p></body></html>"));
+    assert!(!detect_paywall(
+        "<html><body><p>Free content</p></body></html>"
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -346,8 +383,7 @@ fn classify_full_length_with_cloudflare_marker_is_article() {
 
 #[test]
 fn classify_full_length_with_consent_wall_marker_is_article() {
-    let html = "<html><body><script src=\"https://consent.google.com/x\"></script>"
-        .to_string()
+    let html = "<html><body><script src=\"https://consent.google.com/x\"></script>".to_string()
         + &"y".repeat(250)
         + "</body></html>";
     assert_eq!(classify(&html, 250, 0), PageStatus::Article);
@@ -356,13 +392,16 @@ fn classify_full_length_with_consent_wall_marker_is_article() {
 #[test]
 fn classify_full_length_with_cmp_footer_banner_is_article() {
     // The readable-article-with-CMP-banner case: Article-first beats the marker.
-    for marker in [
-        "__tcfapi",
-        r#"id="onetrust-consent-sdk""#,
-        r#"id="cmp""#,
-    ] {
-        let html = format!("<html><body><div {marker}></div>{}...</body></html>", "z".repeat(220));
-        assert_eq!(classify(&html, 220, 0), PageStatus::Article, "marker: {marker}");
+    for marker in ["__tcfapi", r#"id="onetrust-consent-sdk""#, r#"id="cmp""#] {
+        let html = format!(
+            "<html><body><div {marker}></div>{}...</body></html>",
+            "z".repeat(220)
+        );
+        assert_eq!(
+            classify(&html, 220, 0),
+            PageStatus::Article,
+            "marker: {marker}"
+        );
     }
 }
 
@@ -438,7 +477,9 @@ fn classify_thin_spa_is_js_heavy() {
 
 #[test]
 fn classify_thin_image_dominant_is_gallery() {
-    let imgs: String = (0..8).map(|i| format!(r#"<img src="img{i}.jpg" />"#)).collect();
+    let imgs: String = (0..8)
+        .map(|i| format!(r#"<img src="img{i}.jpg" />"#))
+        .collect();
     let html = format!("<html><body>{imgs}</body></html>");
     assert_eq!(classify(&html, 199, 0), PageStatus::Gallery);
 }
