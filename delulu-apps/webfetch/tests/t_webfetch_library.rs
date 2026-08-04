@@ -47,6 +47,24 @@ fn discourse_json_fixture_body() -> String {
     load_fixture("forum-discourse/ethresear.ch/reed-solomon.json.zst")
 }
 
+/// Discourse JSON body where the server reports MORE posts than are actually
+/// delivered (`posts_count` = 12, but only 3 posts are in the response).
+///
+/// The real fixture has `posts_count == 12` and delivers all 12 posts, so it
+/// cannot distinguish `post_count` (server total) from `posts_returned`
+/// (returned count) — a swapped-field bug in `lib.rs` would go undetected.
+/// Trimming the delivered posts (and keeping `posts_count`) makes the two
+/// values differ, so the assertions below fail if the fields are swapped.
+fn discourse_trimmed_json_fixture_body() -> String {
+    let mut value: serde_json::Value =
+        serde_json::from_str(&discourse_json_fixture_body()).expect("fixture is valid JSON");
+    let posts = value["post_stream"]["posts"]
+        .as_array_mut()
+        .expect("fixture has a posts array");
+    posts.truncate(3);
+    serde_json::to_string(&value).expect("serialize trimmed JSON")
+}
+
 fn generic_html_fixture_body() -> String {
     load_fixture("blog/dankrad.de/pcs-multiproofs.html.zst")
 }
@@ -156,7 +174,10 @@ async fn test_fetch_and_extract_reddit_replies_are_threaded() {
 #[tokio::test]
 async fn test_fetch_and_extract_discourse_from_fixture() {
     let html_body = discourse_html_fixture_body();
-    let json_body = discourse_json_fixture_body();
+    // Use a trimmed JSON body: server reports posts_count=12 but only 3 posts
+    // are delivered, so post_count (server total) and posts_returned (returned)
+    // differ and a swapped-field bug in lib.rs would be caught.
+    let json_body = discourse_trimmed_json_fixture_body();
 
     // Discourse tests need two fetches: first HTML, then JSON.
     // We use a multi-response server approach: first request gets HTML, second gets JSON.
@@ -210,18 +231,20 @@ async fn test_fetch_and_extract_discourse_from_fixture() {
             posts_returned,
             ..
         } => {
-            // Fixture has posts_count=12 and delivers all 12 posts in the
-            // JSON response (known constants, not derived from the code under
-            // test): post_count is the server total, posts_returned is what
-            // was fetched.
+            // Fixture has posts_count=12 on the server, but this test trims the
+            // delivered posts down to 3 (known constants, not derived from the
+            // code under test): post_count is the server total, posts_returned is
+            // what was fetched. The two must differ so a swapped-field bug in
+            // lib.rs cannot slip through.
             assert_eq!(post_count, 12, "fixture posts_count is 12");
-            assert_eq!(posts_returned, 12, "fixture delivers 12 posts");
+            assert_eq!(posts_returned, 3, "only 3 posts delivered in trimmed body");
+            assert_ne!(post_count, posts_returned as u64, "post_count (server total) must differ from posts_returned (returned)");
             assert_eq!(
                 title,
                 "Reed-Solomon erasure code recovery in n*log^2(n) time with FFTs"
             );
             assert_eq!(topic_id, 3039);
-            assert_eq!(posts.len(), 12, "expected 12 posts in fixture");
+            assert_eq!(posts.len(), 3, "expected 3 posts in trimmed fixture");
             assert_eq!(posts[0].username, "vbuterin");
             assert_eq!(posts[1].username, "sourabhniyogi");
         }

@@ -502,6 +502,35 @@ fn test_visible_text_len_excludes_script() {
 }
 
 #[test]
+fn test_visible_text_len_case_insensitive_tags() {
+    // HTML tags are case-insensitive: <SCRIPT>, <Style>, <SVG> must be skipped too.
+    let node = DomNode::Element {
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("visible ".to_string()),
+            DomNode::Element {
+                tag: "SCRIPT".to_string(),
+                attrs: vec![],
+                children: vec![DomNode::Text("hidden".to_string())],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+            DomNode::Element {
+                tag: "Style".to_string(),
+                attrs: vec![],
+                children: vec![DomNode::Text("css".to_string())],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+        ],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
+    };
+    assert_eq!(node.visible_text_len(), 8); // "visible " = 8
+}
+
+#[test]
 fn test_visible_text_len_excludes_style() {
     let node = DomNode::Element {
         tag: "div".to_string(),
@@ -576,6 +605,20 @@ fn test_script_len_counts_text_inside_script_only() {
     // <script>abc</script> -> script_len==3, visible_text_len==0
     let node = DomNode::Element {
         tag: "script".to_string(),
+        attrs: vec![],
+        children: vec![DomNode::Text("abc".to_string())],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
+    };
+    assert_eq!(node.script_len(), 3);
+    assert_eq!(node.visible_text_len(), 0);
+}
+
+#[test]
+fn test_script_len_case_insensitive_tag() {
+    // HTML tags are case-insensitive: <SCRIPT> must still count as script.
+    let node = DomNode::Element {
+        tag: "SCRIPT".to_string(),
         attrs: vec![],
         children: vec![DomNode::Text("abc".to_string())],
         scores: HashMap::new(),
@@ -678,6 +721,29 @@ fn test_link_text_len_counts_only_a() {
             DomNode::Text("before ".to_string()),
             DomNode::Element {
                 tag: "a".to_string(),
+                attrs: vec![],
+                children: vec![DomNode::Text("link".to_string())],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            },
+            DomNode::Text(" after".to_string()),
+        ],
+        scores: HashMap::new(),
+        metadata: HashMap::new(),
+    };
+    assert_eq!(node.link_text_len(), 4); // only "link"
+}
+
+#[test]
+fn test_link_text_len_case_insensitive_tag() {
+    // HTML tags are case-insensitive: <A> must still count as a link.
+    let node = DomNode::Element {
+        tag: "div".to_string(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("before ".to_string()),
+            DomNode::Element {
+                tag: "A".to_string(),
                 attrs: vec![],
                 children: vec![DomNode::Text("link".to_string())],
                 scores: HashMap::new(),

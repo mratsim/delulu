@@ -152,50 +152,31 @@ async fn run_fetch(args: Args) -> Result<(), Error> {
             pass(&mut dom);
         }
 
+        let body = delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(&dom, None);
+        let filtered_html_len = body.len();
+        let result = delulu_webfetch::ExtractionResult::GenericHtml {
+            content_md: MarkdownDocument {
+                frontmatter: String::new(),
+                body,
+            },
+            raw_html_len: html.len(),
+            filtered_html_len,
+        };
+
         match args.output_format.as_deref() {
             Some("html") => {
                 let out_html = delulu_webfetch::generators::gen_html::dom_nodes_to_html(&dom);
                 println!("{out_html}");
             }
             None if args.raw => {
-                let body = delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(&dom, None);
-                let filtered_html_len = body.len();
-                let result = delulu_webfetch::ExtractionResult::GenericHtml {
-                    content_md: MarkdownDocument {
-                        frontmatter: String::new(),
-                        body,
-                    },
-                    raw_html_len: html.len(),
-                    filtered_html_len,
-                };
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
             Some("markdown") | None => {
-                let body = delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(&dom, None);
-                let filtered_html_len = body.len();
-                let result = delulu_webfetch::ExtractionResult::GenericHtml {
-                    content_md: MarkdownDocument {
-                        frontmatter: String::new(),
-                        body,
-                    },
-                    raw_html_len: html.len(),
-                    filtered_html_len,
-                };
                 let md = md_doc_to_string(result);
                 println!("{md}");
             }
             _ => {
                 tracing::warn!("unknown output format, falling back to markdown");
-                let body = delulu_webfetch::generators::gen_md::MarkdownLowerer::lower(&dom, None);
-                let filtered_html_len = body.len();
-                let result = delulu_webfetch::ExtractionResult::GenericHtml {
-                    content_md: MarkdownDocument {
-                        frontmatter: String::new(),
-                        body,
-                    },
-                    raw_html_len: html.len(),
-                    filtered_html_len,
-                };
                 let md = md_doc_to_string(result);
                 println!("{md}");
             }

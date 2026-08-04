@@ -89,10 +89,12 @@ impl DomNode {
         match self {
             DomNode::Text(t) => t.len(),
             DomNode::Element { tag, children, .. }
-                if matches!(
-                    tag.as_str(),
-                    "script" | "style" | "svg" | "canvas" | "template" | "noscript"
-                ) =>
+                if tag.eq_ignore_ascii_case("script")
+                    || tag.eq_ignore_ascii_case("style")
+                    || tag.eq_ignore_ascii_case("svg")
+                    || tag.eq_ignore_ascii_case("canvas")
+                    || tag.eq_ignore_ascii_case("template")
+                    || tag.eq_ignore_ascii_case("noscript") =>
             {
                 0
             }
@@ -148,7 +150,7 @@ impl DomNode {
         }
         match self {
             DomNode::Text(_) => 0,
-            DomNode::Element { tag, children, .. } if tag == "a" => {
+            DomNode::Element { tag, children, .. } if tag.eq_ignore_ascii_case("a") => {
                 children.iter().map(|c| c.text_len_inner(depth - 1)).sum()
             }
             DomNode::Element { children, .. } => children
