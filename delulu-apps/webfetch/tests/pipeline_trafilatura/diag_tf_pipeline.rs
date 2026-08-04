@@ -452,7 +452,13 @@ fn diag_main() {
     while i < args.len() {
         if args[i] == "--fixtures-dir" {
             i += 1;
-            fixtures_arg = Some(PathBuf::from(args[i].clone()));
+            match args.get(i) {
+                Some(v) => fixtures_arg = Some(PathBuf::from(v.clone())),
+                None => {
+                    eprintln!("Error: --fixtures-dir requires a value (got none).");
+                    return;
+                }
+            }
         } else {
             mode_args.push(args[i].clone());
         }

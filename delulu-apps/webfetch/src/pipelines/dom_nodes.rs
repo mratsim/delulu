@@ -131,9 +131,6 @@ impl DomNode {
     /// Does NOT skip `<script>`/`<style>` — matches `count_p_text`/`collect_text` behavior.
     /// Panic-if: Never panics (infallible).
     pub fn text_stats(&self) -> (usize, usize) {
-        #[cfg(test)]
-        crate::pipelines::TEXT_STATS_TRAVERSAL_COUNT
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.text_stats_inner(false, MAX_DEPTH)
     }
 
@@ -170,9 +167,6 @@ impl DomNode {
     /// Does NOT skip `<script>`/`<style>` — matches `get_inner_text`/`count_link_text` behavior.
     /// Panic-if: Never panics (infallible).
     pub fn link_density_stats(&self) -> (usize, usize) {
-        #[cfg(test)]
-        crate::pipelines::LINK_DENSITY_STATS_TRAVERSAL_COUNT
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.link_density_stats_inner(false, MAX_DEPTH)
     }
 

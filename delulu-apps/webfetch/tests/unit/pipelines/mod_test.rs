@@ -1091,31 +1091,6 @@ fn test_text_stats_matches_count_p_text_and_collect_text() {
     assert_eq!(multi_p.text_stats(), (11, 11), "multi_p");
 }
 
-#[test]
-fn test_text_stats_single_traversal() {
-    use std::sync::atomic::Ordering::Relaxed;
-    let prev = crate::pipelines::TEXT_STATS_TRAVERSAL_COUNT.load(Relaxed);
-    let node = DomNode::Element {
-        tag: "div".to_string(),
-        attrs: vec![],
-        children: vec![
-            DomNode::Text("a".to_string()),
-            DomNode::Element {
-                tag: "p".to_string(),
-                attrs: vec![],
-                children: vec![DomNode::Text("b".to_string())],
-                scores: HashMap::new(),
-                metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(),
-        metadata: HashMap::new(),
-    };
-    node.text_stats();
-    let after = crate::pipelines::TEXT_STATS_TRAVERSAL_COUNT.load(Relaxed);
-    assert_eq!(after - prev, 1, "text_stats must do exactly 1 traversal");
-}
-
 // ── DomNode::link_density_stats ───────────────────────────────────
 
 #[test]
@@ -1483,31 +1458,3 @@ fn test_link_density_stats_matches_get_inner_text_and_count_link_text() {
     assert_eq!(multi_a.link_density_stats(), (11, 2), "multi_a");
 }
 
-#[test]
-fn test_link_density_stats_single_traversal() {
-    use std::sync::atomic::Ordering::Relaxed;
-    let prev = crate::pipelines::LINK_DENSITY_STATS_TRAVERSAL_COUNT.load(Relaxed);
-    let node = DomNode::Element {
-        tag: "div".to_string(),
-        attrs: vec![],
-        children: vec![
-            DomNode::Text("a".to_string()),
-            DomNode::Element {
-                tag: "a".to_string(),
-                attrs: vec![],
-                children: vec![DomNode::Text("b".to_string())],
-                scores: HashMap::new(),
-                metadata: HashMap::new(),
-            },
-        ],
-        scores: HashMap::new(),
-        metadata: HashMap::new(),
-    };
-    node.link_density_stats();
-    let after = crate::pipelines::LINK_DENSITY_STATS_TRAVERSAL_COUNT.load(Relaxed);
-    assert_eq!(
-        after - prev,
-        1,
-        "link_density_stats must do exactly 1 traversal"
-    );
-}

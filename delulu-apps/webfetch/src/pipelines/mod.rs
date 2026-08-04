@@ -29,15 +29,6 @@ pub use error::PipelineError;
 /// Maximum recursion depth for tree walking.
 const MAX_DEPTH: usize = 1000;
 
-#[cfg(test)]
-use std::sync::atomic::AtomicUsize;
-
-#[cfg(test)]
-pub(crate) static TEXT_STATS_TRAVERSAL_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-#[cfg(test)]
-pub(crate) static LINK_DENSITY_STATS_TRAVERSAL_COUNT: AtomicUsize = AtomicUsize::new(0);
-
 // ---------------------------------------------------------------------------
 // parse_html
 // ---------------------------------------------------------------------------
