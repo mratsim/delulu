@@ -101,6 +101,7 @@ pub fn find_binary() -> Result<PathBuf> {
 ///   - stdout: readable, newline-delimited JSON responses
 ///   - stderr: inherited by the test process (via Stdio::inherit())
 ///   - kill_on_drop: true (prevents orphan processes)
+///
 /// Returns Err: `path` does not exist or is not executable.
 /// Returns Err: Server process exits immediately.
 pub async fn spawn_stdio_server(path: &Path) -> Result<(Child, ChildStdin, ChildStdout)> {
@@ -121,6 +122,7 @@ pub async fn spawn_stdio_server(path: &Path) -> Result<(Child, ChildStdin, Child
 /// Postcondition: Returns the JSON-RPC response with matching `id`, or times out.
 ///   - Notification messages (no `id` field) are skipped and discarded.
 ///   - Responses with non-matching `id` are NOT discarded (only the one matching `expected_id` is returned).
+///
 /// Returns Err: Timeout expires.
 /// Returns Err: stdout stream ends unexpectedly (server crash).
 pub async fn read_json_response(

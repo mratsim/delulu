@@ -21,7 +21,7 @@ use super::{
     DuckDuckGoContinuation, DuckDuckGoEngine, extract_json_from_js, html_entity_decode,
     parse_ddg_date, parse_iso_with_tz, parse_naive_iso, validate_n_token,
 };
-use crate::{Continuation, SearchParams, WebsearchError};
+use crate::{SearchParams, WebsearchError};
 
 #[test]
 fn extract_json_from_js_works() {

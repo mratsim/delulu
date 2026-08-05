@@ -18,7 +18,7 @@
 //! Unit tests for Brave search engine backend.
 
 use super::{BraveContinuation, BraveEngine, strip_date_prefix};
-use crate::{Continuation, SearchParams};
+use crate::SearchParams;
 
 #[test]
 fn build_search_url_basic() {

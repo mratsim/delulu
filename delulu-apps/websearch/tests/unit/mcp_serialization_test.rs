@@ -283,10 +283,7 @@ mod tests {
         // ParseFailed
         let err = WebsearchError::ParseFailed {
             parser: "duckduckgo_djs",
-            source: Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "parse error",
-            )),
+            source: Box::new(std::io::Error::other("parse error")),
         };
         let msg = sanitize_error_for_client(&err);
         assert_eq!(msg, "Search engine parse error (duckduckgo_djs)");

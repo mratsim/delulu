@@ -41,7 +41,7 @@ fn error_display_http_status() {
 fn error_display_parse_failed() {
     let err = WebsearchError::ParseFailed {
         parser: "test_parser",
-        source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "bad data")),
+        source: Box::new(std::io::Error::other("bad data")),
     };
     let msg = err.to_string();
     assert!(msg.contains("Parse failed in test_parser"));

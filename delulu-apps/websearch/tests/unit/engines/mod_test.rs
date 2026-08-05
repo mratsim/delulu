@@ -23,13 +23,13 @@ use std::sync::Arc;
 
 #[test]
 fn registry_empty_on_new() {
-    let mut registry = EngineRegistry::new();
+    let registry = EngineRegistry::new();
     assert!(registry.list_engines().is_empty());
 }
 
 #[test]
 fn registry_get_nonexistent() {
-    let mut registry = EngineRegistry::new();
+    let registry = EngineRegistry::new();
     assert!(registry.get_engine("nonexistent").is_none());
 }
 

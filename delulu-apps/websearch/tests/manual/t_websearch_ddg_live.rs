@@ -26,7 +26,7 @@
 
 use anyhow::Result;
 use delulu_websearch::engines::create_default_registry;
-use delulu_websearch::{Engine, EngineRef, SearchParams};
+use delulu_websearch::SearchParams;
 
 fn print_results(label: &str, results: &[delulu_websearch::SearchResult]) {
     println!(
