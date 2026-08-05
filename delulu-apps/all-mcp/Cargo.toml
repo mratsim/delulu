@@ -19,6 +19,8 @@ mcp = [
     "dep:delulu-paper-search-arxiv",
     "dep:delulu-paper-search-iacr",
     "dep:delulu-paper-search-pubmed",
+    "dep:tracing",
+    "dep:tokio",
 ]
 
 [dependencies]
@@ -27,6 +29,8 @@ url = { version = "2", optional = true }
 rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
 delulu-mcp-server-helper = { path = "../../delulu-internals/mcp-server-helper", optional = true }
 delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
+tracing = { version = "0.1", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util"], optional = true }
 delulu-webfetch = { path = "../webfetch", optional = true, features = ["mcp"] }
 delulu-websearch = { path = "../websearch", optional = true, features = ["mcp"] }
 delulu-travel-search = { path = "../travel-search", optional = true, features = ["mcp"] }

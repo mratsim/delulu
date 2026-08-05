@@ -19,8 +19,9 @@
 //! MCP types for the unified all-mcp server (feature `mcp`).
 //!
 //! Holds the merged `AllMcpConfig` CLI flags, the owning-server enum
-//! `ServerId`, and the single source of truth `TOOL_ROUTES` table that
-//! maps all-mcp tool names to their owning server and inner tool name.
+//! `ServerId`, the single source of truth `TOOL_ROUTES` table that
+//! maps all-mcp tool names to their owning server and inner tool name, and
+//! the hand-written `AllServer` delegator that serves the 21-tool union.
 
 /// Identifier for the inner server that owns a tool.
 ///
@@ -50,10 +51,10 @@ pub enum ServerId {
 /// The 21-tool union, as (all-mcp name, owning server, inner tool name).
 ///
 /// Single source of truth for both `list_tools` and `call_tool`: the three
-/// colliding `get_paper` tools are renamed to `arxiv_get_paper`,
-/// `iacr_get_paper`, and `pubmed_get_paper`; the remaining 18 names are
-/// already unique and kept identical. Inner name is what is forwarded to the
-/// owning server's macro-generated tool handler.
+/// colliding `get_paper` tools are
+/// renamed to `arxiv_get_paper`, `iacr_get_paper`, and `pubmed_get_paper`; the
+/// remaining 18 names are already unique and kept identical. Inner name is what
+/// is forwarded to the owning server's macro-generated tool handler.
 pub static TOOL_ROUTES: &[(&str, ServerId, &str)] = &[
     // webfetch (3)
     ("webfetch", ServerId::Webfetch, "webfetch"),
@@ -88,11 +89,11 @@ pub static TOOL_ROUTES: &[(&str, ServerId, &str)] = &[
 ///
 /// Pre: all default values are valid (rates within 1..=10000, max size within
 /// 1..=1024, URLs parseable).
-/// Post: the `--expose-local-networks`, `--qps`, `--burst`, and
-/// `--max-resp-size-mb` flags are consumed by the server's crawler factory;
-/// the `--*-api-base-url` flags carry the upstream API base URLs that the
-/// paper servers (re)target. Rate and size values are validated: an
-/// out-of-range value is rejected at parse time.
+/// Post: the `--qps`, `--burst`, and `--max-resp-size-mb` flags drive the
+/// shared crawler built by `main`; `--expose-local-networks` and the
+/// `--*-api-base-url` flags are read by `AllServer::new` (webfetch SSRF
+/// policy and the paper servers' API base URLs respectively). Rate and size
+/// values are validated: an out-of-range value is rejected at parse time.
 /// Panic-if: `clap` rejects a value outside the declared ranges before this
 /// struct is constructed.
 #[derive(Debug, Clone, clap::Args)]
@@ -139,5 +140,248 @@ fn parse_url(s: &str) -> Result<String, String> {
         other => Err(format!(
             "invalid URL '{s}': scheme '{other}' is not allowed (expected http or https)"
         )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AllServer — hand-written delegator
+// ---------------------------------------------------------------------------
+
+use delulu_mcp_server_helper::rmcp::handler::server::ServerHandler;
+use delulu_mcp_server_helper::rmcp::model::{
+    CallToolRequestParam, CallToolResult, ErrorData, Implementation, ListToolsResult,
+    PaginatedRequestParam, ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
+    ToolsCapability,
+};
+use delulu_mcp_server_helper::rmcp::service::RequestContext;
+use delulu_mcp_server_helper::rmcp::RoleServer;
+use delulu_paper_search_arxiv::{ArxivClient, ArxivMcpServer};
+use delulu_paper_search_iacr::{IacrClient, IacrMcpServer};
+use delulu_paper_search_pubmed::{PubmedClient, PubmedMcpServer};
+use delulu_rate_limited_crawler::RateLimitedCrawler;
+use delulu_travel_search::{GoogleFlightsClient, GoogleHotelsClient, TravelAgentServer};
+use delulu_websearch::engines::create_registry_with_crawler;
+use delulu_websearch::{SessionCache, WebsearchServer};
+use delulu_webfetch::WebfetchServer;
+use std::borrow::Cow;
+use std::future::Future;
+use std::sync::Arc;
+use std::time::Duration;
+
+/// The unified all-mcp server exposing the 21-tool union across webfetch,
+/// websearch, travel, and the three paper-search crates.
+///
+/// Constructed once with a single shared [`RateLimitedCrawler`]; each inner
+/// server delegates to its own macro-generated `ServerHandler`.
+///
+/// Pre: `config` is a validated [`AllMcpConfig`]; `crawler` is a fully
+/// configured `Arc<RateLimitedCrawler>` shared by all six inner servers.
+/// Post: all six inner servers are constructed with `crawler` cloned by
+/// reference; the crate is ready to serve the full 21-tool union.
+/// Panic-if: never (infallible constructor).
+#[derive(Clone)]
+pub struct AllServer {
+    webfetch: WebfetchServer,
+    websearch: WebsearchServer,
+    travel: TravelAgentServer,
+    arxiv: ArxivMcpServer,
+    iacr: IacrMcpServer,
+    pubmed: PubmedMcpServer,
+}
+
+impl AllServer {
+    /// Create a new unified all-mcp server.
+    ///
+    /// Pre: `config` carries the merged CLI flags; `crawler` is the one shared
+    /// crawler built by `main()` from the rate fields.
+    /// Post: returns an `AllServer` holding all six inner MCP servers, each
+    ///     sharing the same `crawler` via `Arc::clone`. The three rate fields
+    ///     (`qps`, `burst`, `max_resp_size_mb`) are **not** read here — they
+    ///     are consumed upstream by `main()` when building the crawler.
+    /// Panic-if: never (infallible constructor).
+    pub fn new(config: AllMcpConfig, crawler: Arc<RateLimitedCrawler>) -> Self {
+        let webfetch = WebfetchServer::new(Arc::clone(&crawler), config.expose_local_networks);
+
+        let websearch = {
+            let registry = Arc::new(create_registry_with_crawler(Arc::clone(&crawler)));
+            let session_cache = Arc::new(SessionCache::new(512, Duration::from_secs(600)));
+            WebsearchServer::new(registry, session_cache)
+        };
+
+        let travel = {
+            let flights = GoogleFlightsClient::new_with_crawler(Arc::clone(&crawler), "en", "USD");
+            let hotels = GoogleHotelsClient::new_with_crawler(Arc::clone(&crawler));
+            TravelAgentServer::new(Arc::new(flights), Arc::new(hotels))
+        };
+
+        let arxiv = {
+            let client = ArxivClient::new_with_crawler(Arc::clone(&crawler))
+                .with_api_url(config.arxiv_api_base_url);
+            ArxivMcpServer::new(Arc::new(client))
+        };
+
+        let iacr = {
+            let client = IacrClient::new_with_crawler(Arc::clone(&crawler))
+                .with_base_url(config.iacr_api_base_url);
+            IacrMcpServer::new(Arc::new(client))
+        };
+
+        let pubmed = {
+            let client = PubmedClient::new_with_crawler(Arc::clone(&crawler))
+                .with_api_url(config.pubmed_api_base_url);
+            PubmedMcpServer::new(Arc::new(client))
+        };
+
+        Self {
+            webfetch,
+            websearch,
+            travel,
+            arxiv,
+            iacr,
+            pubmed,
+        }
+    }
+
+    /// Union of the six inner servers' tool lists, renamed per `TOOL_ROUTES`.
+    ///
+    /// Only the three colliding `get_paper` tools change name; the other 18
+    /// descriptions and input schemas are kept byte-identical (no description
+    /// suffix).
+    ///
+    /// Pre: `ctx` is the current request context for a `list_tools` call.
+    /// Post: returns the 21-tool union in `TOOL_ROUTES` order, each tool
+    ///     carrying its owning inner server's description and schema.
+    /// Panic-if: never (errors are returned).
+    async fn collect_tools(&self, ctx: RequestContext<RoleServer>) -> Result<Vec<Tool>, ErrorData> {
+        let webfetch = self.webfetch.list_tools(None, ctx.clone()).await?;
+        let websearch = self.websearch.list_tools(None, ctx.clone()).await?;
+        let travel = self.travel.list_tools(None, ctx.clone()).await?;
+        let arxiv = self.arxiv.list_tools(None, ctx.clone()).await?;
+        let iacr = self.iacr.list_tools(None, ctx.clone()).await?;
+        let pubmed = self.pubmed.list_tools(None, ctx.clone()).await?;
+
+        let mut emitted = Vec::with_capacity(TOOL_ROUTES.len());
+
+        for (route_name, server_id, inner_name) in TOOL_ROUTES {
+            let inner_tools = match server_id {
+                ServerId::Webfetch => &webfetch.tools,
+                ServerId::Websearch => &websearch.tools,
+                ServerId::Travel => &travel.tools,
+                ServerId::Arxiv => &arxiv.tools,
+                ServerId::Iacr => &iacr.tools,
+                ServerId::Pubmed => &pubmed.tools,
+            };
+
+            let orig = inner_tools.iter().find(|t| t.name.as_ref() == *inner_name);
+            match orig {
+                Some(tool) => {
+                    let out = if *route_name == *inner_name {
+                        tool.clone()
+                    } else {
+                        // The 3 colliding `get_paper` tools are renamed; the
+                        // description and input schema are kept byte-identical.
+                        Tool {
+                            name: Cow::Owned((*route_name).to_string()),
+                            ..tool.clone()
+                        }
+                    };
+                    emitted.push(out);
+                }
+                None => {
+                    tracing::error!(
+                        "all-mcp route '{route_name}' -> inner '{inner_name}' ({server_id:?}) has no matching live tool"
+                    );
+                    debug_assert!(
+                        false,
+                        "route '{route_name}' -> '{inner_name}' not in {server_id:?} live tools"
+                    );
+                }
+            }
+        }
+
+        Ok(emitted)
+    }
+}
+
+impl ServerHandler for AllServer {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            protocol_version: ProtocolVersion::V_2025_03_26,
+            capabilities: ServerCapabilities {
+                tools: Some(ToolsCapability::default()),
+                ..Default::default()
+            },
+            server_info: Implementation::from_build_env(),
+            instructions: None,
+        }
+    }
+
+    fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
+        Box::pin(async move {
+            let tools = self.collect_tools(context).await?;
+            Ok(ListToolsResult::with_all_items(tools))
+        })
+    }
+
+    fn call_tool(
+        &self,
+        request: CallToolRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<CallToolResult, ErrorData>> + Send + '_ {
+        // Read the all-mcp tool name off the request (NOT request.params).
+        let all_name = request.name.as_ref().to_string();
+        tracing::debug!(tool = %all_name, "call_tool dispatch");
+
+        // Clone/copy the static route out before matching on `request`.
+        let route = TOOL_ROUTES.iter().find(|&&(n, _, _)| n == all_name).copied();
+
+        Box::pin(async move {
+            let (server_id, inner_name, needs_rename) = match route {
+                Some((rn, sid, inner)) => (sid, inner, inner != rn),
+                None => {
+                    // The did-you-mean hint is derived from `TOOL_ROUTES`: the
+                    // colliding `get_paper` tools that were renamed to their
+                    // all-mcp names.
+                    let msg = if all_name == "get_paper" {
+                        let alternatives = TOOL_ROUTES
+                            .iter()
+                            .filter(|(name, _, inner)| *inner == "get_paper" && *name != "get_paper")
+                            .map(|(name, _, _)| *name)
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("tool not found: 'get_paper'. Did you mean {alternatives}?")
+                    } else {
+                        "tool not found".to_string()
+                    };
+                    tracing::warn!(tool = %all_name, "{msg}");
+                    return Err(ErrorData::invalid_params(msg, None));
+                }
+            };
+
+            // For the 3 renamed tools, rewrite the name to the inner tool name;
+            // for the other 18 forward the original request untouched.
+            let forward = if needs_rename {
+                CallToolRequestParam {
+                    name: Cow::Owned(inner_name.to_string()),
+                    arguments: request.arguments.clone(),
+                    task: request.task.clone(),
+                }
+            } else {
+                request
+            };
+
+            match server_id {
+                ServerId::Webfetch => self.webfetch.call_tool(forward, context).await,
+                ServerId::Websearch => self.websearch.call_tool(forward, context).await,
+                ServerId::Travel => self.travel.call_tool(forward, context).await,
+                ServerId::Arxiv => self.arxiv.call_tool(forward, context).await,
+                ServerId::Iacr => self.iacr.call_tool(forward, context).await,
+                ServerId::Pubmed => self.pubmed.call_tool(forward, context).await,
+            }
+        })
     }
 }
