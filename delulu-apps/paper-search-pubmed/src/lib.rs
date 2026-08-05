@@ -20,8 +20,15 @@
 //! Provides:
 //! - `core` module: Paper, SearchQuery, and all response parsers
 //! - `PubmedClient`: HTTP client wrapping `RateLimitedCrawler` for NCBI E-utilities
+//! - `lib_mcp` module (feature `mcp`): the `PubmedMcpServer` MCP server
 
 pub mod core;
+
+#[cfg(feature = "mcp")]
+pub mod lib_mcp;
+
+#[cfg(feature = "mcp")]
+pub use lib_mcp::PubmedMcpServer;
 
 use anyhow::{Context, Result};
 use core::{Paper, SearchQuery, SearchResult};
@@ -43,6 +50,19 @@ pub struct PubmedClient {
 }
 
 impl PubmedClient {
+    /// Construct a `PubmedClient` sharing a caller-provided rate-limited crawler.
+    ///
+    /// Pre: `crawler` is a fully configured `RateLimitedCrawler` (rates/timeouts set by the caller).
+    /// Post: the returned client shares the given `crawler` and uses the default PubMed API and base URLs.
+    /// Panic-if: never (infallible constructor).
+    pub fn new_with_crawler(crawler: Arc<RateLimitedCrawler>) -> Self {
+        Self {
+            crawler,
+            api_url: API_URL.to_string(),
+            base_url: BASE_URL.to_string(),
+        }
+    }
+
     pub fn new() -> Result<Self> {
         let crawler = Self::build_crawler()?;
         Ok(Self {
@@ -65,7 +85,8 @@ impl PubmedClient {
     }
 
     fn build_crawler() -> Result<RateLimitedCrawler> {
-        // TODO side-effect to push to main: crawler built in new() (no injection seam)
+        // new() builds its own crawler for the standalone path; shared-crawler
+        // callers (delulu-all-mcp) use new_with_crawler instead.
         RateLimitedCrawler::builder()
             .with_qps(3)
             .with_timeout(std::time::Duration::from_secs(30))
