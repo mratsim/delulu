@@ -129,7 +129,9 @@ pub fn create_registry_with_crawler(
     );
     registry.register(
         "brave",
-        std::sync::Arc::new(brave::BraveEngine::new_with_crawler(std::sync::Arc::clone(&crawler))),
+        std::sync::Arc::new(brave::BraveEngine::new_with_crawler(std::sync::Arc::clone(
+            &crawler,
+        ))),
     );
     registry
 }

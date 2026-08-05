@@ -62,7 +62,10 @@ fn test_new_with_crawler_defaults() {
     let default_client = PubmedClient::new().expect("new should succeed");
     assert_eq!(client.api_url, default_client.api_url);
     assert_eq!(client.base_url, default_client.base_url);
-    assert_eq!(client.api_url, "https://eutils.ncbi.nlm.nih.gov/entrez/eutils");
+    assert_eq!(
+        client.api_url,
+        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+    );
     assert_eq!(client.base_url, "https://www.ncbi.nlm.nih.gov/pmc");
 }
 
@@ -79,8 +82,10 @@ fn test_new_with_crawler_shared_arc() {
     );
     let client_a = PubmedClient::new_with_crawler(std::sync::Arc::clone(&shared));
     let client_b = PubmedClient::new_with_crawler(std::sync::Arc::clone(&shared));
-    assert!(std::sync::Arc::ptr_eq(&client_a.crawler, &client_b.crawler),
-        "both clients must share the same crawler instance");
+    assert!(
+        std::sync::Arc::ptr_eq(&client_a.crawler, &client_b.crawler),
+        "both clients must share the same crawler instance"
+    );
 }
 
 // ---------------------------------------------------------------------------

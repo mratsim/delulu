@@ -129,10 +129,7 @@ impl TravelAgentServer {
         let input = params.0;
         let mut passengers = vec![(crate::Passenger::Adult, input.adults)];
         if !input.children_ages.is_empty() {
-            passengers.push((
-                crate::Passenger::Child,
-                input.children_ages.len() as u32,
-            ));
+            passengers.push((crate::Passenger::Child, input.children_ages.len() as u32));
         }
         let params = FlightSearchParams {
             from_airport: input.from,

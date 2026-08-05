@@ -21,8 +21,8 @@
 //! `delulu-pubmed-mcp` binary and the future `delulu-all-mcp` server.
 //! Uses the shared `delulu-mcp-server-helper` for common infrastructure.
 
-use crate::core::SearchQuery;
 use crate::PubmedClient;
+use crate::core::SearchQuery;
 use delulu_mcp_server_helper::impl_server_handler;
 use delulu_mcp_server_helper::rmcp::handler::server::tool::ToolRouter;
 use delulu_mcp_server_helper::rmcp::handler::server::wrapper::Parameters;

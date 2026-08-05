@@ -294,9 +294,7 @@ pub async fn list_tools_entries(
         .get("result")
         .and_then(|r| r.get("tools"))
         .and_then(|t| t.as_array())
-        .ok_or_else(|| {
-            anyhow::anyhow!("tools/list response missing result.tools: {}", response)
-        })?;
+        .ok_or_else(|| anyhow::anyhow!("tools/list response missing result.tools: {}", response))?;
     Ok(tools.clone())
 }
 

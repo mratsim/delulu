@@ -41,9 +41,10 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 async fn spawn_all_mcp() -> (Child, ChildStdin, ChildStdout) {
     let path = find_binary("delulu-all-mcp")
         .unwrap_or_else(|e| panic!("find_binary(delulu-all-mcp): {e}"));
-    let (child, mut stdin, mut stdout) = spawn_stdio_server_with_args(&path, &["--expose-local-networks"])
-        .await
-        .unwrap_or_else(|e| panic!("failed to spawn delulu-all-mcp: {e}"));
+    let (child, mut stdin, mut stdout) =
+        spawn_stdio_server_with_args(&path, &["--expose-local-networks"])
+            .await
+            .unwrap_or_else(|e| panic!("failed to spawn delulu-all-mcp: {e}"));
     mcp_initialize(&mut stdin, &mut stdout)
         .await
         .unwrap_or_else(|e| panic!("MCP initialize failed: {e}"));
@@ -79,7 +80,11 @@ async fn stdio_lists_21_tools() {
     let names = list_tools(&mut stdin, &mut stdout, &mut initialized)
         .await
         .expect("tools/list must succeed");
-    assert_eq!(names.len(), 21, "all-mcp must expose exactly 21 tools, got: {names:?}");
+    assert_eq!(
+        names.len(),
+        21,
+        "all-mcp must expose exactly 21 tools, got: {names:?}"
+    );
 }
 
 /// One `webfetch` call against a local text/html mock succeeds without panic.
@@ -87,8 +92,7 @@ async fn stdio_lists_21_tools() {
 async fn webfetch_against_local_html_mock_succeeds() {
     // Local axum mock serving a minimal text/html document.
     let html = Arc::new(
-        "<html><body><h1>delulu all-mcp e2e</h1><p>localhost fixture</p></body></html>"
-            .to_string(),
+        "<html><body><h1>delulu all-mcp e2e</h1><p>localhost fixture</p></body></html>".to_string(),
     );
     let app = axum::Router::new().route(
         "/index.html",

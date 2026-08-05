@@ -5,11 +5,6 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, timeout};
 
-/// Timeout for individual MCP RPC operations (initialize, list_tools, call_tool).
-pub const READ_TIMEOUT: Duration = Duration::from_secs(3);
-/// Timeout for the full MCP initialization handshake (includes server startup).
-pub const INIT_TIMEOUT: Duration = Duration::from_secs(10);
-
 /// Locate the compiled `mcpify` binary in `target/debug/` or `target/release/`.
 /// Requires `cargo build -p delulu-mcpify --features mcp` to have been run first.
 pub fn find_binary() -> Result<PathBuf> {
@@ -33,23 +28,6 @@ pub fn find_binary() -> Result<PathBuf> {
     anyhow::bail!(
         "delulu-mcpify binary not found; run `cargo build -p delulu-mcpify --features mcp`"
     )
-}
-
-/// Bind to `127.0.0.1:0` and return the OS-assigned free port.
-/// Infallible in practice — panics only if no port is available.
-pub fn get_free_port() -> u16 {
-    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind 127.0.0.1:0");
-    l.local_addr().expect("local_addr").port()
-}
-
-/// Spawn a blocking task that copies a subprocess's stderr to `eprint!`.
-/// Errors in the streaming task are intentionally swallowed (best-effort diagnostics).
-pub fn stream_stderr_to_console(stderr: std::process::ChildStderr) -> JoinHandle<()> {
-    tokio::task::spawn_blocking(move || {
-        let mut r = stderr;
-        let mut w = std::io::stderr();
-        let _ = std::io::copy(&mut r, &mut w);
-    })
 }
 
 /// Write an OpenAPI spec JSON string to a temp file, replacing `{PORT}` with the given port.

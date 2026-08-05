@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use std::process::{Command, Stdio};
+use tokio::task::JoinHandle;
 use tokio::time::{Duration, timeout};
 
 mod helpers;
@@ -10,6 +11,23 @@ mod service_b;
 use helpers::*;
 use service_a::start_service_a;
 use service_b::start_service_b;
+
+/// Bind to `127.0.0.1:0` and return the OS-assigned free port.
+/// Infallible in practice — panics only if no port is available.
+fn get_free_port() -> u16 {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind 127.0.0.1:0");
+    l.local_addr().expect("local_addr").port()
+}
+
+/// Spawn a blocking task that copies a subprocess's stderr to `eprint!`.
+/// Errors in the streaming task are intentionally swallowed (best-effort diagnostics).
+fn stream_stderr_to_console(stderr: std::process::ChildStderr) -> JoinHandle<()> {
+    tokio::task::spawn_blocking(move || {
+        let mut r = stderr;
+        let mut w = std::io::stderr();
+        let _ = std::io::copy(&mut r, &mut w);
+    })
+}
 
 const HEALTH_POLL_TIMEOUT: Duration = Duration::from_secs(10);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -57,10 +75,10 @@ async fn test_e2e_http_transport() -> Result<()> {
 
     // Start mcpify instances
     let binary = find_binary()?;
-    let mut ca: Option<std::process::Child> = None;
-    let mut cb: Option<std::process::Child> = None;
-    let mut sea: Option<tokio::task::JoinHandle<()>> = None;
-    let mut seb: Option<tokio::task::JoinHandle<()>> = None;
+    let ca: Option<std::process::Child>;
+    let cb: Option<std::process::Child>;
+    let sea: Option<tokio::task::JoinHandle<()>>;
+    let seb: Option<tokio::task::JoinHandle<()>>;
 
     let mut c = Command::new(&binary)
         .args([

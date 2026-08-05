@@ -62,7 +62,11 @@ pub static TOOL_ROUTES: &[(&str, ServerId, &str)] = &[
     ("fetch_doc", ServerId::Webfetch, "fetch_doc"),
     // websearch (2)
     ("web_search", ServerId::Websearch, "web_search"),
-    ("web_search_next_page", ServerId::Websearch, "web_search_next_page"),
+    (
+        "web_search_next_page",
+        ServerId::Websearch,
+        "web_search_next_page",
+    ),
     // travel (2)
     ("search_flights", ServerId::Travel, "search_flights"),
     ("search_hotels", ServerId::Travel, "search_hotels"),
@@ -147,22 +151,21 @@ fn parse_url(s: &str) -> Result<String, String> {
 // AllServer — hand-written delegator
 // ---------------------------------------------------------------------------
 
+use delulu_mcp_server_helper::rmcp::RoleServer;
 use delulu_mcp_server_helper::rmcp::handler::server::ServerHandler;
 use delulu_mcp_server_helper::rmcp::model::{
     CallToolRequestParam, CallToolResult, ErrorData, Implementation, ListToolsResult,
-    PaginatedRequestParam, ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
-    ToolsCapability,
+    PaginatedRequestParam, ProtocolVersion, ServerCapabilities, ServerInfo, Tool, ToolsCapability,
 };
 use delulu_mcp_server_helper::rmcp::service::RequestContext;
-use delulu_mcp_server_helper::rmcp::RoleServer;
 use delulu_paper_search_arxiv::{ArxivClient, ArxivMcpServer};
 use delulu_paper_search_iacr::{IacrClient, IacrMcpServer};
 use delulu_paper_search_pubmed::{PubmedClient, PubmedMcpServer};
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use delulu_travel_search::{GoogleFlightsClient, GoogleHotelsClient, TravelAgentServer};
+use delulu_webfetch::WebfetchServer;
 use delulu_websearch::engines::create_registry_with_crawler;
 use delulu_websearch::{SessionCache, WebsearchServer};
-use delulu_webfetch::WebfetchServer;
 use std::borrow::Cow;
 use std::future::Future;
 use std::sync::Arc;
@@ -337,7 +340,10 @@ impl ServerHandler for AllServer {
         tracing::debug!(tool = %all_name, "call_tool dispatch");
 
         // Clone/copy the static route out before matching on `request`.
-        let route = TOOL_ROUTES.iter().find(|&&(n, _, _)| n == all_name).copied();
+        let route = TOOL_ROUTES
+            .iter()
+            .find(|&&(n, _, _)| n == all_name)
+            .copied();
 
         Box::pin(async move {
             let (server_id, inner_name, needs_rename) = match route {
@@ -349,7 +355,9 @@ impl ServerHandler for AllServer {
                     let msg = if all_name == "get_paper" {
                         let alternatives = TOOL_ROUTES
                             .iter()
-                            .filter(|(name, _, inner)| *inner == "get_paper" && *name != "get_paper")
+                            .filter(|(name, _, inner)| {
+                                *inner == "get_paper" && *name != "get_paper"
+                            })
                             .map(|(name, _, _)| *name)
                             .collect::<Vec<_>>()
                             .join(", ");

@@ -100,8 +100,10 @@ fn test_new_with_crawler_shared_arc() {
     );
     let client_a = ArxivClient::new_with_crawler(std::sync::Arc::clone(&shared));
     let client_b = ArxivClient::new_with_crawler(std::sync::Arc::clone(&shared));
-    assert!(std::sync::Arc::ptr_eq(&client_a.crawler, &client_b.crawler),
-        "both clients must share the same crawler instance");
+    assert!(
+        std::sync::Arc::ptr_eq(&client_a.crawler, &client_b.crawler),
+        "both clients must share the same crawler instance"
+    );
 }
 
 // ---------------------------------------------------------------------------

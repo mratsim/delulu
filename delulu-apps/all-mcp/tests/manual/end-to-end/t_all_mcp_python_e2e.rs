@@ -134,9 +134,7 @@ async fn start_fixture_server() -> Result<u16> {
         (
             "/esearch.fcgi",
             "application/json",
-            workspace.join(
-                "delulu-apps/paper-search-pubmed/tests/fixtures/pubmed-search.json.zst",
-            ),
+            workspace.join("delulu-apps/paper-search-pubmed/tests/fixtures/pubmed-search.json.zst"),
         ),
     ];
 
@@ -186,7 +184,11 @@ async fn start_fixture_server() -> Result<u16> {
 
 /// Spawn one Python MCP SDK test script with the binary and the fixture
 /// base-url flags, and assert it exits 0.
-async fn run_python_script(script: &std::path::Path, binary: &std::path::Path, port: u16) -> Result<()> {
+async fn run_python_script(
+    script: &std::path::Path,
+    binary: &std::path::Path,
+    port: u16,
+) -> Result<()> {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let script_str = script.to_string_lossy().to_string();
     let binary_str = binary.to_string_lossy().to_string();

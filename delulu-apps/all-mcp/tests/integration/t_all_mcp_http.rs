@@ -162,10 +162,7 @@ async fn post_mcp(port: u16, session: Option<&str>, body: &str) -> Result<(Strin
     let raw_str = String::from_utf8_lossy(&raw).into_owned();
 
     let (head, body) = match raw_str.find("\r\n\r\n") {
-        Some(i) => (
-            raw_str[..i].to_string(),
-            raw_str[i + 4..].to_string(),
-        ),
+        Some(i) => (raw_str[..i].to_string(), raw_str[i + 4..].to_string()),
         None => (String::new(), raw_str),
     };
 
@@ -220,7 +217,11 @@ async fn initialize_http(port: u16) -> Result<String> {
     // Send the initialized notification (id-less) on a fresh request.
     let notif = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
     let (session2, _) = post_mcp(port, Some(&session), notif).await?;
-    Ok(if session2.is_empty() { session } else { session2 })
+    Ok(if session2.is_empty() {
+        session
+    } else {
+        session2
+    })
 }
 
 /// Send `tools/list` and return the parsed tool entries.

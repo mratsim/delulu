@@ -25,8 +25,8 @@
 //!     cargo test --test t_websearch_ddg_live -- --ignored --nocapture
 
 use anyhow::Result;
-use delulu_websearch::engines::create_default_registry;
 use delulu_websearch::SearchParams;
+use delulu_websearch::engines::create_default_registry;
 
 fn print_results(label: &str, results: &[delulu_websearch::SearchResult]) {
     println!(

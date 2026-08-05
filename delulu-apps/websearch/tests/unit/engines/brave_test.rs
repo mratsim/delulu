@@ -141,6 +141,8 @@ fn test_new_with_crawler_shared_arc() {
     );
     let engine_a = BraveEngine::new_with_crawler(std::sync::Arc::clone(&shared));
     let engine_b = BraveEngine::new_with_crawler(std::sync::Arc::clone(&shared));
-    assert!(std::sync::Arc::ptr_eq(&engine_a.crawler, &engine_b.crawler),
-        "both engines must share the same crawler instance");
+    assert!(
+        std::sync::Arc::ptr_eq(&engine_a.crawler, &engine_b.crawler),
+        "both engines must share the same crawler instance"
+    );
 }

@@ -23,15 +23,15 @@
 //! SSRF protection strings and logic are byte-identical to the standalone
 //! binary's previous implementation (INV-007).
 
+use crate::webfetch_raw_response;
+use crate::{fetch_and_extract, fetch_and_extract_with_status};
+use delulu_mcp_server_helper::PeerAddr;
+use delulu_mcp_server_helper::impl_server_handler;
 use delulu_mcp_server_helper::rmcp::handler::server::tool::ToolRouter;
 use delulu_mcp_server_helper::rmcp::handler::server::wrapper::Parameters;
 use delulu_mcp_server_helper::rmcp::tool;
 use delulu_mcp_server_helper::rmcp::tool_router;
-use delulu_mcp_server_helper::impl_server_handler;
-use delulu_mcp_server_helper::PeerAddr;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
-use crate::webfetch_raw_response;
-use crate::{fetch_and_extract, fetch_and_extract_with_status};
 // Shared Markdown output formatting (one definition, included here via #[path]).
 use crate::core::markdown::md_doc_to_string;
 use crate::{is_private_ip, same_subnet_16};
