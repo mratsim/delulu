@@ -1,3 +1,20 @@
+#  Delulu — MCP tools for LLM research
+#
+#  Copyright (C) 2026  Mamy Ratsimbazafy
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 #############################################
 #                                           #
 #           Stage 0: Chef                  #
@@ -98,3 +115,43 @@ COPY --from=delulu-webfetch-mcp-builder /app/target/release/delulu-webfetch-mcp 
 USER 1000:1000
 EXPOSE 8081
 ENTRYPOINT ["delulu-webfetch-mcp"]
+
+#############################################
+#                                           #
+#        Stage 6: all-mcp Builder          #
+#                                           #
+#############################################
+FROM builder AS delulu-all-mcp-builder
+
+# Build the all-mcp binary (BoringSSL needs cmake/libclang from the builder stage)
+RUN cargo build --release --features mcp --bin delulu-all-mcp
+
+#############################################
+#                                           #
+#        Stage 7: all-mcp Runtime          #
+#                                           #
+#############################################
+FROM debian:bookworm-slim AS delulu-all-mcp-runtime
+
+# Install ca-certificates for HTTPS root CAs
+# Note: libssl3 is not needed - BoringSSL is statically linked via boring-sys2
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user
+RUN useradd -m appuser
+
+WORKDIR /app
+
+# Copy the binary from the all-mcp builder stage (owned by non-root user)
+COPY --chown=appuser:appuser --from=delulu-all-mcp-builder /app/target/release/delulu-all-mcp /app/delulu-all-mcp
+
+# Switch to the non-root user
+USER appuser
+
+# Expose the default port
+EXPOSE 8080
+
+# Set the entry point
+ENTRYPOINT ["/app/delulu-all-mcp"]

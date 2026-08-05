@@ -1,3 +1,20 @@
+#  Delulu — MCP tools for LLM research
+#
+#  Copyright (C) 2026  Mamy Ratsimbazafy
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
 name: Release Build
 
 on:
@@ -84,7 +101,7 @@ jobs:
 
   create-release:
     name: Create Release
-    needs: [build-travel-search, build-webfetch]
+    needs: [build-travel-search, build-webfetch, build-all-mcp]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
@@ -117,6 +134,8 @@ jobs:
         - **Linux ARM64**: delulu-travel-mcp-linux-arm64.tar.gz
         - **Webfetch Linux x86-64**: delulu-webfetch-mcp-linux-x86_64.tar.gz
         - **Webfetch Linux ARM64**: delulu-webfetch-mcp-linux-arm64.tar.gz
+        - **All-MCP Linux x86-64** (build-all-mcp): delulu-all-mcp-linux-x86_64.tar.gz
+        - **All-MCP Linux ARM64** (build-all-mcp): delulu-all-mcp-linux-arm64.tar.gz
 
         All binaries are statically compiled and ready to use.
         EOF
@@ -187,4 +206,59 @@ jobs:
         name: delulu-webfetch-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}-${{ env.VERSION }}
         path: |
           delulu-webfetch-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}.tar.gz
+        if-no-files-found: error
+
+  build-all-mcp:
+    name: Build all-mcp ${{ matrix.target.platform }} (${{ matrix.target.arch }})
+    runs-on: ${{ matrix.target.os }}
+    strategy:
+      matrix:
+        target:
+          - { platform: Linux, lower_platform: linux, arch: x86_64, os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { platform: Linux, lower_platform: linux, arch: arm64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        target: ${{ matrix.target.target }}
+
+    - name: Install build dependencies (Linux)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential libclang-dev git
+
+    - name: Cache cargo dependency
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/**/.fingerprint
+          target/**/release/deps
+          target/**/deps
+        key: ${{ runner.os }}-${{ matrix.target.arch }}-cargo-all-mcp-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.target.arch }}-cargo-all-mcp-
+
+    - run: |
+        rustup target add ${{ matrix.target.target }}
+        cargo build --release --target ${{ matrix.target.target }} -p delulu-all-mcp --features mcp
+
+    - name: Strip executable (Linux)
+      run: strip target/${{ matrix.target.target }}/release/delulu-all-mcp
+
+    - name: Create archive
+      run: |
+        cd target/${{ matrix.target.target }}/release
+        tar -czvf ../../../delulu-all-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}.tar.gz delulu-all-mcp
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: delulu-all-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}-${{ env.VERSION }}
+        path: |
+          delulu-all-mcp-${{ matrix.target.lower_platform }}-${{ matrix.target.arch }}.tar.gz
         if-no-files-found: error

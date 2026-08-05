@@ -152,7 +152,7 @@ cargo build --release -p delulu-all-mcp --features mcp
 Prebuilt OCI images are published on GitHub Container Registry (GHCR):
 
 - `ghcr.io/mratsim/delulu/travel-search`
-- `ghcr.io/mratsim/delulu/webfetch`  
+- `ghcr.io/mratsim/delulu/webfetch-agent`  
 - `ghcr.io/mratsim/delulu/all-mcp` (unified all-mcp server)
 
 ```bash
