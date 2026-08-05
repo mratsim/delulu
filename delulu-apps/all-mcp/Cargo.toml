@@ -74,5 +74,15 @@ name = "t_all_mcp_cli"
 path = "tests/t_all_mcp_cli.rs"
 required-features = ["mcp"]
 
+[[test]]
+name = "t_all_mcp_schemas"
+path = "tests/t_all_mcp_schemas.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "t_all_mcp_stdio"
+path = "tests/t_all_mcp_stdio.rs"
+required-features = ["mcp"]
+
 [package.metadata.cargo-machete]
 ignored = ["rmcp"]

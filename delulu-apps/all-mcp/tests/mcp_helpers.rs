@@ -86,6 +86,37 @@ pub fn find_binary(bin_name: &str) -> Result<PathBuf> {
 ///
 /// # Panic-if
 /// Returns `Err` on spawn failure.
+/// Spawn the MCP server with `stdio` transport plus extra leading CLI args,
+/// returning the child process and its piped stdin/stdout.
+///
+/// # Pre
+/// `path` points at a built MCP server binary; `extra_args` are flags
+/// placed before the `stdio` subcommand (e.g. `--expose-local-networks`).
+///
+/// # Post
+/// The subprocess is running with the given args followed by `stdio`;
+/// stdin/stdout are piped and stderr is forwarded to the console.
+///
+/// # Panic-if
+/// Returns `Err` on spawn failure.
+pub async fn spawn_stdio_server_with_args(
+    path: &Path,
+    extra_args: &[&str],
+) -> Result<(Child, ChildStdin, ChildStdout)> {
+    let mut cmd = Command::new(path);
+    cmd.args(extra_args)
+        .arg("stdio")
+        .stdout(Stdio::piped())
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = cmd.spawn()?;
+    let stderr = child.stderr.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let stdin = child.stdin.take().unwrap();
+    std::mem::drop(stream_stderr_to_console(stderr));
+    Ok((child, stdin, stdout))
+}
 pub async fn spawn_stdio_server(path: &Path) -> Result<(Child, ChildStdin, ChildStdout)> {
     let mut child = Command::new(path)
         .arg("stdio")
@@ -222,6 +253,51 @@ pub async fn list_tools(
         .collect();
     names.sort();
     Ok(names)
+}
+
+/// Send a `tools/list` request and return the full tool entries.
+///
+/// # Pre
+/// The server has been initialized (or the request will (re)initialize if not
+/// already done).
+///
+/// # Post
+/// Returns the `result.tools` array of full tool objects (each carrying
+/// `name`, `description`, and `inputSchema`).
+///
+/// # Panic-if
+/// Returns `Err` on invalid response or missing `result.tools`.
+pub async fn list_tools_entries(
+    stdin: &mut ChildStdin,
+    stdout: &mut ChildStdout,
+    initialized: &mut bool,
+) -> Result<Vec<Value>> {
+    if !*initialized {
+        mcp_initialize(stdin, stdout).await?;
+        *initialized = true;
+    }
+    let list = json!({
+        "jsonrpc": "2.0",
+        "id": 100,
+        "method": "tools/list",
+        "params": {}
+    });
+    let mut list_str = list.to_string();
+    list_str.push('\n');
+    tokio::time::timeout(TIMEOUT, stdin.write_all(list_str.as_bytes()))
+        .await
+        .map_err(|_| anyhow::anyhow!("timeout writing tools/list request"))?
+        .context("failed to write tools/list request")?;
+
+    let response = read_json_response(stdout, TIMEOUT, Some(100)).await?;
+    let tools = response
+        .get("result")
+        .and_then(|r| r.get("tools"))
+        .and_then(|t| t.as_array())
+        .ok_or_else(|| {
+            anyhow::anyhow!("tools/list response missing result.tools: {}", response)
+        })?;
+    Ok(tools.clone())
 }
 
 /// Send a `tools/call` JSON-RPC request with `"id": 2`.
