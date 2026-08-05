@@ -82,6 +82,17 @@ path = "tests/t_webfetch_mcp.rs"
 required-features = ["mcp"]
 
 [[test]]
+name = "t_ssrf_validate_url_e2e"
+path = "tests/t_ssrf_validate_url_e2e.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "t_ssrf_validate_url_unit"
+path = "tests/t_ssrf_validate_url_unit.rs"
+required-features = ["mcp"]
+
+
+[[test]]
 name = "t_fetch_doc_e2e"
 path = "tests/t_fetch_doc_e2e.rs"
 

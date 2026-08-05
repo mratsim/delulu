@@ -1,3 +1,20 @@
+//!  Delulu Webfetch — Library
+//!
+//!  Copyright (C) 2026  Mamy Ratsimbazafy
+//!
+//!  This program is free software: you can redistribute it and/or modify
+//!  it under the terms of the GNU Affero General Public License as published by
+//!  the Free Software Foundation, either version 3 of the License, or
+//!  (at your option) any later version.
+//!
+//!  This program is distributed in the hope that it will be useful,
+//!  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//!  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//!  GNU Affero General Public License for more details.
+//!
+//!  You should have received a copy of the GNU Affero General Public License
+//!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//!
 pub mod core;
 pub use crate::core::page_status::{BlockedBy, PageStatus, classify_page};
 pub use crate::core::response::webfetch_raw_response;
@@ -7,6 +24,11 @@ pub use crate::core::types::{ExtractionResult, MarkdownDocument, RedditComment};
 pub mod generators;
 pub mod pipelines;
 pub mod sources;
+
+#[cfg(feature = "mcp")]
+pub mod lib_mcp;
+#[cfg(feature = "mcp")]
+pub use lib_mcp::WebfetchServer;
 
 pub use crate::core::detect::detect_source_type;
 pub use crate::core::types::WebfetchError;
