@@ -235,7 +235,8 @@ async def test_mcp_initialize(session):
 
 
 async def test_list_tools(session):
-    """Assert the 21-tool union: 3 prefixed get_paper, no bare get_paper."""
+    """Assert the 21-tool union (3 prefixed get_paper, no bare get_paper) and
+    that every tool carries a well-formed inputSchema (schemars output)."""
     try:
         print("  >>> tools/list")
         tools = await asyncio.wait_for(session.list_tools(), timeout=20.0)
@@ -249,6 +250,15 @@ async def test_list_tools(session):
         assert "get_paper" not in tool_names, (
             f"Bare 'get_paper' must be renamed to the 3 prefixed tools, got {tool_names}"
         )
+        # Each tool's inputSchema must be a JSON object (schemars-derived); the
+        # SDK surfaces it through list_tools, so a missing/invalid schema here
+        # means the serialization boundary broke. (Some schemas are anyOf-style
+        # without a top-level `type` — the object check is the contract.)
+        for tool in tools.tools:
+            schema = tool.inputSchema
+            assert schema is not None and isinstance(schema, dict), (
+                f"Tool '{tool.name}' inputSchema missing or not an object: {schema}"
+            )
         return (True, "PASSED")
     except AssertionError as e:
         return (False, f"FAILED: {e}")

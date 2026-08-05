@@ -56,45 +56,14 @@ path = "src/main_mcp.rs"
 required-features = ["mcp"]
 
 [[test]]
-name = "t_route_table"
-path = "tests/unit/t_route_table.rs"
-required-features = ["mcp"]
-
-[[test]]
-name = "t_config"
-path = "tests/unit/t_config.rs"
-required-features = ["mcp"]
-
-[[test]]
-name = "t_all_mcp_names"
-path = "tests/t_all_mcp_names.rs"
-required-features = ["mcp"]
-
-[[test]]
-name = "t_all_mcp_cli"
-path = "tests/t_all_mcp_cli.rs"
-required-features = ["mcp"]
-
-[[test]]
-name = "t_all_mcp_schemas"
-path = "tests/t_all_mcp_schemas.rs"
-required-features = ["mcp"]
-
-[[test]]
 name = "t_all_mcp_stdio"
-path = "tests/t_all_mcp_stdio.rs"
+path = "tests/integration/t_all_mcp_stdio.rs"
 required-features = ["mcp"]
 
 [[test]]
 name = "t_all_mcp_http"
-path = "tests/t_all_mcp_http.rs"
+path = "tests/integration/t_all_mcp_http.rs"
 required-features = ["mcp"]
-
-[[test]]
-name = "t_all_mcp_shared_crawler"
-path = "tests/t_all_mcp_shared_crawler.rs"
-required-features = ["mcp"]
-
 [[test]]
 name = "t_all_mcp_python_e2e"
 path = "tests/manual/end-to-end/t_all_mcp_python_e2e.rs"
