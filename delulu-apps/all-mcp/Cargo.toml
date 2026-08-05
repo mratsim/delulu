@@ -84,5 +84,15 @@ name = "t_all_mcp_stdio"
 path = "tests/t_all_mcp_stdio.rs"
 required-features = ["mcp"]
 
+[[test]]
+name = "t_all_mcp_http"
+path = "tests/t_all_mcp_http.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "t_all_mcp_shared_crawler"
+path = "tests/t_all_mcp_shared_crawler.rs"
+required-features = ["mcp"]
+
 [package.metadata.cargo-machete]
 ignored = ["rmcp"]
