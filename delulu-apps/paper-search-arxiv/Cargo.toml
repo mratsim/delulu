@@ -1,6 +1,6 @@
 [package]
 name = "delulu-paper-search-arxiv"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "AGPL-3.0"
 description = "arXiv paper search - CLI and MCP server"
@@ -37,7 +37,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-
 
 [package.metadata.mcp]
 name = "delulu-paper-search-arxiv"
-version = "0.1.0"
+version = "0.2.0"
 description = "Search papers on arXiv by keyword, author, title, or abstract"
 
 [[bin]]

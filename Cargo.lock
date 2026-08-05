@@ -1179,7 +1179,7 @@ dependencies = [
 
 [[package]]
 name = "delulu-mcp-server-helper"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
@@ -1192,7 +1192,7 @@ dependencies = [
 
 [[package]]
 name = "delulu-mcpify"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.8.9",
@@ -1211,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "delulu-paper-search-arxiv"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1233,7 +1233,7 @@ dependencies = [
 
 [[package]]
 name = "delulu-paper-search-iacr"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1257,7 +1257,7 @@ dependencies = [
 
 [[package]]
 name = "delulu-paper-search-pubmed"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1279,7 +1279,7 @@ dependencies = [
 
 [[package]]
 name = "delulu-rate-limited-crawler"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "futures-util",
  "http",
@@ -1297,7 +1297,7 @@ dependencies = [
 
 [[package]]
 name = "delulu-travel-search"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "delulu-webfetch"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
@@ -1360,7 +1360,7 @@ dependencies = [
 
 [[package]]
 name = "delulu-websearch"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3231,7 +3231,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
 name = "paper-search-test-utils"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum 0.7.9",
  "tokio",

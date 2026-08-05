@@ -1,6 +1,6 @@
 [package]
 name = "delulu-paper-search-pubmed"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "AGPL-3.0"
 description = "PubMed paper search - CLI and MCP server"
@@ -32,7 +32,7 @@ futures-util = "0.3"
 
 [package.metadata.mcp]
 name = "delulu-paper-search-pubmed"
-version = "0.1.0"
+version = "0.2.0"
 description = "Search biomedical papers on PubMed by keyword, author, or date"
 
 [[bin]]

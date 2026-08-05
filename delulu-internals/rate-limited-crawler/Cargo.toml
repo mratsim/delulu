@@ -1,6 +1,6 @@
 [package]
 name = "delulu-rate-limited-crawler"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "AGPL-3.0"
 description = "Per-domain rate-limited HTTP client with GCRA gating, exponential retry, and LRU eviction of idle domain queues"
