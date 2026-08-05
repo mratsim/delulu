@@ -149,6 +149,7 @@ impl OpenApiSpec {
     }
 
     pub fn from_file(path: &str) -> Result<Self> {
+        // TODO side-effect to push to main: fs::read_to_string (explicit input arg)
         let content = std::fs::read_to_string(path).context("Failed to read OpenAPI file")?;
         let p = Path::new(path);
         match p

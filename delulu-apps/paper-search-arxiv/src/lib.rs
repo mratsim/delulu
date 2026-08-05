@@ -49,6 +49,7 @@ impl ArxivClient {
 
     /// Create a new arXiv client with rate limiting (1 QPS per arXiv's policy).
     pub fn new() -> Result<Self> {
+        // TODO side-effect to push to main: crawler built in new() (no injection seam)
         let crawler = RateLimitedCrawler::builder()
             .with_qps(1)
             .with_timeout(std::time::Duration::from_secs(30))

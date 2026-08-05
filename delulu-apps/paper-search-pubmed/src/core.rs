@@ -195,6 +195,7 @@ pub struct RelatedArticles {
     /// The input PMIDs
     pub input_pmids: Vec<String>,
     /// Map from input PMID to list of related PMIDs
+    // TODO idempotency issue: HashMap iteration order -> nondeterministic JSON key order (find_related)
     pub related: std::collections::HashMap<String, Vec<String>>,
 }
 

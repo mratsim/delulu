@@ -53,6 +53,7 @@ pub(crate) fn convert_node(
     // nested / massive HTML documents).
     // See https://github.com/mratsim/delulu/pull/7
     if depth > MAX_DEPTH {
+        // TODO side-effect to push to main: tracing::* logging in lib
         tracing::warn!(
             "DOM recursion depth exceeded {} at tag depth {}, flattening further nesting",
             MAX_DEPTH,

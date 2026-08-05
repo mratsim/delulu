@@ -87,6 +87,7 @@ pub(crate) fn wrap_blocked_status(
     status: PageStatus,
 ) -> Result<ExtractionResult, WebfetchError> {
     if matches!(status, PageStatus::Blocked { .. }) {
+        // TODO side-effect to push to main: tracing::* logging in lib
         tracing::warn!("webfetch blocked (cause: {status:?}); collapsing to {BLOCKED_MSG:?}");
         return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
     }
@@ -539,6 +540,7 @@ pub async fn doc_to_html(bytes: Vec<u8>, url: &str) -> Result<String, WebfetchEr
         let extension = extension.clone();
         let bytes = bytes.clone();
         move || -> Result<_, WebfetchError> {
+            // TODO side-effect to push to main: temp-file write (xberg bridge)
             let mut temp_file = tempfile::Builder::new()
                 .suffix(&extension)
                 .tempfile()
@@ -565,6 +567,7 @@ pub async fn doc_to_html(bytes: Vec<u8>, url: &str) -> Result<String, WebfetchEr
         uri: Some(temp_path.to_string_lossy().to_string()),
         ..Default::default()
     };
+    // TODO side-effect to push to main: tokio::time::timeout (xberg, time)
     let result = tokio::time::timeout(Duration::from_secs(10), xberg_extract(input, &config))
         .await
         .map_err(|_| {

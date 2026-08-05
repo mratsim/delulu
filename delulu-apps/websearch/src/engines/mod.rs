@@ -55,6 +55,7 @@ impl EngineRegistry {
     }
 
     /// List all registered engine names.
+    // TODO idempotency issue: HashMap iteration order (list_engines)
     pub fn list_engines(&self) -> Vec<&'static str> {
         self.engines.keys().copied().collect()
     }
@@ -78,6 +79,7 @@ pub fn create_default_registry() -> EngineRegistry {
 
     let mut registry = EngineRegistry::new();
     // DuckDuckGo — uses Safari TLS/HTTP2 fingerprint (Firefox gets blocked from this IP)
+    // TODO side-effect to push to main: crawler built in lib factory (create_default_registry)
     let ddg_crawler = delulu_rate_limited_crawler::RateLimitedCrawler::builder()
         .with_emulation(wreq_util::Profile::Safari18_5)
         .with_qps(1)

@@ -52,6 +52,7 @@ impl McpifyServer {
             }
         }
 
+        // TODO side-effect to push to main: tracing::* logging in lib
         tracing::info!("Registered {} tools", tools.len());
 
         Ok(Self {

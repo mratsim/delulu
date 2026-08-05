@@ -37,6 +37,7 @@ pub struct GoogleHotelsClient {
 impl GoogleHotelsClient {
     pub fn new(timeout_secs: u64, queries_per_second: u32) -> Result<Self> {
         let crawler = Arc::new(
+            // TODO side-effect to push to main: crawler built in new() (no injection seam)
             RateLimitedCrawler::builder()
                 .with_qps(queries_per_second as u64)
                 .with_emulation(Profile::Safari18_5)

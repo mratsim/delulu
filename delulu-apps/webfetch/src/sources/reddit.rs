@@ -170,6 +170,7 @@ impl RedditExtractor {
                         .and_then(|v| v.as_i64())
                         .unwrap_or(0);
                     if count > 0 {
+                        // TODO side-effect to push to main: tracing::* logging in lib
                         tracing::warn!("Reddit: skipping {} more comments", count);
                     }
                     *truncated = true;

@@ -18,6 +18,7 @@ use chrono::Utc;
 
 /// Convert an `ExtractionResult` into a Markdown string with YAML frontmatter.
 pub fn md_doc_to_string(result: ExtractionResult) -> String {
+    // TODO side-effect to push to main: Utc::now() wall-clock stamp (date_of_retrieval)
     let now_iso = Utc::now().to_rfc3339();
     match result {
         ExtractionResult::GenericHtml { content_md, .. } => {

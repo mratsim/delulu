@@ -9,6 +9,7 @@ pub struct ProxyClient {
 
 impl ProxyClient {
     pub fn new() -> Result<Self> {
+        // TODO: refactor to use rate-limited-crawler
         let client = wreq::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .redirect(wreq::redirect::Policy::none())

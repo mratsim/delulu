@@ -48,6 +48,7 @@ impl IacrClient {
     }
 
     pub fn new() -> Result<Self> {
+        // TODO side-effect to push to main: crawler built in new() (no injection seam)
         let crawler = RateLimitedCrawler::builder()
             .with_qps(3)
             .with_timeout(std::time::Duration::from_secs(30))

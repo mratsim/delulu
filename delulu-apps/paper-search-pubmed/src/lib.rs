@@ -65,6 +65,7 @@ impl PubmedClient {
     }
 
     fn build_crawler() -> Result<RateLimitedCrawler> {
+        // TODO side-effect to push to main: crawler built in new() (no injection seam)
         RateLimitedCrawler::builder()
             .with_qps(3)
             .with_timeout(std::time::Duration::from_secs(30))

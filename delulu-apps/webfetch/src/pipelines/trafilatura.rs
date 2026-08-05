@@ -100,6 +100,7 @@ where
     // Use checked_mul to prevent integer overflow on large documents
     match new_len.checked_mul(threshold) {
         Some(product) if product <= old_len => {
+            // TODO side-effect to push to main: tracing::* logging in lib
             tracing::warn!(
                 "backup triggered ({} -> {} chars, threshold={}), restoring",
                 old_len,

@@ -390,6 +390,7 @@ impl Engine for DuckDuckGoEngine {
         continuation: Option<&dyn Continuation>,
     ) -> Result<SearchResponse, WebsearchError> {
         crate::parsers::validate_query(query)?;
+        // TODO side-effect to push to main: Instant::now() timing (logs only)
         let start = Instant::now();
         let max_results = crate::parsers::parse_max_results(params.max_results)?;
 
