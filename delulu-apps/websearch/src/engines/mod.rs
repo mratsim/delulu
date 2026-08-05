@@ -105,6 +105,35 @@ pub fn create_default_registry() -> EngineRegistry {
     registry
 }
 
+/// Create a registry where every engine shares a single caller-provided crawler.
+///
+/// Pre: `crawler` is a fully configured `RateLimitedCrawler` (rates/timeouts set by the caller).
+/// Post: returns a registry with DuckDuckGo and Brave engines registered, all sharing
+/// `crawler` (one global rate policy across all engines).
+/// Panic-if: never (infallible; registration cannot fail).
+///
+/// Note on the shared policy: a single crawler carries ONE rate/emulation profile.
+/// The standalone engines use per-engine profiles (DuckDuckGo: qps 1 with the
+/// Safari18_5 TLS/HTTP2 fingerprint, Brave: qps 2). A shared crawler cannot
+/// jointly satisfy both, so the aggregator must pick one policy and accept that
+/// DuckDuckGo's fingerprint is lost (it may be blocked from some IPs).
+pub fn create_registry_with_crawler(
+    crawler: std::sync::Arc<delulu_rate_limited_crawler::RateLimitedCrawler>,
+) -> EngineRegistry {
+    let mut registry = EngineRegistry::new();
+    registry.register(
+        "duckduckgo",
+        std::sync::Arc::new(duckduckgo::DuckDuckGoEngine::new_with_crawler(
+            std::sync::Arc::clone(&crawler),
+        )),
+    );
+    registry.register(
+        "brave",
+        std::sync::Arc::new(brave::BraveEngine::new_with_crawler(std::sync::Arc::clone(&crawler))),
+    );
+    registry
+}
+
 #[cfg(test)]
 #[path = "../../tests/unit/engines/mod_test.rs"]
 mod engines_test;
