@@ -69,6 +69,42 @@ fn test_with_api_url_after_with_base_url() {
 }
 
 // ---------------------------------------------------------------------------
+// new_with_crawler (pub constructor — Phase 1a shared-crawler seam)
+// ---------------------------------------------------------------------------
+
+/// Verify `new_with_crawler` accepts a caller-provided `Arc<RateLimitedCrawler>`
+/// and that the defaults match `new()`.
+#[test]
+fn test_new_with_crawler_defaults() {
+    let crawler = delulu_rate_limited_crawler::RateLimitedCrawler::builder()
+        .with_qps(1)
+        .with_timeout(std::time::Duration::from_secs(30))
+        .with_connect_timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("crawler should build");
+    let client = ArxivClient::new_with_crawler(std::sync::Arc::new(crawler));
+    assert_eq!(client.base_url, "https://arxiv.org");
+    assert_eq!(client.api_url, "https://export.arxiv.org/api/query");
+}
+
+/// Verify the Arc seam: two clients can share one crawler (the all-mcp reuse path).
+#[test]
+fn test_new_with_crawler_shared_arc() {
+    let shared = std::sync::Arc::new(
+        delulu_rate_limited_crawler::RateLimitedCrawler::builder()
+            .with_qps(1)
+            .with_timeout(std::time::Duration::from_secs(30))
+            .with_connect_timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("crawler should build"),
+    );
+    let client_a = ArxivClient::new_with_crawler(std::sync::Arc::clone(&shared));
+    let client_b = ArxivClient::new_with_crawler(std::sync::Arc::clone(&shared));
+    assert!(std::sync::Arc::ptr_eq(&client_a.crawler, &client_b.crawler),
+        "both clients must share the same crawler instance");
+}
+
+// ---------------------------------------------------------------------------
 // Base URL configuration tests
 // ---------------------------------------------------------------------------
 

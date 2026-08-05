@@ -19,19 +19,13 @@
 //!
 //! Supports stdio and HTTP transports.
 //! Uses the shared `delulu-mcp-server-helper` for common infrastructure.
+//! The `ArxivMcpServer` itself lives in the library (`lib_mcp` module).
 
 use anyhow::{Context, Error, Result};
 use delulu_mcp_server_helper::clap::Parser;
-use delulu_mcp_server_helper::rmcp::handler::server::tool::ToolRouter;
-use delulu_mcp_server_helper::rmcp::handler::server::wrapper::Parameters;
-use delulu_mcp_server_helper::rmcp::tool;
-use delulu_mcp_server_helper::rmcp::tool_router;
-use delulu_mcp_server_helper::{
-    McpServerConfig, impl_server_handler, run_http, run_stdio, setup_tracing,
-};
-use delulu_paper_search_arxiv::{ArxivClient, core::SearchQuery};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use delulu_mcp_server_helper::{McpServerConfig, run_http, run_stdio, setup_tracing};
+use delulu_paper_search_arxiv::ArxivClient;
+use delulu_paper_search_arxiv::ArxivMcpServer;
 use std::sync::Arc;
 
 #[derive(Parser, Debug)]
@@ -45,113 +39,6 @@ struct Args {
     #[command(subcommand)]
     command: McpServerConfig,
 }
-
-/// Input parameters for searching arXiv papers.
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct SearchPapersInput {
-    /// Search query using arXiv syntax (e.g. "ti:transformer AND abs:attention")
-    pub query: String,
-    /// Maximum number of results (default: 10, max: 2000)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_results: Option<u32>,
-    /// Start index for pagination (0-based)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub start: Option<u32>,
-    /// Sort field: "relevance", "lastUpdatedDate", "submittedDate"
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sort_by: Option<String>,
-    /// Sort order: "ascending" or "descending"
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sort_order: Option<String>,
-}
-
-/// Input parameters for fetching papers by arXiv ID.
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct GetPapersByIdInput {
-    /// Comma-separated list of arXiv IDs (e.g. "2301.12345,2302.67890")
-    pub ids: String,
-}
-
-/// Input parameters for fetching a full paper as markdown.
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct GetPaperInput {
-    /// arXiv ID (e.g. "1706.03762" or "cond-mat/0011267")
-    pub arxiv_id: String,
-}
-#[derive(Clone)]
-pub struct ArxivMcpServer {
-    client: Arc<ArxivClient>,
-    tool_router: ToolRouter<Self>,
-}
-
-impl ArxivMcpServer {
-    pub fn new(client: Arc<ArxivClient>) -> Self {
-        Self {
-            client,
-            tool_router: Self::tool_router(),
-        }
-    }
-}
-
-#[tool_router]
-impl ArxivMcpServer {
-    #[tool(
-        name = "search_papers",
-        description = "Search for papers on arXiv by keyword, title, author, or abstract. Parameters: query (arXiv search syntax), max_results, start, sort_by (relevance/lastUpdatedDate/submittedDate), sort_order (ascending/descending)."
-    )]
-    async fn search_papers(&self, params: Parameters<SearchPapersInput>) -> Result<String, String> {
-        let input = params.0;
-        let query = SearchQuery {
-            query: input.query,
-            max_results: input.max_results,
-            start: input.start,
-            sort_by: input.sort_by,
-            sort_order: input.sort_order,
-        };
-
-        let papers = self
-            .client
-            .search_papers(&query)
-            .await
-            .map_err(|e| format!("arXiv search failed: {e}"))?;
-
-        serde_json::to_string(&papers).map_err(|e| e.to_string())
-    }
-
-    #[tool(
-        name = "get_papers_by_id",
-        description = "Fetch specific papers from arXiv by their IDs. Parameters: ids (comma-separated arXiv IDs, e.g. '2301.12345,2302.67890')."
-    )]
-    async fn get_papers_by_id(
-        &self,
-        params: Parameters<GetPapersByIdInput>,
-    ) -> Result<String, String> {
-        let input = params.0;
-        let papers = self
-            .client
-            .get_papers_by_id(&input.ids)
-            .await
-            .map_err(|e| format!("arXiv fetch failed: {e}"))?;
-
-        serde_json::to_string(&papers).map_err(|e| e.to_string())
-    }
-
-    #[tool(
-        name = "get_paper",
-        description = "Fetch a full paper from arXiv as markdown. Downloads the arXiv HTML5 version, strips navigation chrome, and converts to markdown with LaTeX math preserved. Parameters: arxiv_id (arXiv ID, e.g. '1706.03762')."
-    )]
-    async fn get_paper(&self, params: Parameters<GetPaperInput>) -> Result<String, String> {
-        let input = params.0;
-        let md = self
-            .client
-            .get_paper(&input.arxiv_id)
-            .await
-            .map_err(|e| format!("arXiv paper fetch failed: {e}"))?;
-        Ok(md)
-    }
-}
-
-impl_server_handler!(ArxivMcpServer);
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
