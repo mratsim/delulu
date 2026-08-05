@@ -20,8 +20,15 @@
 //! Provides:
 //! - `core` module: `Paper`, `parse_rss_response`, `parse_paper_html`
 //! - `IacrClient`: HTTP client wrapping `RateLimitedCrawler` for IACR ePrint Archive
+//! - `lib_mcp` module (feature `mcp`): the `IacrMcpServer` MCP server
 
 pub mod core;
+
+#[cfg(feature = "mcp")]
+pub mod lib_mcp;
+
+#[cfg(feature = "mcp")]
+pub use lib_mcp::IacrMcpServer;
 
 use anyhow::{Context, Result};
 use core::Paper;
@@ -40,22 +47,30 @@ pub struct IacrClient {
 }
 
 impl IacrClient {
-    fn new_with_crawler(crawler: RateLimitedCrawler) -> Self {
+    /// Construct an `IacrClient` sharing a caller-provided rate-limited crawler.
+    ///
+    /// Pre: `crawler` is a fully configured `RateLimitedCrawler` (rates/timeouts set by the caller).
+    /// Post: the returned client shares the given `crawler` and uses the default IACR base URL.
+    /// Panic-if: never (infallible constructor).
+    pub fn new_with_crawler(crawler: Arc<RateLimitedCrawler>) -> Self {
         Self {
-            crawler: Arc::new(crawler),
+            crawler,
             base_url: "https://eprint.iacr.org".to_string(),
         }
     }
 
+    /// Create a new IACR client with rate limiting (3 QPS per IACR's policy).
+    ///
+    /// The crawler is built here with the default rate config; callers needing
+    /// custom rates/timeouts or a shared crawler should use [`IacrClient::new_with_crawler`].
     pub fn new() -> Result<Self> {
-        // TODO side-effect to push to main: crawler built in new() (no injection seam)
         let crawler = RateLimitedCrawler::builder()
             .with_qps(3)
             .with_timeout(std::time::Duration::from_secs(30))
             .with_connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .context("Failed to create rate-limited crawler")?;
-        Ok(Self::new_with_crawler(crawler))
+        Ok(Self::new_with_crawler(Arc::new(crawler)))
     }
 
     pub fn with_base_url(mut self, url: String) -> Self {

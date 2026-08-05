@@ -47,6 +47,42 @@ fn test_with_base_url_custom() {
 }
 
 // ---------------------------------------------------------------------------
+// new_with_crawler (pub constructor — shared-crawler seam)
+// ---------------------------------------------------------------------------
+/// Verify `new_with_crawler` accepts a caller-provided `Arc<RateLimitedCrawler>`
+/// and uses the same default base URL as `new()`.
+#[test]
+fn test_new_with_crawler_defaults() {
+    let crawler = delulu_rate_limited_crawler::RateLimitedCrawler::builder()
+        .with_qps(3)
+        .with_timeout(std::time::Duration::from_secs(30))
+        .with_connect_timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("crawler should build");
+    let client = IacrClient::new_with_crawler(std::sync::Arc::new(crawler));
+    let default_client = IacrClient::new().expect("new should succeed");
+    assert_eq!(client.base_url, default_client.base_url);
+    assert_eq!(client.base_url, "https://eprint.iacr.org");
+}
+
+/// Verify the Arc seam: two clients can share one crawler (the all-mcp reuse path).
+#[test]
+fn test_new_with_crawler_shared_arc() {
+    let shared = std::sync::Arc::new(
+        delulu_rate_limited_crawler::RateLimitedCrawler::builder()
+            .with_qps(3)
+            .with_timeout(std::time::Duration::from_secs(30))
+            .with_connect_timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("crawler should build"),
+    );
+    let client_a = IacrClient::new_with_crawler(std::sync::Arc::clone(&shared));
+    let client_b = IacrClient::new_with_crawler(std::sync::Arc::clone(&shared));
+    assert!(std::sync::Arc::ptr_eq(&client_a.crawler, &client_b.crawler),
+        "both clients must share the same crawler instance");
+}
+
+// ---------------------------------------------------------------------------
 // URL construction tests
 // ---------------------------------------------------------------------------
 

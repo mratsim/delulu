@@ -69,7 +69,7 @@ fn test_with_api_url_after_with_base_url() {
 }
 
 // ---------------------------------------------------------------------------
-// new_with_crawler (pub constructor — Phase 1a shared-crawler seam)
+// new_with_crawler (pub constructor — shared-crawler seam)
 // ---------------------------------------------------------------------------
 
 /// Verify `new_with_crawler` accepts a caller-provided `Arc<RateLimitedCrawler>`
