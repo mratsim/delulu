@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """MCP stdio transport integration tests for delulu-all-mcp.
 
-Spawns `delulu-all-mcp <base-url flags> stdio` and runs the shared suite
-(initialize, list_tools, the three offline fixture-backed paper tools, and
-the error paths) through the official MCP Python SDK.
+Spawns `delulu-all-mcp stdio` and runs the shared suite (initialize,
+list_tools, and the error paths) through the official MCP Python SDK.
 
 Usage:
-    python3 test_all_mcp_stdio.py <binary_path> [--arxiv-api-base-url URL --iacr-api-base-url URL --pubmed-api-base-url URL]
+    python3 test_all_mcp_stdio.py <binary_path>
 
 Exit codes:
     0 = all passed (or gracefully skipped with at least one test passing)
@@ -42,18 +41,15 @@ async def main():
         binary = Path(sys.argv[1])
     else:
         binary = find_server_binary()
-    base_url_flags = sys.argv[2:]
 
     print("=" * 60)
     print("delulu-all-mcp Integration Tests (stdio)")
     print("=" * 60)
     print(f"Using server binary: {binary}")
     print(f"Protocol version: {PROTOCOL_VERSION}")
-    if base_url_flags:
-        print(f"Fixture base-url flags: {base_url_flags}")
     print()
 
-    server_args = base_url_flags + ["stdio"]
+    server_args = ["stdio"]
     params = StdioServerParameters(command=str(binary), args=server_args, env=None)
 
     async with stdio_client(params) as (read, write):

@@ -192,12 +192,16 @@ All MCP servers share the same client-facing tool names; `delulu-all-mcp` re-exp
 webfetch:        webfetch, webfetch_raw, fetch_doc
 websearch:       web_search, web_search_next_page
 travel:          search_flights, search_hotels
-arxiv:           search_papers, get_papers_by_id, arxiv_get_paper
-iacr:            list_recent_papers, get_paper_details, paper_pdf_url, iacr_get_paper
-pubmed:          search_pubmed, get_summaries, fetch_abstracts, find_related, get_database_info, match_citation, pubmed_get_paper
+arxiv:           arxiv_search_papers, arxiv_get_papers_by_id, arxiv_get_paper
+iacr:            iacr_list_recent_papers, iacr_get_paper_details, iacr_paper_pdf_url, iacr_get_paper
+pubmed:          pubmed_search, pubmed_get_summaries, pubmed_fetch_abstracts, pubmed_find_related, pubmed_get_database_info, pubmed_match_citation, pubmed_get_paper
 ```
 
-That is 21 tools. (`get_paper` collides across the three paper servers and is namespaced `arxiv_get_paper`, `iacr_get_paper`, `pubmed_get_paper` in all-mcp.)
+That is 21 tools. Every paper tool is namespaced by repository prefix
+(`arxiv_*`, `iacr_*`, `pubmed_*`) because the three paper servers are separate
+repositories with overlapping vocabulary (papers, ids, details, abstracts,
+citations) — the name alone tells the caller which repository it talks to.
+The standalone per-package binaries keep their unprefixed names.
 
 ### CLI transport
 

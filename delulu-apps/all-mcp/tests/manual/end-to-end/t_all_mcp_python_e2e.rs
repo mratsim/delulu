@@ -17,32 +17,15 @@
 //!
 //! Orchestrates the official-MCP-SDK Python test scripts
 //! (`test_all_mcp_stdio.py`, `test_all_mcp_http.py`) against the
-//! `delulu-all-mcp` binary.
-//!
-//! A small local fixture server serves the three paper fixtures (zstd
-//! decompressed on the fly) so the paper tools run fully offline:
-//!
-//! * `search_papers`      → `/query`        (arxiv-search-response.xml.zst)
-//! * `list_recent_papers` → `/rss/rss.xml`  (iacr-rss.xml.zst)
-//! * `search_pubmed`      → `/esearch.fcgi` (pubmed-search.json.zst)
-//!
-//! The fixture base-url flags are forwarded to the binary so the three paper
-//! tools hit the fixture server instead of the live APIs:
-//!
-//! ```text
-//! delulu-all-mcp --arxiv-api-base-url http://127.0.0.1:{PORT}/query \
-//!     --iacr-api-base-url http://127.0.0.1:{PORT} \
-//!     --pubmed-api-base-url http://127.0.0.1:{PORT} stdio
-//! ```
-//!
-//! The HTTP python script spawns its own `delulu-all-mcp http --port <free>`
-//! instance with the same fixture flags.
+//! `delulu-all-mcp` binary. The suite covers the all-mcp-specific behavior
+//! the per-package tests cannot: the 21-tool union, the prefixed
+//! `*_get_paper` names, the unknown-tool error path and the bare-`get_paper`
+//! did-you-mean hint, all over the official MCP SDK (stdio + HTTP).
 
 #![cfg(test)]
 #![cfg(feature = "mcp")]
 
 use anyhow::{Context, Result};
-use std::sync::Arc;
 use std::time::Duration;
 
 /// Python test scripts may need to create the uv `.venv` on first run
@@ -104,97 +87,11 @@ fn find_binary() -> Result<std::path::PathBuf> {
     )
 }
 
-/// Start a small fixture server on `127.0.0.1:0` serving the three paper
-/// fixtures (zstd-decompressed at startup). Returns the bound port.
-///
-/// Routes (matched after trimming leading slashes, because the IACR/PubMed
-/// clients build `{base}/path` from a base URL that `parse_url` normalizes
-/// with a trailing slash, so the server may see `//rss/rss.xml`):
-/// `/query`, `/rss/rss.xml`, `/esearch.fcgi`. Any other path → 404.
-async fn start_fixture_server() -> Result<u16> {
-    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace = manifest
-        .parent()
-        .and_then(|p| p.parent())
-        .context("could not determine workspace root")?;
-
-    let fixtures = [
-        (
-            "/query",
-            "application/atom+xml",
-            workspace.join(
-                "delulu-apps/paper-search-arxiv/tests/fixtures/arxiv-search-response.xml.zst",
-            ),
-        ),
-        (
-            "/rss/rss.xml",
-            "application/rss+xml",
-            workspace.join("delulu-apps/paper-search-iacr/tests/fixtures/iacr-rss.xml.zst"),
-        ),
-        (
-            "/esearch.fcgi",
-            "application/json",
-            workspace.join("delulu-apps/paper-search-pubmed/tests/fixtures/pubmed-search.json.zst"),
-        ),
-    ];
-
-    // Pre-decompress the fixtures once; serve the plain bodies on request.
-    let mut bodies: Vec<(String, String, String)> = Vec::with_capacity(fixtures.len());
-    for (route, content_type, path) in fixtures {
-        let compressed = std::fs::read(&path)
-            .with_context(|| format!("failed to read fixture {}", path.display()))?;
-        let decoded = zstd::decode_all(compressed.as_slice())
-            .with_context(|| format!("failed to zstd-decode fixture {}", path.display()))?;
-        let body = String::from_utf8(decoded)
-            .with_context(|| format!("fixture {} is not valid UTF-8", path.display()))?;
-        bodies.push((route.to_string(), content_type.to_string(), body));
-    }
-    let bodies = Arc::new(bodies);
-
-    let app = axum::Router::new().fallback(move |uri: axum::http::Uri| {
-        let bodies = Arc::clone(&bodies);
-        async move {
-            let path = uri.path().trim_start_matches('/');
-            for (route, content_type, body) in bodies.iter() {
-                if route.trim_start_matches('/') == path {
-                    return axum::response::Response::builder()
-                        .header("content-type", content_type.as_str())
-                        .body(axum::body::Body::from(body.clone()))
-                        .expect("fixture response body");
-                }
-            }
-            axum::response::Response::builder()
-                .status(axum::http::StatusCode::NOT_FOUND)
-                .body(axum::body::Body::from("fixture not found"))
-                .expect("404 response body")
-        }
-    });
-
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let port = listener.local_addr()?.port();
-    tokio::spawn(async move {
-        axum::serve(listener, app)
-            .await
-            .expect("fixture server failed");
-    });
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    Ok(port)
-}
-
-/// Spawn one Python MCP SDK test script with the binary and the fixture
-/// base-url flags, and assert it exits 0.
-async fn run_python_script(
-    script: &std::path::Path,
-    binary: &std::path::Path,
-    port: u16,
-) -> Result<()> {
+/// Spawn one Python MCP SDK test script with the binary and assert it exits 0.
+async fn run_python_script(script: &std::path::Path, binary: &std::path::Path) -> Result<()> {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let script_str = script.to_string_lossy().to_string();
     let binary_str = binary.to_string_lossy().to_string();
-    let arxiv_url = format!("http://127.0.0.1:{port}/query");
-    let iacr_url = format!("http://127.0.0.1:{port}");
-    let pubmed_url = format!("http://127.0.0.1:{port}");
 
     let (python, prefix_args) = find_python(&manifest);
     let py_handle = tokio::task::spawn_blocking(move || {
@@ -202,12 +99,6 @@ async fn run_python_script(
         cmd.args(&prefix_args)
             .arg(&script_str)
             .arg(&binary_str)
-            .arg("--arxiv-api-base-url")
-            .arg(&arxiv_url)
-            .arg("--iacr-api-base-url")
-            .arg(&iacr_url)
-            .arg("--pubmed-api-base-url")
-            .arg(&pubmed_url)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
         // Use process_group(0) for process tree cleanup on Linux
@@ -243,18 +134,16 @@ async fn run_python_script(
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_all_mcp_python_e2e_stdio() -> Result<()> {
-    let port = start_fixture_server().await?;
     let binary = find_binary()?;
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let script = manifest.join("tests/manual/end-to-end/test_all_mcp_stdio.py");
-    run_python_script(&script, &binary, port).await
+    run_python_script(&script, &binary).await
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_all_mcp_python_e2e_http() -> Result<()> {
-    let port = start_fixture_server().await?;
     let binary = find_binary()?;
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let script = manifest.join("tests/manual/end-to-end/test_all_mcp_http.py");
-    run_python_script(&script, &binary, port).await
+    run_python_script(&script, &binary).await
 }

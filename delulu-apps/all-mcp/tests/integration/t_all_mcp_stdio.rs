@@ -135,7 +135,9 @@ async fn webfetch_against_local_html_mock_succeeds() {
     );
 }
 
-/// Delegation cases (a)-(h): offline error dispatch over `tools/call`.
+/// Delegation cases (a)-(h)+: offline error dispatch over `tools/call`. Each
+/// renamed paper tool must reach its owning server (proved by the inner
+/// server's own validation error, not a routing "tool not found").
 #[tokio::test(flavor = "multi_thread")]
 async fn delegation_cases_a_through_h() {
     let (_child, mut stdin, mut stdout) = spawn_all_mcp().await;
@@ -144,13 +146,29 @@ async fn delegation_cases_a_through_h() {
     let r = call_tool(&mut stdin, &mut stdout, "arxiv_get_paper").await;
     assert_error_contains(&r, "arxiv_get_paper", "arxiv_id");
 
+    // (a2) arxiv_search_papers with {} -> error contains query
+    let r = call_tool(&mut stdin, &mut stdout, "arxiv_search_papers").await;
+    assert_error_contains(&r, "arxiv_search_papers", "query");
+
+    // (a3) arxiv_get_papers_by_id with {} -> error contains ids
+    let r = call_tool(&mut stdin, &mut stdout, "arxiv_get_papers_by_id").await;
+    assert_error_contains(&r, "arxiv_get_papers_by_id", "ids");
+
     // (b) iacr_get_paper with {} -> error contains year
     let r = call_tool(&mut stdin, &mut stdout, "iacr_get_paper").await;
     assert_error_contains(&r, "iacr_get_paper", "year");
 
+    // (b2) iacr_get_paper_details with {} -> error contains year
+    let r = call_tool(&mut stdin, &mut stdout, "iacr_get_paper_details").await;
+    assert_error_contains(&r, "iacr_get_paper_details", "year");
+
     // (c) pubmed_get_paper with {} -> error contains pmc_id
     let r = call_tool(&mut stdin, &mut stdout, "pubmed_get_paper").await;
     assert_error_contains(&r, "pubmed_get_paper", "pmc_id");
+
+    // (c2) pubmed_search with {} -> error contains query
+    let r = call_tool(&mut stdin, &mut stdout, "pubmed_search").await;
+    assert_error_contains(&r, "pubmed_search", "query");
 
     // (d) web_search with {} -> error contains query
     let r = call_tool(&mut stdin, &mut stdout, "web_search").await;
@@ -171,15 +189,20 @@ async fn delegation_cases_a_through_h() {
         "no_such_tool message must contain 'tool not found', got: {msg}"
     );
 
-    // (f) get_paper with {} -> "did you mean" hint (case-insensitive: the
-    // implementation capitalizes "Did you mean", the spec asserts "did you mean")
+    // (f) get_paper (bare, unnamespaced) with {} -> plain tool-not-found
+    // error: the paper tools are all prefixed, the bare name is not routed
     let r = call_tool(&mut stdin, &mut stdout, "get_paper").await;
+    assert_eq!(
+        r["error"]["code"].as_i64(),
+        Some(-32602),
+        "bare get_paper must return code -32602, got: {r}"
+    );
     let msg = r["error"]["message"]
         .as_str()
-        .unwrap_or_else(|| panic!("get_paper must have an error message, got: {r}"));
+        .unwrap_or_else(|| panic!("bare get_paper must have an error message, got: {r}"));
     assert!(
-        msg.to_lowercase().contains("did you mean"),
-        "get_paper message must contain 'did you mean' (case-insensitive), got: {msg}"
+        msg.contains("tool not found"),
+        "bare get_paper message must contain 'tool not found', got: {msg}"
     );
 
     // (g) search_flights with {} -> error contains from

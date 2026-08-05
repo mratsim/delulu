@@ -2,11 +2,11 @@
 """Shared test utilities for delulu-all-mcp MCP integration tests.
 
 Provides helpers for finding the server binary, managing the server process,
-and running the shared MCP test suite (initialize, list_tools, the three
-offline fixture-backed paper tools, and the error paths).
+and running the shared MCP test suite (initialize, list_tools, and the error
+paths). The per-package crates exercise their own API fixtures; this suite
+covers only the all-mcp aggregator behavior.
 
-Keep in sync with t_all_mcp_python_e2e.rs (PROTOCOL_VERSION constant and the
-fixture base-url flag contract).
+Keep in sync with t_all_mcp_python_e2e.rs (PROTOCOL_VERSION constant).
 """
 
 import asyncio
@@ -23,7 +23,6 @@ from pathlib import Path
 from mcp.shared.exceptions import McpError  # mcp 1.x (pinned <2)
 
 PROTOCOL_VERSION = "2025-03-26"
-# Keep in sync with t_all_mcp_python_e2e.rs
 
 EXPECTED_TOOL_COUNT = 21
 PREFIXED_GET_PAPER_TOOLS = ("arxiv_get_paper", "iacr_get_paper", "pubmed_get_paper")
@@ -235,8 +234,9 @@ async def test_mcp_initialize(session):
 
 
 async def test_list_tools(session):
-    """Assert the 21-tool union (3 prefixed get_paper, no bare get_paper) and
-    that every tool carries a well-formed inputSchema (schemars output)."""
+    """Assert the 21-tool union: every paper tool is namespaced by repository
+    prefix (arxiv_*/iacr_*/pubmed_*), no bare paper names leak, and every
+    tool carries a well-formed inputSchema (schemars output)."""
     try:
         print("  >>> tools/list")
         tools = await asyncio.wait_for(session.list_tools(), timeout=20.0)
@@ -247,9 +247,14 @@ async def test_list_tools(session):
         )
         for name in PREFIXED_GET_PAPER_TOOLS:
             assert name in tool_names, f"Expected '{name}' in tools, got {tool_names}"
-        assert "get_paper" not in tool_names, (
-            f"Bare 'get_paper' must be renamed to the 3 prefixed tools, got {tool_names}"
-        )
+        # Every paper tool must be namespaced; the bare names must not leak.
+        for bare in ("search_papers", "get_papers_by_id", "list_recent_papers",
+                     "get_paper_details", "paper_pdf_url", "search_pubmed",
+                     "get_summaries", "fetch_abstracts", "find_related",
+                     "get_database_info", "match_citation", "get_paper"):
+            assert bare not in tool_names, (
+                f"Bare paper tool '{bare}' must be namespaced in all-mcp, got {tool_names}"
+            )
         # Each tool's inputSchema must be a JSON object (schemars-derived); the
         # SDK surfaces it through list_tools, so a missing/invalid schema here
         # means the serialization boundary broke. (Some schemas are anyOf-style
@@ -266,96 +271,6 @@ async def test_list_tools(session):
         return (False, f"FAILED: unexpected error — {e}")
 
 
-async def test_search_papers(session):
-    """search_papers against the fixture-served arXiv API (offline)."""
-    try:
-        args = {"query": "all:electron"}
-        print(f"  >>> search_papers({args})")
-        result = await asyncio.wait_for(
-            safe_call_tool(session, "search_papers", args),
-            timeout=30.0,
-        )
-        assert_tool_success(result)
-        content = result.content
-        assert len(content) > 0, "Response should have content"
-        assert hasattr(content[0], "text"), f"Expected text content, got {type(content[0])}"
-        data = json.loads(content[0].text)
-        assert isinstance(data, list) and len(data) > 0, (
-            f"Expected a non-empty paper list, got {data}"
-        )
-        assert "title" in data[0], f"Paper missing 'title' field: {data[0]}"
-        print(f"  <<< search_papers returned {len(data)} papers")
-        return (True, "PASSED")
-    except json.JSONDecodeError as e:
-        return (False, f"FAILED: invalid JSON response — {e}")
-    except AssertionError as e:
-        return (False, f"FAILED: {e}")
-    except RuntimeError as e:
-        return (False, f"FAILED: {e}")
-    except Exception as e:
-        return (False, f"FAILED: unexpected error — {e}")
-
-
-async def test_list_recent_papers(session):
-    """list_recent_papers against the fixture-served IACR RSS feed (offline)."""
-    try:
-        args = {}
-        print(f"  >>> list_recent_papers({args})")
-        result = await asyncio.wait_for(
-            safe_call_tool(session, "list_recent_papers", args),
-            timeout=30.0,
-        )
-        assert_tool_success(result)
-        content = result.content
-        assert len(content) > 0, "Response should have content"
-        assert hasattr(content[0], "text"), f"Expected text content, got {type(content[0])}"
-        data = json.loads(content[0].text)
-        assert isinstance(data, list) and len(data) > 0, (
-            f"Expected a non-empty paper list, got {data}"
-        )
-        assert "title" in data[0], f"Paper missing 'title' field: {data[0]}"
-        print(f"  <<< list_recent_papers returned {len(data)} papers")
-        return (True, "PASSED")
-    except json.JSONDecodeError as e:
-        return (False, f"FAILED: invalid JSON response — {e}")
-    except AssertionError as e:
-        return (False, f"FAILED: {e}")
-    except RuntimeError as e:
-        return (False, f"FAILED: {e}")
-    except Exception as e:
-        return (False, f"FAILED: unexpected error — {e}")
-
-
-async def test_search_pubmed(session):
-    """search_pubmed against the fixture-served PubMed esearch endpoint (offline)."""
-    try:
-        args = {"query": "test"}
-        print(f"  >>> search_pubmed({args})")
-        result = await asyncio.wait_for(
-            safe_call_tool(session, "search_pubmed", args),
-            timeout=30.0,
-        )
-        assert_tool_success(result)
-        content = result.content
-        assert len(content) > 0, "Response should have content"
-        assert hasattr(content[0], "text"), f"Expected text content, got {type(content[0])}"
-        data = json.loads(content[0].text)
-        assert isinstance(data.get("total_count"), int) and data["total_count"] > 0, (
-            f"Expected total_count > 0, got {data}"
-        )
-        assert isinstance(data.get("pmids"), list) and len(data["pmids"]) > 0, (
-            f"Expected a non-empty pmids list, got {data}"
-        )
-        print(f"  <<< search_pubmed total_count={data['total_count']} pmids={len(data['pmids'])}")
-        return (True, "PASSED")
-    except json.JSONDecodeError as e:
-        return (False, f"FAILED: invalid JSON response — {e}")
-    except AssertionError as e:
-        return (False, f"FAILED: {e}")
-    except RuntimeError as e:
-        return (False, f"FAILED: {e}")
-    except Exception as e:
-        return (False, f"FAILED: unexpected error — {e}")
 
 
 async def test_no_such_tool(session):
@@ -386,37 +301,6 @@ async def test_no_such_tool(session):
         return (False, f"FAILED: unexpected error — {e}")
 
 
-async def test_get_paper_hint(session):
-    """Bare get_paper must be rejected with a did-you-mean hint."""
-    try:
-        print("  >>> call_tool(get_paper, {})")
-        try:
-            result = await asyncio.wait_for(
-                session.call_tool("get_paper", {}),
-                timeout=20.0,
-            )
-        except McpError as e:
-            print(f"  <<< get_paper raised McpError: {e}")
-            assert "did you mean" in str(e).lower(), (
-                f"expected did-you-mean hint in error message, got: {e}"
-            )
-            assert "arxiv_get_paper" in str(e), (
-                f"hint must list arxiv_get_paper, got: {e}"
-            )
-            return (True, "PASSED")
-        # Some transports surface tool errors as isError results instead.
-        if hasattr(result, "isError") and result.isError:
-            text = result.content[0].text if result.content else ""
-            print(f"  <<< get_paper returned isError: {text}")
-            assert "did you mean" in text.lower(), (
-                f"expected did-you-mean hint, got: {text}"
-            )
-            return (True, "PASSED")
-        raise AssertionError(f"expected error for bare get_paper, got success result: {result}")
-    except AssertionError as e:
-        return (False, f"FAILED: {e}")
-    except Exception as e:
-        return (False, f"FAILED: unexpected error — {e}")
 
 
 async def run_all_mcp_tests(session) -> dict:
@@ -425,9 +309,10 @@ async def run_all_mcp_tests(session) -> dict:
     The MCP ClientSession must already be connected before calling this function.
     The suite includes test_mcp_initialize which calls session.initialize().
 
-    Runs: initialize, list_tools (21-tool union), the three offline
-    fixture-backed paper tools (search_papers, list_recent_papers,
-    search_pubmed), and the two error paths (unknown tool, get_paper hint).
+    Runs: initialize, list_tools (21-tool union + inputSchema shape), and
+    the unknown-tool error path. The per-package crates already exercise
+    their own fixtures; this suite covers only the all-mcp aggregator
+    behavior they cannot.
     Each test function is wrapped with asyncio.wait_for() with a per-call timeout.
     Each test returns a (passed, message) tuple.
 
@@ -436,11 +321,7 @@ async def run_all_mcp_tests(session) -> dict:
     test_functions = [
         ("MCP initialization", test_mcp_initialize),
         ("List tools (21-tool union)", test_list_tools),
-        ("search_papers (arxiv fixture)", test_search_papers),
-        ("list_recent_papers (iacr fixture)", test_list_recent_papers),
-        ("search_pubmed (pubmed fixture)", test_search_pubmed),
         ("Unknown tool error", test_no_such_tool),
-        ("get_paper did-you-mean hint", test_get_paper_hint),
     ]
 
     results = {}

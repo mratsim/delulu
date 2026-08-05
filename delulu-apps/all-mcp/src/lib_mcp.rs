@@ -50,11 +50,14 @@ pub enum ServerId {
 
 /// The 21-tool union, as (all-mcp name, owning server, inner tool name).
 ///
-/// Single source of truth for both `list_tools` and `call_tool`: the three
-/// colliding `get_paper` tools are
-/// renamed to `arxiv_get_paper`, `iacr_get_paper`, and `pubmed_get_paper`; the
-/// remaining 18 names are already unique and kept identical. Inner name is what
-/// is forwarded to the owning server's macro-generated tool handler.
+/// Single source of truth for both `list_tools` and `call_tool`. The three
+/// paper servers are separate repositories with overlapping vocabulary
+/// (papers, ids, details, abstracts, citations), so every paper tool is
+/// namespaced by repository prefix (`arxiv_*`, `iacr_*`, `pubmed_*`) — the
+/// name alone must tell the caller which repository it talks to. The
+/// webfetch/websearch/travel tools already self-identify and keep their
+/// names. Inner name is what is forwarded to the owning server's
+/// macro-generated tool handler.
 pub static TOOL_ROUTES: &[(&str, ServerId, &str)] = &[
     // webfetch (3)
     ("webfetch", ServerId::Webfetch, "webfetch"),
@@ -71,21 +74,41 @@ pub static TOOL_ROUTES: &[(&str, ServerId, &str)] = &[
     ("search_flights", ServerId::Travel, "search_flights"),
     ("search_hotels", ServerId::Travel, "search_hotels"),
     // arxiv (3)
-    ("search_papers", ServerId::Arxiv, "search_papers"),
-    ("get_papers_by_id", ServerId::Arxiv, "get_papers_by_id"),
+    ("arxiv_search_papers", ServerId::Arxiv, "search_papers"),
+    (
+        "arxiv_get_papers_by_id",
+        ServerId::Arxiv,
+        "get_papers_by_id",
+    ),
     ("arxiv_get_paper", ServerId::Arxiv, "get_paper"),
     // iacr (4)
-    ("list_recent_papers", ServerId::Iacr, "list_recent_papers"),
-    ("get_paper_details", ServerId::Iacr, "get_paper_details"),
-    ("paper_pdf_url", ServerId::Iacr, "paper_pdf_url"),
+    (
+        "iacr_list_recent_papers",
+        ServerId::Iacr,
+        "list_recent_papers",
+    ),
+    (
+        "iacr_get_paper_details",
+        ServerId::Iacr,
+        "get_paper_details",
+    ),
+    ("iacr_paper_pdf_url", ServerId::Iacr, "paper_pdf_url"),
     ("iacr_get_paper", ServerId::Iacr, "get_paper"),
     // pubmed (7)
-    ("search_pubmed", ServerId::Pubmed, "search_pubmed"),
-    ("get_summaries", ServerId::Pubmed, "get_summaries"),
-    ("fetch_abstracts", ServerId::Pubmed, "fetch_abstracts"),
-    ("find_related", ServerId::Pubmed, "find_related"),
-    ("get_database_info", ServerId::Pubmed, "get_database_info"),
-    ("match_citation", ServerId::Pubmed, "match_citation"),
+    ("pubmed_search", ServerId::Pubmed, "search_pubmed"),
+    ("pubmed_get_summaries", ServerId::Pubmed, "get_summaries"),
+    (
+        "pubmed_fetch_abstracts",
+        ServerId::Pubmed,
+        "fetch_abstracts",
+    ),
+    ("pubmed_find_related", ServerId::Pubmed, "find_related"),
+    (
+        "pubmed_get_database_info",
+        ServerId::Pubmed,
+        "get_database_info",
+    ),
+    ("pubmed_match_citation", ServerId::Pubmed, "match_citation"),
     ("pubmed_get_paper", ServerId::Pubmed, "get_paper"),
 ];
 
@@ -247,7 +270,7 @@ impl AllServer {
 
     /// Union of the six inner servers' tool lists, renamed per `TOOL_ROUTES`.
     ///
-    /// Only the three colliding `get_paper` tools change name; the other 18
+    /// All paper tools are namespaced by repository prefix; their
     /// descriptions and input schemas are kept byte-identical (no description
     /// suffix).
     ///
@@ -349,29 +372,18 @@ impl ServerHandler for AllServer {
             let (server_id, inner_name, needs_rename) = match route {
                 Some((rn, sid, inner)) => (sid, inner, inner != rn),
                 None => {
-                    // The did-you-mean hint is derived from `TOOL_ROUTES`: the
-                    // colliding `get_paper` tools that were renamed to their
-                    // all-mcp names.
-                    let msg = if all_name == "get_paper" {
-                        let alternatives = TOOL_ROUTES
-                            .iter()
-                            .filter(|(name, _, inner)| {
-                                *inner == "get_paper" && *name != "get_paper"
-                            })
-                            .map(|(name, _, _)| *name)
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        format!("tool not found: 'get_paper'. Did you mean {alternatives}?")
-                    } else {
-                        "tool not found".to_string()
-                    };
-                    tracing::warn!(tool = %all_name, "{msg}");
-                    return Err(ErrorData::invalid_params(msg, None));
+                    // Unknown tool. The available tools are already listed to
+                    // the client via tools/list (injected into the LLM's
+                    // context), so a did-you-mean hint would be noise — the
+                    // caller can retry with a name it already has.
+                    tracing::warn!(tool = %all_name, "tool not found");
+                    return Err(ErrorData::invalid_params("tool not found", None));
                 }
             };
 
-            // For the 3 renamed tools, rewrite the name to the inner tool name;
-            // for the other 18 forward the original request untouched.
+            // For the renamed tools (all paper tools), rewrite the name to the
+            // inner tool name; for the self-named tools forward the original
+            // request untouched.
             let forward = if needs_rename {
                 CallToolRequestParam {
                     name: Cow::Owned(inner_name.to_string()),

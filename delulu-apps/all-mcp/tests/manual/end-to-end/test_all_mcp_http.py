@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """MCP HTTP transport integration tests for delulu-all-mcp.
 
-Starts the MCP server in HTTP mode (with optional fixture base-url flags),
-connects via streamable_http_client, and runs the shared suite (initialize,
-list_tools, the three offline fixture-backed paper tools, and the error paths)
+Starts the MCP server in HTTP mode, connects via streamable_http_client,
+and runs the shared suite (initialize, list_tools, and the error paths)
 through the official MCP Python SDK.
 
 Usage:
-    python3 test_all_mcp_http.py <binary_path> [--arxiv-api-base-url URL --iacr-api-base-url URL --pubmed-api-base-url URL]
+    python3 test_all_mcp_http.py <binary_path>
 
 Exit codes:
     0 = all passed (or gracefully skipped with at least one test passing)
@@ -51,14 +50,13 @@ def find_free_port() -> int:
         return s.getsockname()[1]
 
 
-async def run_http_tests(binary: Path, port: int, base_url_flags: list) -> int:
+async def run_http_tests(binary: Path, port: int) -> int:
     """Run all MCP HTTP transport tests.
 
     Manages the server subprocess lifecycle: spawn, wait, verify, test, kill.
     """
-    binary_str = str(binary)
     child = subprocess.Popen(
-        [binary_str] + base_url_flags + ["http", "--port", str(port)],
+        [str(binary), "http", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
@@ -101,15 +99,12 @@ async def main():
         binary = Path(sys.argv[1])
     else:
         binary = find_server_binary()
-    base_url_flags = sys.argv[2:]
 
     print("=" * 60)
     print("delulu-all-mcp Integration Tests (HTTP)")
     print("=" * 60)
     print(f"Using server binary: {binary}")
     print(f"Protocol version: {PROTOCOL_VERSION}")
-    if base_url_flags:
-        print(f"Fixture base-url flags: {base_url_flags}")
     print()
 
     # Port conflict retry: up to 3 attempts
@@ -123,7 +118,7 @@ async def main():
             print(f"  Trying port {port}")
 
         try:
-            exit_code = await run_http_tests(binary, port, base_url_flags)
+            exit_code = await run_http_tests(binary, port)
             if exit_code == 0:
                 return 0
             print(f"  Attempt {attempt}/{max_retries}: HTTP tests returned exit code {exit_code}")
