@@ -1,0 +1,54 @@
+[package]
+name = "delulu-all-mcp"
+version = "0.2.0"
+edition = "2024"
+license = "AGPL-3.0"
+description = "Unified delulu MCP server exposing the 21-tool union across webfetch, websearch, travel, arxiv, iacr, and pubmed"
+
+[features]
+default = ["cli", "mcp"]
+cli = ["dep:clap"]
+mcp = [
+    "dep:clap",
+    "dep:url",
+    "dep:rmcp",
+    "dep:delulu-mcp-server-helper",
+    "dep:delulu-webfetch",
+    "dep:delulu-websearch",
+    "dep:delulu-travel-search",
+    "dep:delulu-paper-search-arxiv",
+    "dep:delulu-paper-search-iacr",
+    "dep:delulu-paper-search-pubmed",
+]
+
+[dependencies]
+clap = { version = "4", features = ["derive"], optional = true }
+url = { version = "2", optional = true }
+rmcp = { version = "0.13", features = ["server", "macros"], optional = true }
+delulu-mcp-server-helper = { path = "../../delulu-internals/mcp-server-helper", optional = true }
+delulu-rate-limited-crawler = { path = "../../delulu-internals/rate-limited-crawler" }
+delulu-webfetch = { path = "../webfetch", optional = true, features = ["mcp"] }
+delulu-websearch = { path = "../websearch", optional = true, features = ["mcp"] }
+delulu-travel-search = { path = "../travel-search", optional = true, features = ["mcp"] }
+delulu-paper-search-arxiv = { path = "../paper-search-arxiv", optional = true, features = ["mcp"] }
+delulu-paper-search-iacr = { path = "../paper-search-iacr", optional = true, features = ["mcp"] }
+delulu-paper-search-pubmed = { path = "../paper-search-pubmed", optional = true, features = ["mcp"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util"] }
+serde_json = "1.0"
+anyhow = "1.0"
+axum = { version = "0.7", features = ["http1", "tokio", "json"] }
+
+[package.metadata.mcp]
+name = "delulu-all-mcp"
+version = "0.2.0"
+description = "Unified delulu MCP server exposing the 21-tool union of webfetch, websearch, travel, arxiv, iacr, and pubmed"
+
+[[bin]]
+name = "delulu-all-mcp"
+path = "src/main_mcp.rs"
+required-features = ["mcp"]
+
+[package.metadata.cargo-machete]
+ignored = ["rmcp"]

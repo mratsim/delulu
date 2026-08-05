@@ -1156,6 +1156,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "delulu-all-mcp"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "clap",
+ "delulu-mcp-server-helper",
+ "delulu-paper-search-arxiv",
+ "delulu-paper-search-iacr",
+ "delulu-paper-search-pubmed",
+ "delulu-rate-limited-crawler",
+ "delulu-travel-search",
+ "delulu-webfetch",
+ "delulu-websearch",
+ "rmcp",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "delulu-mcp-server-helper"
 version = "0.1.0"
 dependencies = [
