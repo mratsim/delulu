@@ -162,18 +162,18 @@ docker run -p 8080:8080 \
 docker run -i --rm ghcr.io/mratsim/delulu/all-mcp:latest stdio
 ```
 
-To build an image for one of the individual apps from source (e.g. webfetch):
+To build the image from source:
 
 ```bash
-docker build --target delulu-webfetch-mcp-runtime -t delulu-webfetch .
-docker run -i --rm delulu-webfetch stdio
+docker build --target delulu-all-mcp-runtime -t delulu-all-mcp .
+docker run -i --rm delulu-all-mcp stdio
 ```
 
 ### 🐳 Option 4: Docker Compose
 
-There is a sample `docker-compose.yml` that builds and runs the travel + webfetch MCP
-servers from source over HTTP (one container per app). `delulu-all-mcp` is not in the
-compose file — it ships as a standalone binary or OCI image (Options 1/3).
+There is a sample `docker-compose.yml` that builds and runs the travel MCP server from
+source over HTTP. `delulu-all-mcp` is not in the compose file — it ships as a standalone
+binary or OCI image (Options 1/3).
 
 ```bash
 git clone https://github.com/mratsim/delulu

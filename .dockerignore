@@ -1,4 +1,24 @@
+# Git metadata
 .git
 .gitignore
+
+# Build artifacts (root + per-crate)
 target/
+**/target/
+
+# Node (webfetch package.json tooling)
+node_modules
+**/node_modules
+
+# Python test venvs + caches
+.venv
+**/.venv
+__pycache__
+**/__pycache__
+
+# Tests + fixtures (not needed to build the release binaries)
+**/tests/
+*.zst
+
+# Docs
 *.md

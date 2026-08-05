@@ -97,28 +97,7 @@ ENTRYPOINT ["/app/delulu-travel-mcp"]
 
 #############################################
 #                                           #
-#           Stage 4: webfetch-mcp Builder   #
-#                                           #
-#############################################
-FROM rust:1.95-slim-bookworm AS delulu-webfetch-mcp-builder
-WORKDIR /app
-COPY . .
-RUN cargo build --release -p delulu-webfetch --features mcp
-
-#############################################
-#                                           #
-#           Stage 5: webfetch-mcp Runtime   #
-#                                           #
-#############################################
-FROM gcr.io/distroless/cc-debian12 AS delulu-webfetch-mcp-runtime
-COPY --from=delulu-webfetch-mcp-builder /app/target/release/delulu-webfetch-mcp /usr/local/bin/
-USER 1000:1000
-EXPOSE 8081
-ENTRYPOINT ["delulu-webfetch-mcp"]
-
-#############################################
-#                                           #
-#        Stage 6: all-mcp Builder          #
+#        Stage 4: all-mcp Builder          #
 #                                           #
 #############################################
 FROM builder AS delulu-all-mcp-builder
@@ -128,7 +107,7 @@ RUN cargo build --release --features mcp --bin delulu-all-mcp
 
 #############################################
 #                                           #
-#        Stage 7: all-mcp Runtime          #
+#        Stage 5: all-mcp Runtime          #
 #                                           #
 #############################################
 FROM debian:bookworm-slim AS delulu-all-mcp-runtime
