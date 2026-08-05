@@ -54,5 +54,15 @@ name = "delulu-all-mcp"
 path = "src/main_mcp.rs"
 required-features = ["mcp"]
 
+[[test]]
+name = "t_route_table"
+path = "tests/unit/t_route_table.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "t_config"
+path = "tests/unit/t_config.rs"
+required-features = ["mcp"]
+
 [package.metadata.cargo-machete]
 ignored = ["rmcp"]
