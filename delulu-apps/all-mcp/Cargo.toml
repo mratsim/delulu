@@ -39,7 +39,7 @@ delulu-paper-search-iacr = { path = "../paper-search-iacr", optional = true, fea
 delulu-paper-search-pubmed = { path = "../paper-search-pubmed", optional = true, features = ["mcp"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "time"] }
 serde_json = "1.0"
 anyhow = "1.0"
 axum = { version = "0.7", features = ["http1", "tokio", "json"] }
@@ -62,6 +62,16 @@ required-features = ["mcp"]
 [[test]]
 name = "t_config"
 path = "tests/unit/t_config.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "t_all_mcp_names"
+path = "tests/t_all_mcp_names.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "t_all_mcp_cli"
+path = "tests/t_all_mcp_cli.rs"
 required-features = ["mcp"]
 
 [package.metadata.cargo-machete]
