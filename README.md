@@ -37,20 +37,21 @@ Delulu provides a suite of **CLI tools** and **MCP (Model Context Protocol) serv
 - 💻 **CLI Tools:** Direct `flights` and `hotels` commands
 - 🚦 **Rate Limiting:** Let's be good citizens.
 - 🍪 **Cookie Management:** Let's be crafty citizens.
-- 📦 **Prebuilt Binaries:** For those allergic to Docker
+- 📦 **Prebuilt Binary:** `delulu-all-mcp` for Windows/macOS/Linux × x86-64/arm64, for those allergic to Docker
 - 🐳 **Container Ready:** Docker, Podman and Docker-Compose support with prebuilt image
 - 🚀 **High Performance:** Built with Rust, Axum, and Tokio
 - ☁️ **Lightweight:** No browser, Selenium, or Playwright - direct queries via reverse-engineered Protobuf
 
-> **Prebuilt releases:** The travel agent (flights & hotels) and `webfetch` ship prebuilt binaries, and v0.2.0 adds `delulu-all-mcp`. The other apps — websearch, arXiv, IACR, PubMed, and mcpify — are available in the repository and can be built from source (see [Building from source](#-option-2-cargo-rust-users)).
+> **Prebuilt release:** v0.2.0 ships a single prebuilt binary, `delulu-all-mcp`, which bundles all 21 tools (travel, webfetch, websearch, arXiv/IACR/PubMed papers, mcpify). The individual apps are built from source with cargo — see [Building from source](#-option-2-cargo-rust-users).
 
 ## Installation
 
-### 📦 Option 1: Prebuilt Binaries
+### 📦 Option 1: Prebuilt Binary
 
-The prebuilt binaries are **Linux-only**; on macOS/Windows build from source (Option 2 below).
+A single `delulu-all-mcp` binary is published for **Windows, macOS and Linux** (x86-64 and
+arm64). It bundles all 21 tools; the individual apps are built from source (Option 2 below).
 
-The `delulu-all-mcp` and `delulu-webfetch-mcp` tarballs below are published with the v0.2.0 release (see [Releases](https://github.com/mratsim/delulu/releases)); until that tag exists, build from source.
+The archives below are published with the v0.2.0 release (see [Releases](https://github.com/mratsim/delulu/releases)); until that tag exists, build from source.
 
 1. **Quick Install** - Platform-specific one-liners:
 
@@ -58,119 +59,121 @@ The `delulu-all-mcp` and `delulu-webfetch-mcp` tarballs below are published with
    <summary>Windows (x86-64 i.e. AMD or Intel)</summary>
 
    ```powershell
-   Invoke-WebRequest -Uri "https://github.com/mratsim/delulu/releases/latest/download/delulu-travel-mcp-windows-x86_64.zip" -OutFile "delulu.zip"; Expand-Archive -Path "delulu.zip" -DestinationPath "."; Remove-Item "delulu.zip"
+   Invoke-WebRequest -Uri "https://github.com/mratsim/delulu/releases/latest/download/delulu-all-mcp-windows-x86_64.zip" -OutFile "delulu.zip"; Expand-Archive -Path "delulu.zip" -DestinationPath "."; Remove-Item "delulu.zip"
    ```
    </details>
 
-   <details>
+<details>
    <summary>Windows ARM64</summary>
 
    ```powershell
-   Invoke-WebRequest -Uri "https://github.com/mratsim/delulu/releases/latest/download/delulu-travel-mcp-windows-arm64.zip" -OutFile "delulu.zip"; Expand-Archive -Path "delulu.zip" -DestinationPath "."; Remove-Item "delulu.zip"
+   Invoke-WebRequest -Uri "https://github.com/mratsim/delulu/releases/latest/download/delulu-all-mcp-windows-arm64.zip" -OutFile "delulu.zip"; Expand-Archive -Path "delulu.zip" -DestinationPath "."; Remove-Item "delulu.zip"
    ```
    </details>
 
-   <details>
-   <summary>Linux (x86-64 i.e. AMD or Intel)</summary>
-
-   ```bash
-   curl -sL "https://github.com/mratsim/delulu/releases/latest/download/delulu-travel-mcp-linux-x86_64.tar.gz" | tar -xz
-   ```
-   </details>
-
-   <details>
-   <summary>Linux (Arm64 like Raspberry Pi)</summary>
-
-   ```bash
-   curl -sL "https://github.com/mratsim/delulu/releases/latest/download/delulu-travel-mcp-linux-arm64.tar.gz" | tar -xz
-   ```
-   </details>
-
-   <details>
+<details>
    <summary>macOS (Apple Silicon only)</summary>
 
    ```bash
-   curl -sL "https://github.com/mratsim/delulu/releases/latest/download/delulu-travel-mcp-macos-arm64.tar.gz" | tar -xz
+   curl -sL "https://github.com/mratsim/delulu/releases/latest/download/delulu-all-mcp-macos-arm64.tar.gz" | tar -xz
    ```
    </details>
 
-   <details>
-   <summary>Linux webfetch (x86-64 i.e. AMD or Intel)</summary>
-
-   ```bash
-   curl -sL "https://github.com/mratsim/delulu/releases/latest/download/delulu-webfetch-mcp-linux-x86_64.tar.gz" | tar -xz
-   ```
-   </details>
-
-   <details>
-   <summary>Linux webfetch (Arm64 like Raspberry Pi)</summary>
-
-   ```bash
-   curl -sL "https://github.com/mratsim/delulu/releases/latest/download/delulu-webfetch-mcp-linux-arm64.tar.gz" | tar -xz
-   ```
-   </details>
-
-   <details>
-   <summary>Linux all-mcp (x86_64 i.e. AMD or Intel)</summary>
+<details>
+   <summary>Linux (x86-64 i.e. AMD or Intel)</summary>
 
    ```bash
    curl -sL "https://github.com/mratsim/delulu/releases/latest/download/delulu-all-mcp-linux-x86_64.tar.gz" | tar -xz
    ```
    </details>
 
-   <details>
-   <summary>Linux all-mcp (Arm64 like Raspberry Pi)</summary>
+<details>
+   <summary>Linux (Arm64 like Raspberry Pi)</summary>
 
    ```bash
    curl -sL "https://github.com/mratsim/delulu/releases/latest/download/delulu-all-mcp-linux-arm64.tar.gz" | tar -xz
    ```
    </details>
 
-2. **Manual Download** - Visit the [GitHub Releases page](https://github.com/mratsim/delulu/releases) and download the appropriate file for your platform and architecture, then **extract** the binary (the `.tar.gz` files contain the `delulu-<tool>-mcp` binary).
+2. **Manual Download** - Visit the [GitHub Releases page](https://github.com/mratsim/delulu/releases) and download the archive for your platform and architecture, then **extract** it (it contains the `delulu-all-mcp` binary — `.exe` on Windows).
 
 3. **Set up your MCP client** - see [Usage](#usage) below for the stdio/HTTP transports and Claude Desktop config.
 
+> **Why only one binary?** Building every app for x86-64/arm64 × Windows/macOS/Linux would
+> produce dozens of artifacts that confuse more than they help. The individual apps are
+> one `cargo build` away (Option 2) and `delulu-all-mcp` gives you all 21 tools from a single
+> binary.
+
 ### 🦀 Option 2: Cargo (Rust Users)
 
-Build from source with Cargo. The workspace builds every binary that has an `mcp` feature:
+Every app is a normal Cargo package in this workspace. `cargo install` puts the binary in `~/.cargo/bin/`; `cargo build --release` leaves it in `./target/release/`.
 
 ```bash
 git clone https://github.com/mratsim/delulu
 cd delulu
-cargo build --release --features mcp
+
+# Build everything (all apps, all binaries):
+cargo build --release
+
+# Or install one app — e.g. the unified all-mcp server (all 21 tools):
+cargo install --path delulu-apps/all-mcp --features mcp
 ```
 
-That produces, among others, `delulu-travel-mcp`, `delulu-webfetch-mcp`, and `delulu-all-mcp` in `./target/release/`. You can also build a single package:
+Individual apps:
+
+| App | Package (`-p`) | Binaries |
+|---|---|---|
+| Unified all-mcp server | `delulu-all-mcp` | `delulu-all-mcp` (MCP stdio/HTTP) |
+| Travel search | `delulu-travel-search` | `delulu-flights`, `delulu-hotels` (CLI), `delulu-travel-mcp` |
+| Web fetch & markdown | `delulu-webfetch` | `delulu-fetch` (CLI), `delulu-webfetch-mcp` |
+| Web search (DuckDuckGo/Brave) | `delulu-websearch` | `delulu-websearch` (CLI), `delulu-websearch-mcp` |
+| arXiv papers | `delulu-paper-search-arxiv` | `delulu-arxiv` (CLI), `delulu-arxiv-mcp` |
+| IACR papers | `delulu-paper-search-iacr` | `delulu-iacr` (CLI), `delulu-iacr-mcp` |
+| PubMed papers | `delulu-paper-search-pubmed` | `delulu-pubmed` (CLI), `delulu-pubmed-mcp` |
+| LLM-aware HTTP→MCP bridge | `delulu-mcpify` | `delulu-mcpify` |
+
+For one app (e.g. the travel MCP server):
 
 ```bash
-# Unified all-mcp server (re-exports the 21-tool union)
-cargo build --release -p delulu-all-mcp --features mcp
+cargo install --path delulu-apps/travel-search --features mcp
+# binaries: ~/.cargo/bin/delulu-travel-mcp (plus delulu-flights / delulu-hotels)
 ```
+
+> `--features mcp` builds the MCP server binary; the CLI-only binaries are built by default
+> when the feature is omitted. The default `mcp` feature set works on Linux, macOS and
+> Windows.
 
 ### 🐳 Option 3: Docker / Podman
 
-Prebuilt OCI images are published on GitHub Container Registry (GHCR):
+A prebuilt OCI image is published on GitHub Container Registry (GHCR):
 
-- `ghcr.io/mratsim/delulu/travel-search`
-- `ghcr.io/mratsim/delulu/webfetch-agent`  
-- `ghcr.io/mratsim/delulu/all-mcp` (unified all-mcp server)
+- `ghcr.io/mratsim/delulu/all-mcp` (unified all-mcp server, all 21 tools)
 
 ```bash
 # HTTP transport (for remote clients)  
 docker run -p 8080:8080 \
   --env RUST_LOG=info \
-  ghcr.io/mratsim/delulu/travel-search:latest \
+  ghcr.io/mratsim/delulu/all-mcp:latest \
   http --host 0.0.0.0 --port 8080
 ```
 
 ```bash
 # Stdio transport (for Claude Desktop) - requires interactive mode `docker run -i --rm`
-docker run -i --rm ghcr.io/mratsim/delulu/travel-search:latest stdio
+docker run -i --rm ghcr.io/mratsim/delulu/all-mcp:latest stdio
+```
+
+To build an image for one of the individual apps from source (e.g. webfetch):
+
+```bash
+docker build --target delulu-webfetch-mcp-runtime -t delulu-webfetch .
+docker run -i --rm delulu-webfetch stdio
 ```
 
 ### 🐳 Option 4: Docker Compose
 
-There is a sample `docker-compose.yml` that runs the travel MCP server over HTTP. `delulu-all-mcp` is **not** yet in the compose file — it ships as a standalone binary or OCI image for now.
+There is a sample `docker-compose.yml` that builds and runs the travel + webfetch MCP
+servers from source over HTTP (one container per app). `delulu-all-mcp` is not in the
+compose file — it ships as a standalone binary or OCI image (Options 1/3).
 
 ```bash
 git clone https://github.com/mratsim/delulu
@@ -202,11 +205,14 @@ That is 21 tools. (`get_paper` collides across the three paper servers and is na
 
 ```bash
 # CLI transport (Claude Desktop-friendly):
-delulu-travel-mcp stdio
+delulu-all-mcp stdio
 
 # HTTP transport (for remote clients):
-delulu-travel-mcp http --host 0.0.0.0 --port 8080
+delulu-all-mcp http --host 0.0.0.0 --port 8080
 ```
+
+The same two transports apply to every individual `delulu-*` binary built from source
+(e.g. `delulu-travel-mcp stdio`).
 
 For `delulu-all-mcp` the same flags apply plus the rate/API-base overrides (see below).
 
