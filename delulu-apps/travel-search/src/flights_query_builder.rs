@@ -21,6 +21,7 @@
 //! This module builds the protobuf-encoded base64 `tfs` parameter.
 
 pub mod proto {
+    #![allow(clippy::enum_variant_names)] // generated prost code (Unknown* variants)
     include!("proto/google_travel_flights.rs");
 }
 

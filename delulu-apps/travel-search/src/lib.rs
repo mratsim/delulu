@@ -14,13 +14,21 @@
 //!
 //!  You should have received a copy of the GNU Affero General Public License
 //!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+//!
 // Library for delulu-travel-search
 // MCP server for travel services (flights, hotels)
+// The MCP server itself lives in `lib_mcp` (feature `mcp`) so both the
+// standalone `delulu-travel-mcp` binary and `delulu-all-mcp` reuse it.
 
 // Testing access - consent_cookie is re-exported for test modules
 pub(crate) mod consent_cookie;
 pub use consent_cookie::generate_cookie_header;
+
+#[cfg(feature = "mcp")]
+pub mod lib_mcp;
+#[cfg(feature = "mcp")]
+pub use lib_mcp::TravelAgentServer;
+
 mod flights_query_builder;
 mod flights_results_parser;
 mod flights_search;
