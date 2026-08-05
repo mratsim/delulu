@@ -55,8 +55,11 @@ async fn test_e2e_stdio_transport() -> Result<()> {
     let script_str = script.to_string_lossy().to_string();
     let binary = find_binary()?;
     let binary_str = binary.to_string_lossy().to_string();
+    let manifest = manifest_dir();
+    let (python, prefix_args) = find_python(&manifest.parent().unwrap().join("websearch"));
     let py_handle = tokio::task::spawn_blocking(move || {
-        Command::new("python3")
+        let mut cmd = Command::new(python);
+        cmd.args(&prefix_args)
             .arg(&script_str)
             .arg(&binary_str)
             .arg(&spec_a)
@@ -88,6 +91,42 @@ async fn test_e2e_stdio_transport() -> Result<()> {
         py_output.status.code()
     );
     Ok(())
+}
+
+/// Find a Python interpreter that can run the MCP test scripts.
+///
+/// Prefers `uv` when available (handles pyproject.toml in tests/), then
+/// `python3`, then `python`. The uv directory is the websearch crate's
+/// `tests/manual/end-to-end` (its .venv has the official `mcp` SDK installed).
+/// Returns the command name and any prefix args needed before the script path.
+fn find_python(websearch_manifest: &std::path::Path) -> (String, Vec<String>) {
+    if std::process::Command::new("uv")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        let dir = websearch_manifest.join("tests/manual/end-to-end");
+        let dir_str = dir.to_string_lossy().to_string();
+        (
+            "uv".to_string(),
+            vec![
+                "run".to_string(),
+                "--directory".to_string(),
+                dir_str,
+                "python3".to_string(),
+            ],
+        )
+    } else if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        ("python3".to_string(), vec![])
+    } else {
+        ("python".to_string(), vec![])
+    }
 }
 
 fn manifest_dir() -> std::path::PathBuf {

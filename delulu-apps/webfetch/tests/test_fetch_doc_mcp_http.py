@@ -41,7 +41,9 @@ async def main():
     port = find_free_port()
 
     child = subprocess.Popen(
-        [binary, "http", "--port", str(port)],
+        # --expose-local-networks: the fetch_doc e2e fetches a PDF from the
+        # local fixture server (127.0.0.1), which the SSRF guard blocks by default.
+        [binary, "--expose-local-networks", "http", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
