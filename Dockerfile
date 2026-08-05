@@ -20,7 +20,7 @@
 #           Stage 0: Chef                  #
 #                                           #
 #############################################
-FROM rust:1.92-slim AS chef
+FROM rust:1.95-slim AS chef
 RUN cargo install cargo-chef --locked
 WORKDIR /app
 
@@ -100,7 +100,7 @@ ENTRYPOINT ["/app/delulu-travel-mcp"]
 #           Stage 4: webfetch-mcp Builder   #
 #                                           #
 #############################################
-FROM rust:1.85-slim-bookworm AS delulu-webfetch-mcp-builder
+FROM rust:1.95-slim-bookworm AS delulu-webfetch-mcp-builder
 WORKDIR /app
 COPY . .
 RUN cargo build --release -p delulu-webfetch --features mcp
