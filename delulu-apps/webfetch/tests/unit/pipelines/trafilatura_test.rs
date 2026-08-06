@@ -439,3 +439,186 @@ mod hygiene {
         let _: fn(&mut crate::pipelines::DomNode) = crate::wrap_pass_void!(void_pass);
     }
 }
+
+/// Helper: does the tree contain an element with the given tag?
+fn find_tag(node: &DomNode, tag: &str) -> bool {
+    match node {
+        DomNode::Element {
+            tag: t, children, ..
+        } if t == tag => true,
+        DomNode::Element { children, .. } => children.iter().any(|c| find_tag(c, tag)),
+        _ => false,
+    }
+}
+
+/// Helper: find a <head> element carrying the given rend attribute.
+fn find_head_with_rend<'a>(node: &'a DomNode, expected_rend: &str) -> Option<&'a DomNode> {
+    match node {
+        DomNode::Element {
+            tag: t,
+            attrs,
+            children,
+            ..
+        } if t == "head" => {
+            if attrs.iter().any(|(k, v)| k == "rend" && v == expected_rend) {
+                return Some(node);
+            }
+            for child in children {
+                if let Some(found) = find_head_with_rend(child, expected_rend) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        DomNode::Element { children, .. } => {
+            for child in children {
+                if let Some(found) = find_head_with_rend(child, expected_rend) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Integration: the pre-cleaning conversions + full TF_BALANCED pipeline.
+///
+/// - particula-style accordion (div > button[aria-expanded] + content)
+///   becomes <details><summary> in the intermediate tree and a
+///   <head rend="h3"> heading in the final output.
+/// - a <figure> wrapping a <table> is renamed to <div> so the data table
+///   survives the whole pipeline (tf HTML output keeps <table>).
+#[test]
+fn test_bal_pipeline_accordion_details_and_table_survival() {
+    let html = r#"<html><body>
+        <figure class="w-full"><div><div><table><thead><tr><th>Model</th></tr></thead>
+        <tbody><tr><td>SGLang</td></tr></tbody></table></div></div></figure>
+        <div class="rounded-dropdown"><button class="w-full" aria-expanded="false">
+        <span>Is SGLang faster than vLLM?</span>
+        <span aria-hidden="true"><svg><path d="x"/></svg></span></button>
+        <div><div><div>On H100 GPUs SGLang is faster.</div></div></div></div>
+        <div class="rounded-dropdown"><button class="w-full" aria-expanded="false">
+        <span>Second question?</span></button>
+        <div><div><div>Second answer.</div></div></div></div>
+        </body></html>"#;
+    let mut doc = parse_html(html).unwrap();
+    // filter_trafilatura runs this before the pipeline; the table must be
+    // marked as a data table so tf_canonicalize_unwrap_containers preserves it.
+    crate::pipelines::passes::rd_analysis::mark_data_tables_by_structure(&mut doc);
+
+    // Intermediate tree: right after tf_extract_script_templates +
+    // tf_convert_figure_with_table + tf_convert_accordion_to_details
+    // (TF_BALANCED[0..3], BEFORE tf_remove_cleaned).
+    let passes = *super::TF_BALANCED;
+    for pass in &passes[..3] {
+        pass(&mut doc);
+    }
+    assert!(
+        find_tag(&doc, "details"),
+        "accordion should be <details> in the intermediate tree"
+    );
+    assert!(find_tag(&doc, "summary"), "<summary> should exist");
+    assert!(
+        !find_tag(&doc, "figure"),
+        "figure-with-table must be renamed to <div>"
+    );
+    assert!(
+        find_tag(&doc, "table"),
+        "table must survive the conversions"
+    );
+    assert!(
+        !find_tag(&doc, "button"),
+        "accordion buttons must be converted to <summary> before tf_remove_cleaned would delete them"
+    );
+
+    // Full pipeline: table survives, accordions become h3 headings.
+    for pass in &passes[3..] {
+        pass(&mut doc);
+    }
+    assert!(
+        find_tag(&doc, "table"),
+        "table must survive the full TF_BALANCED pipeline"
+    );
+    assert!(
+        !find_tag(&doc, "details"),
+        "details must be converted away by tf_convert_refs_and_details"
+    );
+    assert!(
+        !find_tag(&doc, "summary"),
+        "summary must be converted to <head rend=h3>"
+    );
+    let text = doc.text_content();
+    assert!(
+        text.contains("Is SGLang faster than vLLM?"),
+        "FAQ question text must survive, got: {text}"
+    );
+    assert!(
+        text.contains("On H100 GPUs SGLang is faster."),
+        "FAQ answer text must survive, got: {text}"
+    );
+    assert!(
+        text.contains("Second answer."),
+        "second answer must survive"
+    );
+    let head =
+        find_head_with_rend(&doc, "h3").expect(r#"summary-derived <head rend="h3"> must exist"#);
+    assert_eq!(
+        head.text_content().trim(),
+        "Is SGLang faster than vLLM?",
+        "h3 heading must carry the question text"
+    );
+}
+
+// ── SPEC-002/GOAL-003: TF_RECALL runs the pre-cleaning conversions ─────────
+
+#[test]
+fn test_recall_pipeline_preserves_accordion_question() {
+    // Regression (SPEC-002/GOAL-003): TF_RECALL (the "preserve everything"
+    // fallback level) must also run the pre-cleaning conversions, or a
+    // recall-level extraction deletes the FAQ question text via
+    // tf_remove_cleaned (button is in TF_CLEANED_TAGS).
+    let html = r#"<html><body>
+        <div class="rounded-dropdown"><button aria-expanded="false">
+        <span>Is SGLang faster than vLLM?</span></button>
+        <div><div><div>On H100 GPUs SGLang is faster.</div></div></div></div>
+        </body></html>"#;
+    let mut doc = parse_html(html).unwrap();
+    crate::pipelines::passes::rd_analysis::mark_data_tables_by_structure(&mut doc);
+    for pass in *super::TF_RECALL {
+        pass(&mut doc);
+    }
+    let text = doc.text_content();
+    assert!(
+        text.contains("Is SGLang faster than vLLM?"),
+        "FAQ question text must survive TF_RECALL, got: {text}"
+    );
+    assert!(
+        text.contains("On H100 GPUs SGLang is faster."),
+        "FAQ answer text must survive TF_RECALL, got: {text}"
+    );
+    assert!(
+        find_head_with_rend(&doc, "h3").is_some(),
+        "summary-derived <head rend=h3> must survive TF_RECALL"
+    );
+}
+#[test]
+fn test_recall_pipeline_preserves_figure_wrapped_table() {
+    // Regression (SPEC-002/GOAL-003): TF_RECALL must run the figure-with-table
+    // pre-cleaning conversion too — figure is in TF_CLEANED_TAGS and
+    // tf_remove_cleaned would delete a figure-wrapped data table at recall level.
+    let html = r#"<html><body>
+        <figure class="w-full"><div><table><thead><tr><th>Model</th></tr></thead>
+        <tbody><tr><td>SGLang</td></tr></tbody></table></div></figure>
+        </body></html>"#;
+    let mut doc = parse_html(html).unwrap();
+    crate::pipelines::passes::rd_analysis::mark_data_tables_by_structure(&mut doc);
+    for pass in *super::TF_RECALL {
+        pass(&mut doc);
+    }
+    assert!(
+        find_tag(&doc, "table"),
+        "figure-wrapped table must survive TF_RECALL, got: {}",
+        doc.text_content()
+    );
+}

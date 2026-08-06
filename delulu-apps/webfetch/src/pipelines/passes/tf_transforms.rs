@@ -1,5 +1,6 @@
 use crate::pipelines::DomNode;
 use crate::pipelines::walkers::{WalkerAction, WalkerFilter, walk_post_mut};
+use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // Heading conversion (h1-h6 → head)
@@ -147,7 +148,11 @@ pub fn tf_convert_breaks(node: &mut DomNode) -> WalkerAction {
 ///
 /// - `a` → `ref`, move `href` → `target`
 /// - `details` → `div`
-/// - `summary` → `head`
+/// - `summary` → `head` with `rend="h3"` (when the summary has no rend of its own)
+///   Deliberate deviation from python: python's `convert_details()`
+///   (`htmlprocessing.py:334-338`) sets no rend and renders summary-heads as
+///   plain newline blocks. We set `rend="h3"` so gen_md renders them as `###`
+///   markdown headings (LLM readability, matching FAQ heading levels).
 ///   Reference: Trafilatura `htmlprocessing.py:334-338` `convert_details()` + `htmlprocessing.py:364-373` `convert_link()`
 pub fn tf_convert_refs_and_details(node: &mut DomNode) -> WalkerAction {
     match node {
@@ -174,9 +179,18 @@ pub fn tf_convert_refs_and_details(node: &mut DomNode) -> WalkerAction {
             tag.push_str("div");
             WalkerAction::Continue
         }
-        DomNode::Element { tag, .. } if tag == "summary" => {
+        DomNode::Element { tag, attrs, .. } if tag == "summary" => {
             tag.clear();
             tag.push_str("head");
+            // Deliberate deviation from python: python's convert_details
+            // (htmlprocessing.py:334-338) sets no rend on the summary-head and
+            // renders it as a plain newline block. We set rend="h3" so gen_md
+            // renders summary-derived heads as `###` markdown headings (LLM
+            // readability, matching the FAQ heading level). Only set when the
+            // summary has no rend of its own.
+            if !attrs.iter().any(|(k, _)| k == "rend") {
+                attrs.push(("rend".to_string(), "h3".to_string()));
+            }
             WalkerAction::Continue
         }
         _ => WalkerAction::Continue,
@@ -272,6 +286,186 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
     };
     let mut filters: Vec<&mut WalkerFilter> = vec![&mut unwrap_filter];
     walk_post_mut(node, &mut filters, None);
+}
+
+// ---------------------------------------------------------------------------
+// Pre-cleaning conversions (run BEFORE tf_remove_cleaned in the pipeline)
+// ---------------------------------------------------------------------------
+
+/// Recursively check whether a node is a `<table>` or has a descendant `<table>`.
+///
+/// Used by [`tf_convert_figure_with_table`] to mirror python's
+/// `.//figure[descendant::table]` XPath without an XPath engine.
+fn has_descendant_table(node: &DomNode) -> bool {
+    match node {
+        DomNode::Element { tag, children, .. } => {
+            tag == "table" || children.iter().any(has_descendant_table)
+        }
+        _ => false,
+    }
+}
+
+/// Convert `<figure>` elements containing a descendant `<table>` to `<div>`.
+///
+/// `<figure>` is in `TF_CLEANED_TAGS` (removed entirely by `tf_remove_cleaned`),
+/// which destroys figure-wrapped data tables. Python trafilatura prevents this
+/// in `htmlprocessing.py:53-56` (issue #301) — when tables are enabled, every
+/// `figure[descendant::table]` is renamed to `div` BEFORE tree cleaning:
+///
+/// ```python
+/// # prevent this issue: https://github.com/adbar/trafilatura/issues/301
+/// for elem in tree.xpath(".//figure[descendant::table]"):
+///     elem.tag = "div"
+/// ```
+///
+/// `elem.tag = "div"` keeps the element's attributes — we do the same.
+/// Figures WITHOUT a descendant table stay `<figure>` and are still removed
+/// by `tf_remove_cleaned`.
+///
+/// Pre: DOM tree is fully parsed. Runs BEFORE `tf_remove_cleaned`.
+/// Post: Every `<figure>` with a descendant `<table>` is renamed to `<div>`
+///       (attributes preserved). Nested figures both convert (pre-order walk).
+/// Note: Port of Python `htmlprocessing.py:53-56`.
+pub fn tf_convert_figure_with_table(node: &mut DomNode) -> WalkerAction {
+    // Compute the check before the mutable match so the guard doesn't hold an
+    // immutable borrow of `node` while `tag` is borrowed mutably.
+    let is_figure_with_table = matches!(node, DomNode::Element { tag, .. } if tag == "figure")
+        && has_descendant_table(node);
+    match node {
+        DomNode::Element { tag, .. } if is_figure_with_table => {
+            tag.clear();
+            tag.push_str("div");
+            WalkerAction::Continue
+        }
+        _ => WalkerAction::Continue,
+    }
+}
+
+/// Convert div-based FAQ accordions to semantic `<details><summary>`.
+///
+/// Many sites (e.g. particula.tech) build FAQ items as:
+///
+/// ```html
+/// <div class="rounded-dropdown ...">
+///   <button class="..." aria-expanded="false">
+///     <span>Question text</span>
+///     <span aria-hidden="true"><svg>...</svg></span>
+///   </button>
+///   <div class="grid ...">…answer content…</div>
+/// </div>
+/// ```
+///
+/// `<button>` is in `TF_CLEANED_TAGS`, so `tf_remove_cleaned` would delete the
+/// question text entirely and the answers would jam together. This pass runs
+/// BEFORE `tf_remove_cleaned` and restructures the pattern into semantic
+/// `<details><summary>`; the existing `tf_convert_refs_and_details` pass then
+/// converts `details → div` and `summary → head rend="h3"`.
+///
+/// Detection is strict to avoid misfiring:
+/// - The container's first ELEMENT child must be `<button>` with an
+///   `aria-expanded` attribute (any value). Leading whitespace text nodes and
+///   comments (pretty-printed HTML) are skipped — the button does not have to
+///   be the literal first DOM node.
+/// - There must be ≥1 following sibling ELEMENT (the content panel).
+///   A lone button (e.g. a real "Subscribe" control) is left alone.
+/// - Native `<details>`/`<summary>` are untouched by this pass.
+///
+/// The `<summary>` keeps the button's TEXT CONTENT ONLY: `<svg>`, `<path>`,
+/// `<rect>` and any element carrying an `aria-hidden` attribute are dropped
+/// (recursively), as are all `aria-*` attributes and classes. Buttons whose
+/// visible text is empty (icon-only toggles) are left alone — converting them
+/// would produce empty `### ` headings. Remaining sibling children stay
+/// in place (they become the details body; later canonicalization unwraps
+/// nested divs).
+///
+/// Pre: DOM tree is fully parsed. Runs BEFORE `tf_remove_cleaned`.
+/// Post: Accordion containers become `<details>` with a `<summary>` element
+///       (at the button's position) carrying the question text.
+/// Note: No direct Python trafilatura equivalent — Rust-specific.
+/// Collect the visible text content of a node, skipping icon markup
+/// (`<svg>`/`<path>`/`<rect>`) and any element carrying
+/// `aria-hidden="true"`, recursively. Used to build `<summary>` text
+/// that excludes toggle/chevron icons.
+fn collect_visible_text(node: &DomNode, buf: &mut String) {
+    match node {
+        DomNode::Text(t) => buf.push_str(t),
+        DomNode::Element {
+            tag,
+            attrs,
+            children,
+            ..
+        } => {
+            let is_hidden = tag == "svg"
+                || tag == "path"
+                || tag == "rect"
+                || attrs
+                    .iter()
+                    .any(|(k, v)| k == "aria-hidden" && v.eq_ignore_ascii_case("true"));
+            if !is_hidden {
+                for child in children {
+                    collect_visible_text(child, buf);
+                }
+            }
+        }
+        DomNode::Comment(_) | DomNode::Doctype(_) => {}
+    }
+}
+
+pub fn tf_convert_accordion_to_details(node: &mut DomNode) -> WalkerAction {
+    match node {
+        DomNode::Element { tag, children, .. } => {
+            // Strict detection: the first ELEMENT child must be a <button>
+            // with an aria-expanded attribute. Whitespace text nodes and
+            // comments (pretty-printed HTML) are skipped, so the button does
+            // not have to be the literal first DOM node.
+            let Some(button_idx) = children
+                .iter()
+                .position(|c| matches!(c, DomNode::Element { .. }))
+            else {
+                return WalkerAction::Continue;
+            };
+            let is_accordion_button = matches!(
+                &children[button_idx],
+                DomNode::Element { tag, attrs, .. }
+                    if tag == "button" && attrs.iter().any(|(k, _)| k == "aria-expanded")
+            );
+            if !is_accordion_button {
+                return WalkerAction::Continue;
+            }
+            // MUST have ≥1 following sibling ELEMENT (the content panel),
+            // counted AFTER the button's index.
+            let has_content_sibling = children
+                .iter()
+                .skip(button_idx + 1)
+                .any(|c| matches!(c, DomNode::Element { .. }));
+            if !has_content_sibling {
+                return WalkerAction::Continue;
+            }
+            // Replace the button (at its own index) with a <summary> holding
+            // the button's visible text only — icon markup (svg/path/rect) and
+            // aria-hidden elements are dropped recursively. Text-less toggle
+            // buttons are left alone: an empty summary would render as a bare
+            // `### ` heading.
+            let mut question_text = String::new();
+            collect_visible_text(&children[button_idx], &mut question_text);
+            let question_text = question_text.trim().to_string();
+            if question_text.is_empty() {
+                return WalkerAction::Continue;
+            }
+            children[button_idx] = DomNode::Element {
+                tag: "summary".to_string(),
+                attrs: vec![],
+                children: vec![DomNode::Text(question_text)],
+                scores: HashMap::new(),
+                metadata: HashMap::new(),
+            };
+            // Rename the container to <details>.
+            tag.clear();
+            tag.push_str("details");
+            WalkerAction::Continue
+        }
+        _ => WalkerAction::Continue,
+    }
 }
 
 // ---------------------------------------------------------------------------

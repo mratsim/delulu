@@ -17,6 +17,10 @@ fn extract_code_block(nodes: &[DomNode]) -> (String, String) {
             let language = node
                 .attr("class")
                 .and_then(|c| c.strip_prefix("language-"))
+                // Take the first whitespace-delimited token: a multi-class
+                // value like "language-python highlight" must yield "python",
+                // not the bogus token "python highlight".
+                .and_then(|c| c.split_whitespace().next())
                 .unwrap_or_default()
                 .to_string();
             return (
@@ -263,7 +267,9 @@ impl MarkdownLowerer {
     /// in `<a href="…">` and `<img src="…">` elements.
     pub fn lower(node: &DomNode, base_url: Option<&str>) -> String {
         let mut out = String::new();
-        Self::lower_nodes(std::slice::from_ref(node), base_url, &mut out, 0);
+        // The document root is a block context: block-level multi-line
+        // <code> elements may emit fenced blocks.
+        Self::lower_nodes(std::slice::from_ref(node), base_url, &mut out, 0, false);
         Self::cap_size(out)
     }
 }
@@ -274,19 +280,33 @@ impl MarkdownLowerer {
 
 impl MarkdownLowerer {
     /// Recursively lower nodes into a Markdown string builder.
-    fn lower_nodes(nodes: &[DomNode], base_url: Option<&str>, out: &mut String, indent: usize) {
+    fn lower_nodes(
+        nodes: &[DomNode],
+        base_url: Option<&str>,
+        out: &mut String,
+        indent: usize,
+        inline_ctx: bool,
+    ) {
         for node in nodes {
-            Self::lower_node(node, base_url, out, indent);
+            Self::lower_node(node, base_url, out, indent, inline_ctx);
         }
     }
 
     /// Lower a single node.
-    fn lower_node(node: &DomNode, base_url: Option<&str>, out: &mut String, indent: usize) {
+    fn lower_node(
+        node: &DomNode,
+        base_url: Option<&str>,
+        out: &mut String,
+        indent: usize,
+        inline_ctx: bool,
+    ) {
         match node {
             DomNode::Text(text) => {
                 out.push_str(&escape_markdown(text));
             }
-            el @ DomNode::Element { .. } => Self::lower_element(el, base_url, out, indent),
+            el @ DomNode::Element { .. } => {
+                Self::lower_element(el, base_url, out, indent, inline_ctx)
+            }
             DomNode::Comment(_) | DomNode::Doctype(_) => {
                 // Comments and doctypes are not rendered in Markdown.
             }
@@ -295,7 +315,13 @@ impl MarkdownLowerer {
 
     /// Lower an element node.
     #[allow(clippy::too_many_lines)]
-    fn lower_element(node: &DomNode, base_url: Option<&str>, out: &mut String, indent: usize) {
+    fn lower_element(
+        node: &DomNode,
+        base_url: Option<&str>,
+        out: &mut String,
+        indent: usize,
+        inline_ctx: bool,
+    ) {
         let DomNode::Element { tag, children, .. } = node else {
             return;
         };
@@ -328,19 +354,28 @@ impl MarkdownLowerer {
                         .iter()
                         .map(|c| c.text_content())
                         .collect::<String>();
+                    // Block-level output: ensure the heading lands at
+                    // line-start even when the preceding sibling was loose
+                    // text — a `### ` marker glued mid-line is body text, not
+                    // a CommonMark heading.
+                    if !out.is_empty() && !out.ends_with('\n') {
+                        out.push('\n');
+                    }
                     out.push_str(&prefix);
                     out.push(' ');
                     out.push_str(&text);
                     out.push_str("\n\n");
                 } else {
                     // Non-heading <head> (e.g. document head) — render text only.
-                    Self::lower_nodes(children, base_url, out, indent);
+                    Self::lower_nodes(children, base_url, out, indent, inline_ctx);
                 }
             }
 
             // ── Paragraphs ─────────────────────────────────────────────
             "p" => {
-                Self::lower_nodes(children, base_url, out, indent);
+                // Paragraph children are inline content: a multi-line <code>
+                // inside a <p> must NOT emit a block fence mid-paragraph.
+                Self::lower_nodes(children, base_url, out, indent, true);
                 if !out.ends_with('\n') {
                     out.push('\n');
                 }
@@ -454,15 +489,70 @@ impl MarkdownLowerer {
                 out.push_str("```\n\n");
             }
 
-            // ── Inline code ────────────────────────────────────────────
+            // ── Inline code / fenced blocks ─────────────────────────────
             "code" => {
                 let text = children
                     .iter()
                     .map(|c| c.text_content())
                     .collect::<String>();
-                out.push('`');
-                out.push_str(&text);
-                out.push('`');
+                // Block-level multi-line <code> (e.g. tf_convert_quotes
+                // renames <pre> to <code>, trafilatura's XML schema) renders
+                // as a fenced block, not inline backticks, or the lines
+                // collapse onto one line. Python trafilatura's markdown
+                // output jams it the same way — this deliberately does better
+                // than the reference. Mirrors the "pre" case. Only treat the
+                // code as block-level when it does NOT sit in an inline
+                // context: a multi-line <code> inside a paragraph must stay
+                // inline (newlines normalized to spaces) or it would emit a
+                // mid-paragraph fence — invalid markdown.
+                if text.contains('\n') && !inline_ctx {
+                    // Ensure the opening fence lands at line-start even when
+                    // the preceding sibling is loose text (e.g. a "BASH"
+                    // code-block header label) — `BASH```` is not a valid
+                    // CommonMark fence opener.
+                    if !out.is_empty() && !out.ends_with('\n') {
+                        out.push('\n');
+                    }
+                    // The language class may live on this node or, after the
+                    // pre->code rename, on a nested <code> child (the
+                    // pre>code.language-x shape). Take only the first
+                    // whitespace-delimited token: "language-python highlight"
+                    // must yield "python", not "python highlight".
+                    let language = node
+                        .attr("class")
+                        .and_then(|c| c.strip_prefix("language-").map(str::to_string))
+                        .or_else(|| {
+                            children.iter().find_map(|c| match c {
+                                DomNode::Element { tag, attrs, .. } if tag == "code" => {
+                                    attrs.iter().find_map(|(k, v)| {
+                                        if k == "class" {
+                                            v.strip_prefix("language-").map(str::to_string)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                }
+                                _ => None,
+                            })
+                        })
+                        .and_then(|c| c.split_whitespace().next().map(str::to_string))
+                        .unwrap_or_default();
+                    out.push_str("```");
+                    out.push_str(&language);
+                    out.push('\n');
+                    out.push_str(&text);
+                    if !text.ends_with('\n') {
+                        out.push('\n');
+                    }
+                    out.push_str("```\n\n");
+                } else {
+                    // Inline code: normalize newlines to spaces so a
+                    // multi-line inline <code> stays valid inline markdown
+                    // instead of emitting a mid-paragraph fence.
+                    out.push('`');
+                    out.push_str(&text.replace('\n', " "));
+                    out.push('`');
+                }
             }
 
             // ── Math (LaTeXML MathML) ────────────────────────────────
@@ -492,8 +582,16 @@ impl MarkdownLowerer {
             }
 
             // ── Fallback: render inner text only ───────────────────────
+            // Unknown containers inherit the incoming inline context. At
+            // block level (root call passes false) loose children — e.g. an
+            // unwrapped div holding a renamed <pre> after a "BASH" label —
+            // still allow block-level fences. Inside an inline context (<p>,
+            // lower_inline, list items) a multi-line <code> nested in a
+            // formatting wrapper (tf renames <strong> -> <hi> and
+            // <del>/<s>/<strike> -> <del>) must stay inline backticks instead
+            // of emitting a mid-paragraph fence.
             _ => {
-                Self::lower_nodes(children, base_url, out, indent);
+                Self::lower_nodes(children, base_url, out, indent, inline_ctx);
             }
         }
     }
@@ -501,7 +599,9 @@ impl MarkdownLowerer {
     /// Lower children as inline text (no trailing newlines).
     fn lower_inline(nodes: &[DomNode], base_url: Option<&str>) -> String {
         let mut buf = String::new();
-        Self::lower_nodes(nodes, base_url, &mut buf, 0);
+        // Inline formatting contexts (b/em/a/ref/table cells) never emit
+        // block-level fences.
+        Self::lower_nodes(nodes, base_url, &mut buf, 0, true);
         buf
     }
 
@@ -527,7 +627,7 @@ impl MarkdownLowerer {
                     out.push_str("  ");
                 }
                 out.push_str("- ");
-                Self::lower_nodes(children, base_url, out, indent + 1);
+                Self::lower_nodes(children, base_url, out, indent + 1, true);
                 if !out.ends_with('\n') {
                     out.push('\n');
                 }
@@ -553,7 +653,7 @@ impl MarkdownLowerer {
                 }
                 out.push_str(&index.to_string());
                 out.push_str(". ");
-                Self::lower_nodes(children, base_url, out, indent + 1);
+                Self::lower_nodes(children, base_url, out, indent + 1, true);
                 if !out.ends_with('\n') {
                     out.push('\n');
                 }

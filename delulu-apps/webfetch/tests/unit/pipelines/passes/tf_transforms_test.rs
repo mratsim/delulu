@@ -1,5 +1,6 @@
 use super::*;
 use crate::pipelines::parse_html;
+use crate::pipelines::passes::tf_filters::tf_remove_cleaned;
 use crate::pipelines::walk_pre_mut;
 
 fn find_tag(node: &DomNode, tag: &str) -> bool {
@@ -407,4 +408,364 @@ where
     F: Fn(&mut DomNode) -> WalkerAction,
 {
     walk_pre_mut(node, &|n| f(n));
+}
+
+// ── tf_convert_figure_with_table ──────────────────────────────────────
+
+#[test]
+fn test_tf_convert_figure_with_table_converts_to_div() {
+    // <figure> with a descendant <table> must become <div> so the table
+    // survives tf_remove_cleaned (figure is in TF_CLEANED_TAGS).
+    let mut root = parse_html(
+        "<figure><div><div><table><thead><tr><th>A</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table></div></div></figure>",
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_figure_with_table(n));
+    assert!(
+        !find_tag(&root, "figure"),
+        "<figure> with table should be renamed to <div>"
+    );
+    assert!(find_tag(&root, "div"), "renamed <div> should exist");
+    assert!(find_tag(&root, "table"), "<table> should survive");
+}
+
+#[test]
+fn test_tf_convert_figure_with_table_keeps_attributes() {
+    // Python's `elem.tag = "div"` keeps attributes — we must too.
+    let mut root = parse_html(
+        r#"<figure class="w-full" data-x="y"><div><table><tr><td>1</td></tr></table></div></figure>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_figure_with_table(n));
+    let div = find_node_matching(&root, "div").expect("renamed <div> should exist");
+    assert_eq!(get_attr(div, "class"), Some("w-full"), "class preserved");
+    assert_eq!(get_attr(div, "data-x"), Some("y"), "data-x preserved");
+}
+
+#[test]
+fn test_tf_convert_figure_without_table_still_removed_by_cleaning() {
+    // <figure> WITHOUT a descendant table stays <figure> and is still removed
+    // by tf_remove_cleaned (existing behavior must be preserved).
+    let mut root = parse_html(
+        "<figure><img src='x.png'></figure><figure><div><table><tr><td>1</td></tr></table></div></figure><p>keep</p>",
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_figure_with_table(n));
+    // Plain figure (image only) stays a figure at this point.
+    let mut figures = 0;
+    collect_tag_count(&root, "figure", &mut figures);
+    assert_eq!(figures, 1, "figure-without-table must stay <figure>");
+    // Then tf_remove_cleaned removes the remaining figure but keeps the div.
+    walk_pre_mut_test(&mut root, &|n| tf_remove_cleaned(n));
+    assert!(
+        !find_tag(&root, "figure"),
+        "plain <figure> removed by cleaning"
+    );
+    assert!(find_tag(&root, "table"), "figure-with-table table survives");
+    assert!(find_tag(&root, "p"), "<p> should survive");
+}
+
+#[test]
+fn test_tf_convert_figure_with_table_nested_figures_both_convert() {
+    // figure > figure > table: ALL figures containing a table must convert.
+    let mut root = parse_html(
+        r#"<figure class="outer"><figure class="inner"><div><table><tr><td>1</td></tr></table></div></figure></figure>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_figure_with_table(n));
+    assert!(
+        !find_tag(&root, "figure"),
+        "both nested figures should convert to <div>"
+    );
+    assert!(find_tag(&root, "table"), "table should survive");
+}
+
+// ── tf_convert_accordion_to_details ───────────────────────────────────
+
+#[test]
+fn test_tf_convert_accordion_to_details_basic() {
+    // div[button[aria-expanded] + content element] -> details + summary.
+    let mut root = parse_html(
+        r#"<div class="rounded-dropdown"><button class="w-full" aria-expanded="false"><span>Question?</span><span aria-hidden="true"><svg><path d="x"/></svg></span></button><div class="grid"><div><div>Answer text</div></div></div></div>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    assert!(
+        find_tag(&root, "details"),
+        "container should become <details>"
+    );
+    assert!(
+        find_tag(&root, "summary"),
+        "<summary> should replace button"
+    );
+    assert!(!find_tag(&root, "button"), "button should not remain");
+    // The details' first child is the summary; the content sibling stays in
+    // place as the details body (inner divs are NOT renamed).
+    let details = find_node_matching(&root, "details").expect("<details> exists");
+    if let DomNode::Element { children, .. } = details {
+        assert_eq!(children.len(), 2, "details = summary + one content sibling");
+        assert!(
+            matches!(&children[0], DomNode::Element { tag, .. } if tag == "summary"),
+            "first child must be <summary>"
+        );
+        assert!(
+            matches!(&children[1], DomNode::Element { .. }),
+            "second child must be the content panel"
+        );
+    }
+    assert!(
+        root.text_content().contains("Answer text"),
+        "answer content must remain"
+    );
+}
+
+#[test]
+fn test_tf_convert_accordion_summary_text_excludes_icons() {
+    // The <summary> must hold the button's TEXT CONTENT ONLY — svg/path/rect
+    // and aria-hidden elements are dropped. The icon fixtures CARRY text
+    // (<title> inside the svg, a glyph in an aria-hidden span) so this test
+    // detects any leak: text_content() alone would include "Chevron down"
+    // and the glyph.
+    let mut root = parse_html(
+        r#"<div><button aria-expanded="true"><span>Is SGLang faster than vLLM?</span><span aria-hidden="true"><svg><title>Chevron down</title><path d="M2 4l4 4"/><rect x="0"/></svg></span><span aria-hidden="true">▾</span></button><div><div>Yes.</div></div></div>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    let summary = find_node_matching(&root, "summary").expect("<summary> should exist");
+    assert_eq!(
+        summary.text_content(),
+        "Is SGLang faster than vLLM?",
+        "summary text must be the question text only (svg title/aria-hidden glyph must not leak)"
+    );
+    // The summary has no classes and no aria-* attributes.
+    if let DomNode::Element { attrs, .. } = summary {
+        assert!(
+            attrs.iter().all(|(k, _)| !k.starts_with("aria-")),
+            "aria-* attributes must be dropped"
+        );
+        assert!(
+            attrs.iter().all(|(k, _)| *k != "class"),
+            "classes must be dropped"
+        );
+    }
+}
+
+#[test]
+fn test_tf_convert_accordion_button_without_aria_expanded_left_alone() {
+    // A real button (no aria-expanded) as first child must NOT be converted.
+    let mut root =
+        parse_html("<div><button>Subscribe</button><div><p>content</p></div></div>").unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    assert!(find_tag(&root, "div"), "container must stay <div>");
+    assert!(find_tag(&root, "button"), "real button must be left alone");
+    assert!(!find_tag(&root, "details"), "no <details> should appear");
+    assert!(!find_tag(&root, "summary"), "no <summary> should appear");
+}
+
+#[test]
+fn test_tf_convert_accordion_button_without_content_sibling_left_alone() {
+    // A lone button (e.g. a mobile-menu toggle) with NO following sibling
+    // element must be left alone.
+    let mut root =
+        parse_html(r#"<div><button type="button" aria-expanded="false">Menu</button></div>"#)
+            .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    assert!(find_tag(&root, "div"), "container must stay <div>");
+    assert!(find_tag(&root, "button"), "lone button must be left alone");
+    assert!(!find_tag(&root, "details"));
+    assert!(!find_tag(&root, "summary"));
+}
+
+#[test]
+fn test_tf_convert_accordion_native_details_untouched() {
+    // Native <details>/<summary> in the HTML are untouched by this pass.
+    let mut root =
+        parse_html("<details><summary>Native</summary><div>body</div></details>").unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    assert!(find_tag(&root, "details"), "native <details> untouched");
+    assert!(find_tag(&root, "summary"), "native <summary> untouched");
+    assert_eq!(
+        find_node_matching(&root, "summary")
+            .expect("summary exists")
+            .text_content(),
+        "Native"
+    );
+}
+
+// ── SLOP-002: pretty-printed HTML (whitespace text / comment before button) ──
+
+#[test]
+fn test_tf_convert_accordion_pretty_printed_leading_whitespace_and_comment() {
+    // Regression (SLOP-002): pretty-printed HTML inserts whitespace text nodes
+    // (and possibly comments) before the button. Detection must locate the
+    // first ELEMENT child by index, not the literal first DOM node, or the
+    // pass silently no-ops and tf_remove_cleaned destroys the question text.
+    let mut root = parse_html(
+        "<div class=\"rounded-dropdown\">\n  <!-- FAQ item -->\n  <button class=\"w-full\" aria-expanded=\"false\"><span>Question pretty?</span></button>\n  <div class=\"grid\"><div>Answer text.</div></div>\n</div>",
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    let details = find_node_matching(&root, "details").expect("<details> should exist");
+    assert!(
+        matches!(&details, DomNode::Element { .. }),
+        "container must become <details>"
+    );
+    let summary = find_node_matching(&root, "summary").expect("<summary> should exist");
+    assert_eq!(
+        summary.text_content(),
+        "Question pretty?",
+        "question text must survive to the summary despite leading whitespace/comment"
+    );
+    assert!(
+        !find_tag(&root, "button"),
+        "button must be replaced by <summary>"
+    );
+    assert!(
+        root.text_content().contains("Answer text."),
+        "answer content must remain"
+    );
+}
+
+// ── SLOP-005: text-less / icon-only toggle buttons are left alone ─────────
+
+#[test]
+fn test_tf_convert_accordion_textless_toggle_button_left_alone() {
+    // Regression (SLOP-005): a button with no visible text (empty, or
+    // icon-only) must NOT be converted — it would produce an empty `### `
+    // heading. The container stays a div and tf_remove_cleaned handles the
+    // button as before.
+    let mut root = parse_html(
+        r#"<div><button type="button" aria-expanded="false"></button><div class="panel">panel content</div></div>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    assert!(
+        !find_tag(&root, "details"),
+        "no <details> for a text-less toggle"
+    );
+    assert!(
+        !find_tag(&root, "summary"),
+        "no <summary> for a text-less toggle"
+    );
+    assert!(
+        find_tag(&root, "button"),
+        "text-less button must be left alone"
+    );
+
+    // Icon-only button: the svg/aria-hidden icon carries the only content.
+    let mut root = parse_html(
+        r#"<div><button type="button" aria-expanded="false"><span aria-hidden="true"><svg><title>Chevron down</title><path d="M2 4l4 4"/></svg></span></button><div class="panel">panel content</div></div>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    assert!(
+        !find_tag(&root, "details"),
+        "no <details> for an icon-only toggle (svg title must not count as text)"
+    );
+    assert!(
+        !find_tag(&root, "summary"),
+        "no <summary> for an icon-only toggle"
+    );
+}
+
+// ── SLOP-001: icon text nested in a NON-aria-hidden wrapper is still dropped ──
+
+#[test]
+fn test_tf_convert_accordion_drops_svg_text_even_without_aria_hidden_wrapper() {
+    // The svg icon is dropped by TAG, not only by aria-hidden: an svg (with
+    // real text content) nested inside a plain span must not leak into the
+    // summary either.
+    let mut root = parse_html(
+        r#"<div><button aria-expanded="false"><span>Question svg?</span><span><svg><title>Chevron down</title><path d="M2 4l4 4"/></svg></span></button><div><div>Answer.</div></div></div>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    let summary = find_node_matching(&root, "summary").expect("<summary> should exist");
+    assert_eq!(
+        summary.text_content(),
+        "Question svg?",
+        "svg title text must not leak into the summary even without aria-hidden"
+    );
+}
+
+// ── SLOP-102: aria-hidden="false" (explicitly VISIBLE) text must survive ───
+
+#[test]
+fn test_tf_convert_accordion_aria_hidden_false_text_survives() {
+    // Regression (SLOP-102): collect_visible_text matched aria-hidden by KEY
+    // presence, so aria-hidden="false" (explicitly VISIBLE per ARIA) text was
+    // silently destroyed — the trimmed summary went empty and the conversion
+    // was skipped, letting tf_remove_cleaned delete the question entirely.
+    // Only aria-hidden="true" is hidden.
+    let mut root = parse_html(
+        r#"<div><button aria-expanded="false"><span aria-hidden="false">Real visible question?</span></button><div><div>Answer text.</div></div></div>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    let summary = find_node_matching(&root, "summary").expect(
+        "aria-hidden=false text is VISIBLE — conversion must proceed and summary must exist",
+    );
+    assert_eq!(
+        summary.text_content(),
+        "Real visible question?",
+        "aria-hidden=false text must survive into the summary"
+    );
+}
+
+#[test]
+fn test_tf_convert_accordion_aria_hidden_false_kept_in_summary() {
+    // Regression (SLOP-102): an aria-hidden="false" span among the question
+    // text (e.g. "(updated 2024)") must be kept in the summary, not dropped.
+    let mut root = parse_html(
+        r#"<div><button aria-expanded="false"><span>Question?</span><span aria-hidden="false">(updated 2024)</span></button><div><div>Answer text.</div></div></div>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    let summary = find_node_matching(&root, "summary").expect("<summary> should exist");
+    let text = summary.text_content();
+    assert!(
+        text.contains("Question?"),
+        "question text must survive, got: {text}"
+    );
+    assert!(
+        text.contains("(updated 2024)"),
+        "aria-hidden=false span must be kept in the summary, got: {text}"
+    );
+}
+
+// ── R3a: summary -> head rend="h3" ────────────────────────────────────
+
+#[test]
+fn test_summary_to_head_gains_rend_h3() {
+    let mut root = parse_html("<details><summary>Info</summary><p>text</p></details>").unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_refs_and_details(n));
+    let head = find_head_with_rend(&root, "h3").expect(r#"summary should become <head rend="h3">"#);
+    assert_eq!(get_attr(head, "rend"), Some("h3"));
+    assert_eq!(head.text_content(), "Info");
+}
+
+#[test]
+fn test_summary_to_head_keeps_existing_rend() {
+    // A summary that already carries a rend keeps it (h3 is only the default).
+    let mut root =
+        parse_html(r#"<details><summary rend="h2">Info</summary><p>text</p></details>"#).unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_refs_and_details(n));
+    let head = find_head_with_rend(&root, "h2").expect("existing rend must be kept");
+    assert_eq!(get_attr(head, "rend"), Some("h2"));
+}
+
+// ── Helper: count tags in a tree ──────────────────────────────────────
+
+fn collect_tag_count(node: &DomNode, tag: &str, count: &mut usize) {
+    if let DomNode::Element {
+        tag: t, children, ..
+    } = node
+    {
+        if t == tag {
+            *count += 1;
+        }
+        for child in children {
+            collect_tag_count(child, tag, count);
+        }
+    }
 }
