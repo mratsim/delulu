@@ -1170,6 +1170,7 @@ dependencies = [
  "delulu-travel-search",
  "delulu-webfetch",
  "delulu-websearch",
+ "libc",
  "rmcp",
  "serde_json",
  "tokio",

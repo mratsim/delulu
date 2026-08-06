@@ -44,6 +44,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io
 serde_json = "1.0"
 anyhow = "1.0"
 axum = { version = "0.7", features = ["http1", "tokio", "json"] }
+libc = "0.2"  # signal delivery (SIGTERM/SIGINT via libc::kill) in lifecycle tests; usage is #[cfg(unix)]
 
 
 [package.metadata.mcp]
@@ -65,6 +66,12 @@ required-features = ["mcp"]
 name = "t_all_mcp_http"
 path = "tests/integration/t_all_mcp_http.rs"
 required-features = ["mcp"]
+
+[[test]]
+name = "t_all_mcp_lifecycle"
+path = "tests/integration/t_all_mcp_lifecycle.rs"
+required-features = ["mcp"]
+
 [[test]]
 name = "t_all_mcp_python_e2e"
 path = "tests/manual/end-to-end/t_all_mcp_python_e2e.rs"
