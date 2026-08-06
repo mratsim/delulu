@@ -719,42 +719,63 @@ impl MarkdownLowerer {
             }
         }
 
-        // Write header
-        let header_row = if has_header {
-            &md_rows[0]
-        } else {
-            // Generate empty header
-            &vec![String::new(); col_count]
-        };
+        // Escape every cell first (| -> \|, revert \\( etc.) so padding
+        // reflects what is actually written.
+        let md_rows: Vec<Vec<String>> = md_rows
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .map(|c| Self::escape_table_cell(&c))
+                    .collect()
+            })
+            .collect();
 
-        out.push('|');
-        for cell in header_row {
-            out.push(' ');
-            // Escape pipe characters inside cell content
-            let escaped = Self::escape_table_cell(cell);
-            out.push_str(&escaped);
-            out.push_str(" |");
+        // Column widths from the escaped cell text — drives right-padding
+        // (aligned columns) and the dash separator row.
+        let mut col_widths = vec![0usize; col_count];
+        for row in &md_rows {
+            for (j, cell) in row.iter().enumerate() {
+                col_widths[j] = col_widths[j].max(cell.len());
+            }
         }
-        out.push('\n');
 
-        // Separator row
-        out.push('|');
-        for _ in 0..col_count {
-            out.push_str(" --- |");
-        }
-        out.push('\n');
-
-        // Data rows
-        let data_start = if has_header { 1 } else { 0 };
-        for row in &md_rows[data_start..] {
+        // Write one padded row: `| cell padded | cell padded |`
+        let write_row = |row: &[String], out: &mut String| {
             out.push('|');
-            for cell in row {
+            for (j, cell) in row.iter().enumerate() {
                 out.push(' ');
-                let escaped = Self::escape_table_cell(cell);
-                out.push_str(&escaped);
+                out.push_str(cell);
+                for _ in cell.len()..col_widths[j] {
+                    out.push(' ');
+                }
                 out.push_str(" |");
             }
             out.push('\n');
+        };
+
+        // Header row (or empty header when the table has no <th>).
+        if has_header {
+            write_row(&md_rows[0], out);
+        } else {
+            write_row(&vec![String::new(); col_count], out);
+        }
+
+        // Separator row: one dash per column slot (width + surrounding
+        // spaces). Aligned, dash-only — matches what renders correctly in
+        // VSCode's markdown preview (unaligned `| --- |` rows were dropped).
+        out.push('|');
+        for w in &col_widths {
+            for _ in 0..(w + 2) {
+                out.push('-');
+            }
+            out.push('|');
+        }
+        out.push('\n');
+
+        // Data rows.
+        let data_start = if has_header { 1 } else { 0 };
+        for row in &md_rows[data_start..] {
+            write_row(row, out);
         }
 
         out.push('\n');

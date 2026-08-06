@@ -245,7 +245,10 @@ fn test_lower_table() {
     }];
     let md = MarkdownLowerer::lower(&nodes[0], None);
     assert!(md.contains("| Name"), "should contain header cell Name");
-    assert!(md.contains("| ---"), "should contain separator row");
+    assert!(
+        md.contains("|-----"),
+        "should contain dash-only separator row"
+    );
     assert!(md.contains("| Alice"), "should contain data cell Alice");
 }
 
@@ -931,7 +934,8 @@ fn test_lower_table_cell_parens_not_escaped() {
     }];
     let md = MarkdownLowerer::lower(&nodes[0], None);
     assert!(
-        md.contains("| vLLM (PagedAttention) |"),
+        md.lines()
+            .any(|l| l.starts_with("|") && l.contains("vLLM (PagedAttention)")),
         "cell parens must not be escaped, got: {md}"
     );
     assert!(
