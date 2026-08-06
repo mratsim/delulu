@@ -69,6 +69,7 @@ fn make_length_delimited(field_number: u8, data: &[u8]) -> Vec<u8> {
 ///
 /// Base64-encoded SOCS value (without "SOCS=" prefix)
 fn generate_socs_cookie() -> String {
+    // TODO side-effect to push to main: Local::now() (SOCS cookie date, not injectable)
     let yesterday = Local::now()
         .date_naive()
         .pred_opt()

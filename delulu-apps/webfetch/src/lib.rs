@@ -1,3 +1,20 @@
+//!  Delulu Webfetch — Library
+//!
+//!  Copyright (C) 2026  Mamy Ratsimbazafy
+//!
+//!  This program is free software: you can redistribute it and/or modify
+//!  it under the terms of the GNU Affero General Public License as published by
+//!  the Free Software Foundation, either version 3 of the License, or
+//!  (at your option) any later version.
+//!
+//!  This program is distributed in the hope that it will be useful,
+//!  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//!  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//!  GNU Affero General Public License for more details.
+//!
+//!  You should have received a copy of the GNU Affero General Public License
+//!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//!
 pub mod core;
 pub use crate::core::page_status::{BlockedBy, PageStatus, classify_page};
 pub use crate::core::response::webfetch_raw_response;
@@ -7,6 +24,11 @@ pub use crate::core::types::{ExtractionResult, MarkdownDocument, RedditComment};
 pub mod generators;
 pub mod pipelines;
 pub mod sources;
+
+#[cfg(feature = "mcp")]
+pub mod lib_mcp;
+#[cfg(feature = "mcp")]
+pub use lib_mcp::WebfetchServer;
 
 pub use crate::core::detect::detect_source_type;
 pub use crate::core::types::WebfetchError;
@@ -87,6 +109,7 @@ pub(crate) fn wrap_blocked_status(
     status: PageStatus,
 ) -> Result<ExtractionResult, WebfetchError> {
     if matches!(status, PageStatus::Blocked { .. }) {
+        // TODO side-effect to push to main: tracing::* logging in lib
         tracing::warn!("webfetch blocked (cause: {status:?}); collapsing to {BLOCKED_MSG:?}");
         return Err(WebfetchError::Fetch(BLOCKED_MSG.to_string()));
     }
@@ -539,6 +562,7 @@ pub async fn doc_to_html(bytes: Vec<u8>, url: &str) -> Result<String, WebfetchEr
         let extension = extension.clone();
         let bytes = bytes.clone();
         move || -> Result<_, WebfetchError> {
+            // TODO side-effect to push to main: temp-file write (xberg bridge)
             let mut temp_file = tempfile::Builder::new()
                 .suffix(&extension)
                 .tempfile()
@@ -565,6 +589,7 @@ pub async fn doc_to_html(bytes: Vec<u8>, url: &str) -> Result<String, WebfetchEr
         uri: Some(temp_path.to_string_lossy().to_string()),
         ..Default::default()
     };
+    // TODO side-effect to push to main: tokio::time::timeout (xberg, time)
     let result = tokio::time::timeout(Duration::from_secs(10), xberg_extract(input, &config))
         .await
         .map_err(|_| {

@@ -20,6 +20,7 @@ pub enum WalkerAction {
 pub type WalkerFilter = dyn FnMut(&mut DomNode) -> WalkerAction;
 
 /// A pipeline pass: a function that mutates a DOM tree in-place.
+// TODO idempotency issue: in-place DOM mutation (safe per invocation via fresh parse_html)
 pub type PassFn = fn(&mut DomNode);
 
 /// Post-order tree walk with bottom-up filter application.
@@ -88,6 +89,7 @@ pub fn walk_post_mut(
             if should_descend.is_none_or(|pred| pred(&children[i])) {
                 walk_post_mut(&mut children[i], filters, should_descend);
             } else {
+                // TODO side-effect to push to main: tracing::* logging in lib
                 tracing::debug!("should_descend blocked descent into element");
             }
 

@@ -1385,6 +1385,7 @@ pub fn tf_isolate_content_container_xpath(node: &mut DomNode) {
             }
             Ok(_) => {}
             Err(e) => {
+                // TODO side-effect to push to main: tracing::* logging in lib
                 tracing::warn!("BODY_XPATH eval error: {:?}", e);
                 return;
             }

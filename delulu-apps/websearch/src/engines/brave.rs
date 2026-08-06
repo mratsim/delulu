@@ -27,6 +27,7 @@ use chrono::NaiveDate;
 use delulu_rate_limited_crawler::RateLimitedCrawler;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
+use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, warn};
 
@@ -63,7 +64,7 @@ fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
 /// # Panic-if
 /// - This function MUST NOT panic. All error paths return Err.
 pub struct BraveEngine {
-    crawler: RateLimitedCrawler,
+    crawler: Arc<RateLimitedCrawler>,
 }
 
 /// Continuation token for Brave pagination.
@@ -83,7 +84,20 @@ impl Continuation for BraveContinuation {
 
 impl BraveEngine {
     /// Create a new Brave engine with the given crawler.
+    ///
+    /// Callers needing a shared crawler should use [`BraveEngine::new_with_crawler`].
     pub fn new(crawler: RateLimitedCrawler) -> Self {
+        Self {
+            crawler: Arc::new(crawler),
+        }
+    }
+
+    /// Construct a `BraveEngine` sharing a caller-provided rate-limited crawler.
+    ///
+    /// Pre: `crawler` is a fully configured `RateLimitedCrawler` (rates/timeouts set by the caller).
+    /// Post: the returned engine shares the given `crawler` with any other engine constructed from it.
+    /// Panic-if: never (infallible constructor).
+    pub fn new_with_crawler(crawler: Arc<RateLimitedCrawler>) -> Self {
         Self { crawler }
     }
 
@@ -132,6 +146,7 @@ impl Engine for BraveEngine {
         continuation: Option<&dyn Continuation>,
     ) -> Result<SearchResponse, WebsearchError> {
         crate::parsers::validate_query(query)?;
+        // TODO side-effect to push to main: Instant::now() timing (logs only)
         let start = Instant::now();
         let max_results = crate::parsers::parse_max_results(params.max_results)?;
 

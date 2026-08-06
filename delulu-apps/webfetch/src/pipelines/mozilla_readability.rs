@@ -250,6 +250,7 @@ pub fn filter_mozilla_readability(node: &mut DomNode) {
         }
 
         let len = measure_output(&attempt);
+        // TODO side-effect to push to main: tracing::* logging in lib
         tracing::debug!(
             "filter_mozilla_readability: level {} produced {} chars",
             i + 1,

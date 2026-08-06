@@ -30,6 +30,11 @@ pub mod parsers;
 pub mod session_cache;
 pub mod session_key;
 
+#[cfg(feature = "mcp")]
+pub mod lib_mcp;
+#[cfg(feature = "mcp")]
+pub use lib_mcp::WebsearchServer;
+
 pub use engine::{
     Continuation, Engine, EngineId, EngineRef, SearchParams, SearchResponse, SearchResult,
 };

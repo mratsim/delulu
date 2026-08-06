@@ -17,7 +17,7 @@
 
 //! Unit tests for engine module types (SearchResult, SearchParams, etc.)
 
-use crate::{SearchParams, SearchResult};
+use crate::SearchResult;
 
 #[test]
 fn search_result_serialize_roundtrip() {

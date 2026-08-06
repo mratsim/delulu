@@ -1,8 +1,9 @@
 [package]
 name = "delulu-websearch"
-version = "0.1.0"
-edition = "2024"
-license = "AGPL-3.0"
+version = "0.2.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 description = "Multi-engine web search MCP server and CLI tool supporting DuckDuckGo and Brave"
 
 [features]

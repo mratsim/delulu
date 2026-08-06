@@ -12,8 +12,6 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct McpifyServer {
-    base_url: String,
-    proxy: Arc<ProxyClient>,
     tools: Vec<ToolEntry>,
 }
 
@@ -52,13 +50,10 @@ impl McpifyServer {
             }
         }
 
+        // TODO side-effect to push to main: tracing::* logging in lib
         tracing::info!("Registered {} tools", tools.len());
 
-        Ok(Self {
-            base_url,
-            proxy,
-            tools,
-        })
+        Ok(Self { tools })
     }
 
     fn build_tool(

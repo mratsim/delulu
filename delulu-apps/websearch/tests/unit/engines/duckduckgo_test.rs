@@ -21,7 +21,7 @@ use super::{
     DuckDuckGoContinuation, DuckDuckGoEngine, extract_json_from_js, html_entity_decode,
     parse_ddg_date, parse_iso_with_tz, parse_naive_iso, validate_n_token,
 };
-use crate::{Continuation, SearchParams, WebsearchError};
+use crate::{SearchParams, WebsearchError};
 
 #[test]
 fn extract_json_from_js_works() {
@@ -402,4 +402,27 @@ fn build_djs_url_from_preload_rejects_malformed() {
         err,
         WebsearchError::ContinuationInvalidValue { .. }
     ));
+}
+
+// ---------------------------------------------------------------------------
+// new_with_crawler (pub constructor — shared-crawler seam)
+// ---------------------------------------------------------------------------
+
+/// Verify the Arc seam: two engines can share one crawler (the all-mcp reuse path).
+#[test]
+fn test_new_with_crawler_shared_arc() {
+    let shared = std::sync::Arc::new(
+        delulu_rate_limited_crawler::RateLimitedCrawler::builder()
+            .with_qps(1)
+            .with_timeout(std::time::Duration::from_secs(10))
+            .with_connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("crawler should build"),
+    );
+    let engine_a = DuckDuckGoEngine::new_with_crawler(std::sync::Arc::clone(&shared));
+    let engine_b = DuckDuckGoEngine::new_with_crawler(std::sync::Arc::clone(&shared));
+    assert!(
+        std::sync::Arc::ptr_eq(&engine_a.crawler, &engine_b.crawler),
+        "both engines must share the same crawler instance"
+    );
 }

@@ -29,6 +29,7 @@ use delulu_rate_limited_crawler::RateLimitedCrawler;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
+use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, warn};
 
@@ -52,7 +53,7 @@ use crate::sanitize_for_log;
 /// # Panic-if
 /// - This function MUST NOT panic. All error paths return Err.
 pub struct DuckDuckGoEngine {
-    crawler: RateLimitedCrawler,
+    crawler: Arc<RateLimitedCrawler>,
 }
 
 /// Continuation token for DuckDuckGo pagination.
@@ -95,7 +96,20 @@ pub(crate) fn validate_n_token(token: &str) -> bool {
 
 impl DuckDuckGoEngine {
     /// Create a new DuckDuckGo engine with the given crawler.
+    ///
+    /// Callers needing a shared crawler should use [`DuckDuckGoEngine::new_with_crawler`].
     pub fn new(crawler: RateLimitedCrawler) -> Self {
+        Self {
+            crawler: Arc::new(crawler),
+        }
+    }
+
+    /// Construct a `DuckDuckGoEngine` sharing a caller-provided rate-limited crawler.
+    ///
+    /// Pre: `crawler` is a fully configured `RateLimitedCrawler` (rates/timeouts set by the caller).
+    /// Post: the returned engine shares the given `crawler` with any other engine constructed from it.
+    /// Panic-if: never (infallible constructor).
+    pub fn new_with_crawler(crawler: Arc<RateLimitedCrawler>) -> Self {
         Self { crawler }
     }
 
@@ -390,6 +404,7 @@ impl Engine for DuckDuckGoEngine {
         continuation: Option<&dyn Continuation>,
     ) -> Result<SearchResponse, WebsearchError> {
         crate::parsers::validate_query(query)?;
+        // TODO side-effect to push to main: Instant::now() timing (logs only)
         let start = Instant::now();
         let max_results = crate::parsers::parse_max_results(params.max_results)?;
 

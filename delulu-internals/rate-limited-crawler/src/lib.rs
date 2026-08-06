@@ -8,6 +8,7 @@
 pub mod domain_queue;
 pub mod error;
 pub mod gcra;
+pub mod redirect_policy;
 
 use futures_util::StreamExt;
 use rand::Rng;
@@ -180,10 +181,14 @@ impl Default for CrawlerBuilder {
 
 impl CrawlerBuilder {
     /// Create a wreq ClientBuilder with defaults (used when no user settings provided).
+    ///
+    /// Redirects are followed with an SSRF-validating policy (SEC-B-001): every
+    /// hop is re-checked for private/reserved IP literals, embedded credentials
+    /// and https->http downgrades before being followed.
     fn init_builder() -> wreq::ClientBuilder {
         wreq::Client::builder()
             .emulation(wreq_util::Emulation::Safari18_5)
-            .redirect(wreq::redirect::Policy::limited(5))
+            .redirect(crate::redirect_policy::validating_redirect_policy())
             .timeout(Duration::from_secs(30))
             .connect_timeout(Duration::from_secs(30))
     }

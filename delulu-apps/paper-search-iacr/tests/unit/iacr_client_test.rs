@@ -47,6 +47,92 @@ fn test_with_base_url_custom() {
 }
 
 // ---------------------------------------------------------------------------
+// BUG-B-001 regression: trailing-slash base URLs must not produce //
+// ---------------------------------------------------------------------------
+
+/// A base URL with a trailing slash must be trimmed so every downstream
+/// `format!("{}/...", base_url)` produces a single slash.
+#[test]
+fn test_with_base_url_trims_trailing_slash() {
+    let client = IacrClient::new()
+        .unwrap()
+        .with_base_url("https://eprint.iacr.org/".to_string());
+    assert_eq!(client.base_url, "https://eprint.iacr.org");
+    assert_eq!(
+        client.paper_pdf_url(2024, 123),
+        "https://eprint.iacr.org/2024/123.pdf"
+    );
+    assert_eq!(
+        client.paper_pdf_url(2004, 5),
+        "https://eprint.iacr.org/2004/5.pdf"
+    );
+}
+
+/// Multiple trailing slashes are trimmed too.
+#[test]
+fn test_with_base_url_trims_multiple_trailing_slashes() {
+    let client = IacrClient::new()
+        .unwrap()
+        .with_base_url("https://eprint.iacr.org//".to_string());
+    assert_eq!(client.base_url, "https://eprint.iacr.org");
+    assert_eq!(
+        client.paper_pdf_url(2024, 123),
+        "https://eprint.iacr.org/2024/123.pdf"
+    );
+}
+
+/// The bare-origin default and custom bases without trailing slashes are unchanged.
+#[test]
+fn test_with_base_url_without_trailing_slash_unchanged() {
+    let client = IacrClient::new()
+        .unwrap()
+        .with_base_url("https://eprint.iacr.org".to_string());
+    assert_eq!(client.base_url, "https://eprint.iacr.org");
+    assert_eq!(
+        client.paper_pdf_url(2024, 123),
+        "https://eprint.iacr.org/2024/123.pdf"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// new_with_crawler (pub constructor — shared-crawler seam)
+// ---------------------------------------------------------------------------
+/// Verify `new_with_crawler` accepts a caller-provided `Arc<RateLimitedCrawler>`
+/// and uses the same default base URL as `new()`.
+#[test]
+fn test_new_with_crawler_defaults() {
+    let crawler = delulu_rate_limited_crawler::RateLimitedCrawler::builder()
+        .with_qps(3)
+        .with_timeout(std::time::Duration::from_secs(30))
+        .with_connect_timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("crawler should build");
+    let client = IacrClient::new_with_crawler(std::sync::Arc::new(crawler));
+    let default_client = IacrClient::new().expect("new should succeed");
+    assert_eq!(client.base_url, default_client.base_url);
+    assert_eq!(client.base_url, "https://eprint.iacr.org");
+}
+
+/// Verify the Arc seam: two clients can share one crawler (the all-mcp reuse path).
+#[test]
+fn test_new_with_crawler_shared_arc() {
+    let shared = std::sync::Arc::new(
+        delulu_rate_limited_crawler::RateLimitedCrawler::builder()
+            .with_qps(3)
+            .with_timeout(std::time::Duration::from_secs(30))
+            .with_connect_timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("crawler should build"),
+    );
+    let client_a = IacrClient::new_with_crawler(std::sync::Arc::clone(&shared));
+    let client_b = IacrClient::new_with_crawler(std::sync::Arc::clone(&shared));
+    assert!(
+        std::sync::Arc::ptr_eq(&client_a.crawler, &client_b.crawler),
+        "both clients must share the same crawler instance"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // URL construction tests
 // ---------------------------------------------------------------------------
 
@@ -96,6 +182,23 @@ async fn test_list_recent_papers_with_fixture() {
     assert!(!papers.is_empty(), "should return at least one paper");
     assert!(!papers[0].id.is_empty(), "paper should have an ID");
     assert!(!papers[0].title.is_empty(), "paper should have a title");
+}
+
+/// BUG-B-001 regression: a trailing-slash base URL must still hit `/rss/rss.xml`
+/// (not `//rss/rss.xml`, which the fixture router would 404).
+#[tokio::test]
+async fn test_list_recent_papers_with_trailing_slash_base() {
+    let path = paper_search_test_utils::fixture_path("paper-search-iacr", "iacr-rss.xml.zst");
+    let (url, _shutdown) = paper_search_test_utils::serve_fixture("/rss/rss.xml", path).await;
+    let base_url = format!("{url}/");
+
+    let client = IacrClient::new().unwrap().with_base_url(base_url);
+
+    let papers = client
+        .list_recent_papers()
+        .await
+        .expect("list_recent_papers with trailing-slash base should succeed");
+    assert!(!papers.is_empty(), "should return at least one paper");
 }
 
 /// Test that the IACR client can get paper details using fixture data.

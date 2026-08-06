@@ -55,6 +55,7 @@ impl EngineRegistry {
     }
 
     /// List all registered engine names.
+    // TODO idempotency issue: HashMap iteration order (list_engines)
     pub fn list_engines(&self) -> Vec<&'static str> {
         self.engines.keys().copied().collect()
     }
@@ -78,6 +79,7 @@ pub fn create_default_registry() -> EngineRegistry {
 
     let mut registry = EngineRegistry::new();
     // DuckDuckGo — uses Safari TLS/HTTP2 fingerprint (Firefox gets blocked from this IP)
+    // TODO side-effect to push to main: crawler built in lib factory (create_default_registry)
     let ddg_crawler = delulu_rate_limited_crawler::RateLimitedCrawler::builder()
         .with_emulation(wreq_util::Profile::Safari18_5)
         .with_qps(1)
@@ -100,6 +102,37 @@ pub fn create_default_registry() -> EngineRegistry {
         .expect("Failed to build Brave crawler");
     registry.register("brave", Arc::new(brave::BraveEngine::new(brave_crawler)));
 
+    registry
+}
+
+/// Create a registry where every engine shares a single caller-provided crawler.
+///
+/// Pre: `crawler` is a fully configured `RateLimitedCrawler` (rates/timeouts set by the caller).
+/// Post: returns a registry with DuckDuckGo and Brave engines registered, all sharing
+/// `crawler` (one global rate policy across all engines).
+/// Panic-if: never (infallible; registration cannot fail).
+///
+/// Note on the shared policy: a single crawler carries ONE rate/emulation profile.
+/// The standalone engines use per-engine profiles (DuckDuckGo: qps 1 with the
+/// Safari18_5 TLS/HTTP2 fingerprint, Brave: qps 2). A shared crawler cannot
+/// jointly satisfy both, so the aggregator must pick one policy and accept that
+/// DuckDuckGo's fingerprint is lost (it may be blocked from some IPs).
+pub fn create_registry_with_crawler(
+    crawler: std::sync::Arc<delulu_rate_limited_crawler::RateLimitedCrawler>,
+) -> EngineRegistry {
+    let mut registry = EngineRegistry::new();
+    registry.register(
+        "duckduckgo",
+        std::sync::Arc::new(duckduckgo::DuckDuckGoEngine::new_with_crawler(
+            std::sync::Arc::clone(&crawler),
+        )),
+    );
+    registry.register(
+        "brave",
+        std::sync::Arc::new(brave::BraveEngine::new_with_crawler(std::sync::Arc::clone(
+            &crawler,
+        ))),
+    );
     registry
 }
 

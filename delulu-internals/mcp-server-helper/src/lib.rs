@@ -38,7 +38,7 @@ use clap::Subcommand;
 use rmcp::handler::server::ServerHandler;
 use rmcp::handler::server::common::FromContextPart;
 use rmcp::handler::server::tool::ToolCallContext;
-use rmcp::service::serve_server;
+use rmcp::service::{QuitReason, serve_server};
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
@@ -103,27 +103,125 @@ pub fn setup_tracing() {
 // Server runners
 // ---------------------------------------------------------------------------
 
+/// Wait for a shutdown signal: SIGINT (Ctrl+C) on all platforms, plus SIGTERM
+/// on unix (what Docker `docker stop` / Kubernetes send on container stop).
+///
+/// Returns the name of the signal that fired so callers can log it.
+#[cfg(unix)]
+async fn wait_for_shutdown_signal() -> &'static str {
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("failed to install SIGTERM handler");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => "SIGINT",
+        _ = sigterm.recv() => "SIGTERM",
+    }
+}
+
+/// Wait for a shutdown signal: SIGINT (Ctrl+C). SIGTERM handling is unix-only
+/// and not available on this platform.
+#[cfg(not(unix))]
+async fn wait_for_shutdown_signal() -> &'static str {
+    tokio::signal::ctrl_c().await.ok();
+    "SIGINT"
+}
+
 /// Run an MCP server over stdio transport.
 ///
-/// The server runs until Ctrl+C is received, then performs a graceful shutdown.
+/// The server runs until the client closes stdin (EOF), or a shutdown signal
+/// (SIGINT / Ctrl+C, or SIGTERM on unix) is received, then shuts down and
+/// exits the process: code 0 on a clean shutdown (client EOF, or signal
+/// shutdown), non-zero if the serve-loop task or an outbound send task
+/// terminated abnormally (rmcp reports these as `QuitReason::JoinError` or
+/// `Err(JoinError)` from `waiting()`). Note: panics inside individual tool
+/// handlers run in detached tokio tasks and never surface here (rmcp
+/// 0.13.0) — they cannot change the exit code.
+///
+/// This function does not return on the post-handshake paths: it terminates
+/// the process explicitly to work around tokio's blocking-pool stdin read
+/// hanging runtime teardown (see the comment in the function body). The
+/// `Result<(), Error>` return is retained for the pre-handshake path, where
+/// `serve_server` errors are still propagated to the caller.
 pub async fn run_stdio<T>(server: T) -> Result<(), Error>
 where
     T: ServerHandler + 'static,
 {
     let (stdin, stdout) = rmcp::transport::io::stdio();
     tracing::info!("Starting MCP server over stdio...");
-    let _running = serve_server(Arc::new(server), (stdin, stdout))
+    let running = serve_server(Arc::new(server), (stdin, stdout))
         .await
         .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
     tracing::debug!("Server running. Press Ctrl+C to stop.");
-    tokio::signal::ctrl_c().await.ok();
-    tracing::info!("Shutting down...");
-    Ok(())
+
+    // Hoist the serve-task wait out of the select so the signal branch can
+    // cancel the serve task explicitly and await its termination (drain).
+    // `running.waiting()` consumes `running`, so grab the cancellation token
+    // first.
+    let cancellation_token = running.cancellation_token();
+    let waiting = running.waiting();
+    tokio::pin!(waiting);
+    let exit_code = tokio::select! {
+        quit = &mut waiting => {
+            // The serve loop ended on its own (transport closure / error).
+            if let Ok(QuitReason::JoinError(e)) | Err(e) = &quit {
+                // A crashed serve loop or outbound send task is NOT a clean
+                // disconnect: exit non-zero so supervisors (systemd
+                // Restart=on-failure, container healthchecks) can react.
+                // (Panics inside individual tool handlers run in detached
+                // tokio tasks and never surface here — rmcp 0.13.0.)
+                tracing::error!("Serve task terminated abnormally: {e}");
+            } else {
+                tracing::info!("Client disconnected (stdin closed). Shutting down...");
+            }
+            exit_code_for(&quit)
+        }
+        signal = wait_for_shutdown_signal() => {
+            tracing::info!("Received {signal}. Shutting down...");
+            // Drain: cancel the serve task and await its termination so the
+            // serve loop's own cleanup (including `transport.close()`) runs
+            // before the process exits. Bounded: the serve loop observes the
+            // cancellation token at its next select poll and breaks
+            // immediately; the stdio `transport.close()` only drops the
+            // stdout writer.
+            cancellation_token.cancel();
+            let drain = (&mut waiting).await;
+            if let Ok(QuitReason::JoinError(e)) | Err(e) = &drain {
+                tracing::error!("Serve task terminated abnormally during shutdown: {e}");
+            } else {
+                tracing::info!("Serve task stopped. Shutting down...");
+            }
+            exit_code_for(&drain)
+        }
+    };
+
+    // Flush stderr (tracing writes there) and exit the process deterministically.
+    //
+    // rmcp's stdio transport reads stdin via `tokio::io::stdin()`, which
+    // performs the fd read on the runtime's BLOCKING POOL. When this function
+    // returns, `#[tokio::main]` drops the runtime, which JOINS the blocking
+    // pool and therefore waits forever on the blocked `read()` of the
+    // still-open stdin pipe — the process hangs after a graceful shutdown.
+    // This is a pre-existing tokio limitation: returning from this function
+    // would hang runtime teardown, so the process must exit explicitly. (The
+    // hang was latent before this change — signal paths were never exercised
+    // by tests, which used kill_on_drop = SIGKILL.)
+    //
+    // All work this function is responsible for is done at this point — on
+    // the EOF path `waiting()` awaited the serve task to termination; on the
+    // signal path the serve task was cancelled explicitly and its termination
+    // was awaited in the select above. The only remaining work is runtime
+    // teardown, which hangs on the blocking stdin read. Bypass it with an
+    // explicit process exit. `std::process::exit` does not run Rust
+    // destructors, so flush stderr explicitly first.
+    use std::io::Write;
+    let _ = std::io::stderr().flush();
+    std::process::exit(exit_code);
 }
 
 /// Run an MCP server over HTTP (Streamable HTTP) transport with graceful shutdown.
 ///
-/// The server binds to `host:port` and serves on `/mcp`.
+/// The server binds to `host:port` and serves on `/mcp`. Shuts down gracefully
+/// on SIGINT (Ctrl+C) on all platforms, and on SIGTERM on unix (what Docker
+/// `docker stop` / Kubernetes send on container stop).
 pub async fn run_http<T>(server: T, host: String, port: u16) -> Result<(), Error>
 where
     T: ServerHandler + Clone + 'static,
@@ -148,7 +246,7 @@ where
         app.into_make_service_with_connect_info::<PeerInfo>(),
     )
     .with_graceful_shutdown(async move {
-        tokio::signal::ctrl_c().await.ok();
+        let _ = wait_for_shutdown_signal().await;
         tracing::info!("Shutting down HTTP server...");
     })
     .await
@@ -288,5 +386,41 @@ impl<S> FromContextPart<ToolCallContext<'_, S>> for PeerAddr {
                     .map(|ci| ci.0)
             });
         Ok(PeerAddr(info))
+    }
+}
+
+/// Map a serve-loop termination reason to the process exit code: clean
+/// disconnects (`Closed`) and cancellations (`Cancelled`) exit 0; abnormal
+/// terminations exit 1. The abnormal cases are `Err(JoinError)` (the serve
+/// loop task itself panicked — surfaced by `waiting()`) and
+/// `Ok(QuitReason::JoinError(_))` (an outbound transport-send task panicked
+/// inside the serve loop, which rmcp reports as a quit reason).
+fn exit_code_for(reason: &Result<QuitReason, tokio::task::JoinError>) -> i32 {
+    match reason {
+        Ok(QuitReason::Closed) | Ok(QuitReason::Cancelled) => 0,
+        Ok(QuitReason::JoinError(_)) | Err(_) => 1,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::exit_code_for;
+    use rmcp::service::QuitReason;
+
+    #[test]
+    fn exit_code_is_0_for_clean_disconnects() {
+        assert_eq!(exit_code_for(&Ok(QuitReason::Closed)), 0);
+        assert_eq!(exit_code_for(&Ok(QuitReason::Cancelled)), 0);
+    }
+
+    #[tokio::test]
+    async fn exit_code_is_1_for_abnormal_terminations() {
+        // A panicked spawned task yields a real JoinError (the only public
+        // way to obtain one).
+        let err = tokio::spawn(async { panic!("boom") }).await.unwrap_err();
+        assert_eq!(exit_code_for(&Err(err)), 1);
+
+        let err = tokio::spawn(async { panic!("boom") }).await.unwrap_err();
+        assert_eq!(exit_code_for(&Ok(QuitReason::JoinError(err))), 1);
     }
 }

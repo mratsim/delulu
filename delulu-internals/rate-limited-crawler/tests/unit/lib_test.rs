@@ -879,7 +879,7 @@ async fn test_builder_short_timeout_actually_applied() {
         .build()
         .expect("build should succeed");
 
-    let result = crawler.get(&format!("http://{}", addr)).send().await;
+    let result = crawler.get(format!("http://{}", addr)).send().await;
 
     assert!(result.is_err(), "1s timeout should fire on a 3s server");
 }

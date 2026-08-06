@@ -45,6 +45,8 @@ impl GoogleFlightsClient {
         queries_per_second: u32,
     ) -> Result<Self> {
         let crawler = Arc::new(
+            // Standalone path: build an engine-local crawler here. Callers that need to
+            // share a crawler across engines use `new_with_crawler` instead.
             RateLimitedCrawler::builder()
                 .with_qps(queries_per_second as u64)
                 .with_emulation(Profile::Safari18_5)
@@ -59,6 +61,25 @@ impl GoogleFlightsClient {
             _language: language,
             _currency: currency,
         })
+    }
+
+    /// Construct a `GoogleFlightsClient` sharing a caller-provided rate-limited crawler.
+    ///
+    /// Pre: `crawler` is a fully configured `RateLimitedCrawler` (rates/timeouts
+    /// set by the caller).
+    /// Post: the returned client shares the given `crawler`; `language` and
+    /// `currency` are stored as provided.
+    /// Panic-if: never (infallible constructor).
+    pub fn new_with_crawler(
+        crawler: Arc<RateLimitedCrawler>,
+        language: impl Into<String>,
+        currency: impl Into<String>,
+    ) -> Self {
+        Self {
+            crawler,
+            _language: language.into(),
+            _currency: currency.into(),
+        }
     }
 }
 
@@ -201,5 +222,30 @@ impl GoogleFlightsClient {
                 Err(e).context("Parse failed - see HTML preview above")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod seam_tests {
+    use super::GoogleFlightsClient;
+    use delulu_rate_limited_crawler::RateLimitedCrawler;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    /// Verify the shared-crawler seam: two clients built from the same Arc
+    /// share one rate-limited crawler (the delulu-all-mcp reuse path).
+    #[test]
+    fn new_with_crawler_shared_arc() {
+        let shared = Arc::new(
+            RateLimitedCrawler::builder()
+                .with_qps(1)
+                .with_timeout(Duration::from_secs(10))
+                .with_connect_timeout(Duration::from_secs(10))
+                .build()
+                .expect("crawler should build"),
+        );
+        let a = GoogleFlightsClient::new_with_crawler(Arc::clone(&shared), "en", "USD");
+        let b = GoogleFlightsClient::new_with_crawler(Arc::clone(&shared), "en", "USD");
+        assert!(Arc::ptr_eq(&a.crawler, &b.crawler));
     }
 }

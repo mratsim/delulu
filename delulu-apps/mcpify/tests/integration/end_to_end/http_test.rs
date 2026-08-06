@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use std::process::{Command, Stdio};
+use tokio::task::JoinHandle;
 use tokio::time::{Duration, timeout};
 
 mod helpers;
@@ -10,6 +11,23 @@ mod service_b;
 use helpers::*;
 use service_a::start_service_a;
 use service_b::start_service_b;
+
+/// Bind to `127.0.0.1:0` and return the OS-assigned free port.
+/// Infallible in practice — panics only if no port is available.
+fn get_free_port() -> u16 {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind 127.0.0.1:0");
+    l.local_addr().expect("local_addr").port()
+}
+
+/// Spawn a blocking task that copies a subprocess's stderr to `eprint!`.
+/// Errors in the streaming task are intentionally swallowed (best-effort diagnostics).
+fn stream_stderr_to_console(stderr: std::process::ChildStderr) -> JoinHandle<()> {
+    tokio::task::spawn_blocking(move || {
+        let mut r = stderr;
+        let mut w = std::io::stderr();
+        let _ = std::io::copy(&mut r, &mut w);
+    })
+}
 
 const HEALTH_POLL_TIMEOUT: Duration = Duration::from_secs(10);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -57,10 +75,10 @@ async fn test_e2e_http_transport() -> Result<()> {
 
     // Start mcpify instances
     let binary = find_binary()?;
-    let mut ca: Option<std::process::Child> = None;
-    let mut cb: Option<std::process::Child> = None;
-    let mut sea: Option<tokio::task::JoinHandle<()>> = None;
-    let mut seb: Option<tokio::task::JoinHandle<()>> = None;
+    let ca: Option<std::process::Child>;
+    let cb: Option<std::process::Child>;
+    let sea: Option<tokio::task::JoinHandle<()>>;
+    let seb: Option<tokio::task::JoinHandle<()>>;
 
     let mut c = Command::new(&binary)
         .args([
@@ -124,8 +142,11 @@ async fn test_e2e_http_transport() -> Result<()> {
     let script_str = script.to_string_lossy().to_string();
     let binary = find_binary()?;
     let binary_str = binary.to_string_lossy().to_string();
+    let manifest = manifest_dir();
+    let (python, prefix_args) = find_python(&manifest.parent().unwrap().join("websearch"));
     let py_handle = tokio::task::spawn_blocking(move || {
-        Command::new("python3")
+        let mut cmd = Command::new(python);
+        cmd.args(&prefix_args)
             .arg(&script_str)
             .arg(&binary_str)
             .arg(pa2.to_string())
@@ -157,6 +178,42 @@ async fn test_e2e_http_transport() -> Result<()> {
         py_output.status.code()
     );
     Ok(())
+}
+
+/// Find a Python interpreter that can run the MCP test scripts.
+///
+/// Prefers `uv` when available (handles pyproject.toml in tests/), then
+/// `python3`, then `python`. The uv directory is the websearch crate's
+/// `tests/manual/end-to-end` (its .venv has the official `mcp` SDK installed).
+/// Returns the command name and any prefix args needed before the script path.
+fn find_python(websearch_manifest: &std::path::Path) -> (String, Vec<String>) {
+    if std::process::Command::new("uv")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        let dir = websearch_manifest.join("tests/manual/end-to-end");
+        let dir_str = dir.to_string_lossy().to_string();
+        (
+            "uv".to_string(),
+            vec![
+                "run".to_string(),
+                "--directory".to_string(),
+                dir_str,
+                "python3".to_string(),
+            ],
+        )
+    } else if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        ("python3".to_string(), vec![])
+    } else {
+        ("python".to_string(), vec![])
+    }
 }
 
 fn manifest_dir() -> std::path::PathBuf {

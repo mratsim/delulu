@@ -20,7 +20,9 @@ async def main():
 
     server_params = StdioServerParameters(
         command=binary,
-        args=["stdio"],
+        # --expose-local-networks: the fetch_doc e2e fetches a PDF from the
+        # local fixture server (127.0.0.1), which the SSRF guard blocks by default.
+        args=["--expose-local-networks", "stdio"],
     )
 
     async with stdio_client(server_params) as (read, write):

@@ -37,6 +37,8 @@ pub struct GoogleHotelsClient {
 impl GoogleHotelsClient {
     pub fn new(timeout_secs: u64, queries_per_second: u32) -> Result<Self> {
         let crawler = Arc::new(
+            // Standalone path: build an engine-local crawler here. Callers that need to
+            // share a crawler across engines use `new_with_crawler` instead.
             RateLimitedCrawler::builder()
                 .with_qps(queries_per_second as u64)
                 .with_emulation(Profile::Safari18_5)
@@ -47,6 +49,16 @@ impl GoogleHotelsClient {
                 .context("Failed to build rate-limited crawler")?,
         );
         Ok(Self { crawler })
+    }
+
+    /// Construct a `GoogleHotelsClient` sharing a caller-provided rate-limited crawler.
+    ///
+    /// Pre: `crawler` is a fully configured `RateLimitedCrawler` (rates/timeouts
+    /// set by the caller).
+    /// Post: the returned client shares the given `crawler`.
+    /// Panic-if: never (infallible constructor).
+    pub fn new_with_crawler(crawler: Arc<RateLimitedCrawler>) -> Self {
+        Self { crawler }
     }
 }
 
@@ -192,5 +204,30 @@ impl GoogleHotelsClient {
                 Err(e).context("Parse failed - see HTML preview above")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod seam_tests {
+    use super::GoogleHotelsClient;
+    use delulu_rate_limited_crawler::RateLimitedCrawler;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    /// Verify the shared-crawler seam: two clients built from the same Arc
+    /// share one rate-limited crawler (the delulu-all-mcp reuse path).
+    #[test]
+    fn new_with_crawler_shared_arc() {
+        let shared = Arc::new(
+            RateLimitedCrawler::builder()
+                .with_qps(1)
+                .with_timeout(Duration::from_secs(10))
+                .with_connect_timeout(Duration::from_secs(10))
+                .build()
+                .expect("crawler should build"),
+        );
+        let a = GoogleHotelsClient::new_with_crawler(Arc::clone(&shared));
+        let b = GoogleHotelsClient::new_with_crawler(Arc::clone(&shared));
+        assert!(Arc::ptr_eq(&a.crawler, &b.crawler));
     }
 }

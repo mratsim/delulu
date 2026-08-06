@@ -25,8 +25,8 @@
 //!     cargo test --test t_websearch_brv_live -- --ignored --nocapture
 
 use anyhow::Result;
+use delulu_websearch::SearchParams;
 use delulu_websearch::engines::create_default_registry;
-use delulu_websearch::{Engine, EngineRef, SearchParams};
 
 fn print_results(label: &str, results: &[delulu_websearch::SearchResult]) {
     println!("\n=== Brave -- {label} -- {} results ===", results.len());

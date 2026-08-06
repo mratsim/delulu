@@ -28,9 +28,9 @@
 
 use std::time::{Duration, Instant};
 
-use delulu_websearch::engine::{Engine, EngineId, SearchParams};
+use delulu_websearch::SessionCache;
+use delulu_websearch::engine::{EngineId, SearchParams};
 use delulu_websearch::engines::create_default_registry;
-use delulu_websearch::{EngineRef, SessionCache};
 use tokio::time::sleep;
 
 fn print_results(label: &str, results: &[delulu_websearch::SearchResult]) {

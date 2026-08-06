@@ -18,7 +18,7 @@
 //! Unit tests for Brave search engine backend.
 
 use super::{BraveContinuation, BraveEngine, strip_date_prefix};
-use crate::{Continuation, SearchParams};
+use crate::SearchParams;
 
 #[test]
 fn build_search_url_basic() {
@@ -122,4 +122,27 @@ fn brave_continuation_roundtrip() {
 fn brave_continuation_from_json() {
     let cont: BraveContinuation = serde_json::from_str(r#"{"page":7}"#).unwrap();
     assert_eq!(cont.page, 7);
+}
+
+// ---------------------------------------------------------------------------
+// new_with_crawler (pub constructor — shared-crawler seam)
+// ---------------------------------------------------------------------------
+
+/// Verify the Arc seam: two engines can share one crawler (the all-mcp reuse path).
+#[test]
+fn test_new_with_crawler_shared_arc() {
+    let shared = std::sync::Arc::new(
+        delulu_rate_limited_crawler::RateLimitedCrawler::builder()
+            .with_qps(2)
+            .with_timeout(std::time::Duration::from_secs(10))
+            .with_connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("crawler should build"),
+    );
+    let engine_a = BraveEngine::new_with_crawler(std::sync::Arc::clone(&shared));
+    let engine_b = BraveEngine::new_with_crawler(std::sync::Arc::clone(&shared));
+    assert!(
+        std::sync::Arc::ptr_eq(&engine_a.crawler, &engine_b.crawler),
+        "both engines must share the same crawler instance"
+    );
 }

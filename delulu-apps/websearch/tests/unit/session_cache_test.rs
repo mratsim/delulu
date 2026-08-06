@@ -218,27 +218,25 @@ fn session_cache_thread_safety() {
     let now = Instant::now();
 
     let handle1 = std::thread::spawn(move || {
-        let key = cache2.store(
+        cache2.store(
             EngineId::Brave,
             "thread1 query",
             SearchParams::default(),
             None,
             now,
             fixed_id(),
-        );
-        key
+        )
     });
 
     let handle2 = std::thread::spawn(move || {
-        let key = cache3.store(
+        cache3.store(
             EngineId::DuckDuckGo,
             "thread2 query",
             SearchParams::default(),
             None,
             now,
             alt_id(),
-        );
-        key
+        )
     });
 
     let key1 = handle1.join().expect("thread 1 panicked");
@@ -265,7 +263,7 @@ fn session_cache_defaults() {
     for i in 0..10_001 {
         // Use a unique ID per entry so each key is different
         let id = [
-            (i >> 0) as u8,
+            i as u8,
             (i >> 8) as u8,
             (i >> 16) as u8,
             (i >> 24) as u8,

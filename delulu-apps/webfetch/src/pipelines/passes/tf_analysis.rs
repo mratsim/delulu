@@ -70,6 +70,7 @@ pub(crate) fn extract_jsonld_article_body(node: &DomNode) -> Option<String> {
                             // (author names/URLs, contact fields), so it is deliberately kept at
                             // debug level to avoid leaking PII into retained/production warn logs.
                             let preview: String = text.chars().take(200).collect();
+                            // TODO side-effect to push to main: tracing::* logging in lib
                             tracing::warn!("JSON-LD parse error: {}", e);
                             tracing::debug!("JSON-LD preview: {:?}", preview);
                         }

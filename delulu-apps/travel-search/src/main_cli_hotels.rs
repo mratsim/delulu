@@ -63,7 +63,7 @@ use delulu_travel_search::{Amenity, GoogleHotelsClient, HotelSearchParams};
 
 #[derive(Parser, Debug)]
 #[command(name = "delulu-hotels")]
-#[command(version = "0.1.0")]
+#[command(author, version)]
 #[command(about = "Search hotels via Google Hotels API")]
 struct Args {
     #[arg(short = 'L', long)]

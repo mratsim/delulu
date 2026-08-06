@@ -1,3 +1,20 @@
+//!  Delulu Trafilatura Pipeline
+//!
+//!  Copyright (C) 2026  Mamy Ratsimbazafy
+//!
+//!  This program is free software: you can redistribute it and/or modify
+//!  it under the terms of the GNU Affero General Public License as published by
+//!  the Free Software Foundation, either version 3 of the License, or
+//!  (at your option) any later version.
+//!
+//!  This program is distributed in the hope that it will be useful,
+//!  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//!  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//!  GNU Affero General Public License for more details.
+//!
+//!  You should have received a copy of the GNU Affero General Public License
+//!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//!
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -100,6 +117,7 @@ where
     // Use checked_mul to prevent integer overflow on large documents
     match new_len.checked_mul(threshold) {
         Some(product) if product <= old_len => {
+            // TODO side-effect to push to main: tracing::* logging in lib
             tracing::warn!(
                 "backup triggered ({} -> {} chars, threshold={}), restoring",
                 old_len,
@@ -140,19 +158,19 @@ macro_rules! with_backup_wrapper {
     };
 }
 
-/// Remove unlikely candidates with backup/restore safety net.
-///
-/// Pre: `node` is a valid DOM tree. The tree has been parsed and basic cleaning applied.
-/// Post: Elements matching OVERALL_DISCARD_XPATH are removed. If >=80% of text is removed (threshold: 5×), the node is restored to the backup state. Uses `*node = backup` (full restore).
-///
-/// Matches Trafilatura's `prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH,
-/// with_backup=True)` (trafilatura/htmlprocessing.py:prune_unwanted_nodes).
-///
-/// Trafilatura logic: `return tree if new_len > old_len / 5 else backup`
-/// Our equivalent: `if new_len * 5 <= old_len { restore }`
-///
-/// Reference: Trafilatura `main_extractor.py` line 710:
-///   `tree = prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH, with_backup=True)`
+// Remove unlikely candidates with backup/restore safety net.
+//
+// Pre: `node` is a valid DOM tree. The tree has been parsed and basic cleaning applied.
+// Post: Elements matching OVERALL_DISCARD_XPATH are removed. If >=80% of text is removed (threshold: 5×), the node is restored to the backup state. Uses `*node = backup` (full restore).
+//
+// Matches Trafilatura's `prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH,
+// with_backup=True)` (trafilatura/htmlprocessing.py:prune_unwanted_nodes).
+//
+// Trafilatura logic: `return tree if new_len > old_len / 5 else backup`
+// Our equivalent: `if new_len * 5 <= old_len { restore }`
+//
+// Reference: Trafilatura `main_extractor.py` line 710:
+//   `tree = prune_unwanted_nodes(tree, OVERALL_DISCARD_XPATH, with_backup=True)`
 #[cfg(not(feature = "use-xpath"))]
 with_backup_wrapper!(
     apply_tf_remove_unlikely_candidates_with_backup,
@@ -160,12 +178,12 @@ with_backup_wrapper!(
     5
 );
 
-/// Filter by link density with backup/restore safety net.
-///
-/// Pre: `node` is a valid DOM tree. Unlikely candidates have been removed.
-/// Post: Elements with link density >50% are removed. If >=95% of text is removed (threshold: 19×), the node is restored to the backup state. Uses `*node = backup` (full restore).
-///
-/// Reference: Trafilatura `main_extractor.py` line 710 pattern.
+// Filter by link density with backup/restore safety net.
+//
+// Pre: `node` is a valid DOM tree. Unlikely candidates have been removed.
+// Post: Elements with link density >50% are removed. If >=95% of text is removed (threshold: 19×), the node is restored to the backup state. Uses `*node = backup` (full restore).
+//
+// Reference: Trafilatura `main_extractor.py` line 710 pattern.
 #[cfg(not(feature = "use-xpath"))]
 with_backup_wrapper!(
     apply_tf_filter_by_link_density_with_backup,

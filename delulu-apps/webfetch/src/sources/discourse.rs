@@ -58,6 +58,7 @@ impl DiscourseExtractor {
         let post_count = api_response.posts_count;
 
         if (posts.len() as u64) < post_count {
+            // TODO side-effect to push to main: tracing::* logging in lib
             tracing::warn!(
                 "Discourse topic '{}' (id={}) has {} posts on server but only {} in this response (possibly paginated)",
                 api_response.title,

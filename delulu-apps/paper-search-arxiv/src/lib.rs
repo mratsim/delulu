@@ -20,8 +20,15 @@
 //! Provides:
 //! - `core` module: `Paper`, `SearchQuery`, `parse_atom_response`
 //! - `ArxivClient`: HTTP client wrapping `RateLimitedCrawler` for arXiv API queries
+//! - `lib_mcp` module (feature `mcp`): the `ArxivMcpServer` MCP server
 
 pub mod core;
+
+#[cfg(feature = "mcp")]
+pub mod lib_mcp;
+
+#[cfg(feature = "mcp")]
+pub use lib_mcp::ArxivMcpServer;
 
 use anyhow::{Context, Result};
 use core::{Paper, SearchQuery};
@@ -39,15 +46,23 @@ pub struct ArxivClient {
 }
 
 impl ArxivClient {
-    fn new_with_crawler(crawler: RateLimitedCrawler) -> Self {
+    /// Construct an `ArxivClient` sharing a caller-provided rate-limited crawler.
+    ///
+    /// Pre: `crawler` is a fully configured `RateLimitedCrawler` (rates/timeouts set by the caller).
+    /// Post: the returned client shares the given `crawler` and uses the default arXiv base and API URLs.
+    /// Panic-if: never (infallible constructor).
+    pub fn new_with_crawler(crawler: Arc<RateLimitedCrawler>) -> Self {
         Self {
-            crawler: Arc::new(crawler),
+            crawler,
             base_url: "https://arxiv.org".to_string(),
             api_url: "https://export.arxiv.org/api/query".to_string(),
         }
     }
 
     /// Create a new arXiv client with rate limiting (1 QPS per arXiv's policy).
+    ///
+    /// The crawler is built here with the default rate config; callers needing
+    /// custom rates/timeouts or a shared crawler should use [`ArxivClient::new_with_crawler`].
     pub fn new() -> Result<Self> {
         let crawler = RateLimitedCrawler::builder()
             .with_qps(1)
@@ -55,7 +70,7 @@ impl ArxivClient {
             .with_connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .context("Failed to create rate-limited crawler")?;
-        Ok(Self::new_with_crawler(crawler))
+        Ok(Self::new_with_crawler(Arc::new(crawler)))
     }
 
     /// Override the HTML base URL (default: https://arxiv.org).

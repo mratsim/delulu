@@ -43,9 +43,9 @@ Two transport modes are tested:
 
 | File | Role |
 |------|------|
-| `http_test.rs` | Rust orchestrator for HTTP transport test |
+| `http_test.rs` | Rust orchestrator for HTTP transport test (also holds http-only helpers `get_free_port`, `stream_stderr_to_console`) |
 | `stdio_test.rs` | Rust orchestrator for stdio transport test |
-| `helpers.rs` | Rust helpers: `find_binary`, `get_free_port`, `write_spec`, `health_check`, `init_tracing` |
+| `helpers.rs` | Shared Rust helpers: `find_binary`, `write_spec`, `health_check`, `init_tracing`, `E2eGuard` |
 | `service_a.rs` | Axum app: `GET /users` → `[{"id":1,"name":"Alice"}]`, `GET /health` |
 | `service_b.rs` | Axum app: `GET /items` → `[{"id":1,"item":"Widget"}]`, `GET /health` |
 | `spec_a.json` | OpenAPI 3.0 spec for service A (uses `{PORT}` placeholder) |

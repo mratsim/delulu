@@ -137,21 +137,27 @@ pub(crate) struct DocSum {
     pub pubdate: Option<String>,
     pub authors: Option<Vec<DocSumAuthor>>,
     pub elocationid: Option<String>,
+    #[expect(dead_code)]
     pub history: Option<Vec<DocSumHistory>>,
     #[serde(default, deserialize_with = "deserialize_string_or_int")]
+    #[expect(dead_code)]
     pub pmcrefcount: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub(crate) struct DocSumAuthor {
     pub name: Option<String>,
+    #[expect(dead_code)]
     pub authtype: Option<String>,
+    #[expect(dead_code)]
     pub clusterid: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub(crate) struct DocSumHistory {
+    #[expect(dead_code)]
     pub pubstatus: Option<String>,
+    #[expect(dead_code)]
     pub date: Option<String>,
 }
 
@@ -167,6 +173,7 @@ pub(crate) struct ELinkResponse {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct LinkSet {
+    #[expect(dead_code)]
     pub dbfrom: Option<String>,
     pub ids: Option<Vec<LinkSetId>>,
     pub linksetdbs: Option<Vec<LinkSetDb>>,
@@ -179,7 +186,9 @@ pub(crate) struct LinkSetId {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct LinkSetDb {
+    #[expect(dead_code)]
     pub dbto: Option<String>,
+    #[expect(dead_code)]
     pub linkname: Option<String>,
     pub links: Option<Vec<LinkSetLink>>,
 }
@@ -195,6 +204,7 @@ pub struct RelatedArticles {
     /// The input PMIDs
     pub input_pmids: Vec<String>,
     /// Map from input PMID to list of related PMIDs
+    // TODO idempotency issue: HashMap iteration order -> nondeterministic JSON key order (find_related)
     pub related: std::collections::HashMap<String, Vec<String>>,
 }
 
@@ -223,6 +233,7 @@ pub(crate) struct DbInfo {
     pub count: Option<String>,
     pub lastupdate: Option<String>,
     pub fields: Option<Vec<FieldInfo>>,
+    #[expect(dead_code)]
     pub links: Option<Vec<LinkInfo>>,
 }
 
@@ -231,14 +242,19 @@ pub(crate) struct FieldInfo {
     pub name: Option<String>,
     pub fullname: Option<String>,
     pub description: Option<String>,
+    #[expect(dead_code)]
     pub termcount: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct LinkInfo {
+    #[expect(dead_code)]
     pub name: Option<String>,
+    #[expect(dead_code)]
     pub menuname: Option<String>,
+    #[expect(dead_code)]
     pub description: Option<String>,
+    #[expect(dead_code)]
     pub targetdb: Option<String>,
 }
 

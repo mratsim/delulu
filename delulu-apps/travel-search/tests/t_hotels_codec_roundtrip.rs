@@ -1,5 +1,23 @@
+//!  Delulu Travel Agent
+//!
+//!  Copyright (C) 2026  Mamy Ratsimbazafy
+//!
+//!  This program is free software: you can redistribute it and/or modify
+//!  it under the terms of the GNU Affero General Public License as published by
+//!  the Free Software Foundation, either version 3 of the License, or
+//!  (at your option) any later version.
+//!
+//!  This program is distributed in the hope that it will be useful,
+//!  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//!  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//!  GNU Affero General Public License for more details.
+//!
+//!  You should have received a copy of the GNU Affero General Public License
+//!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//!
 //! t_hotels_codec_roundtrip.rs
 //! This test validates internal consistency via an encoder->decoder roundtrip
+//!
 
 use delulu_travel_search::HotelSearchParams;
 use delulu_travel_search::SortType;
@@ -162,9 +180,7 @@ fn test_roundtrip_internal_codec() {
                         if let Some(min) = case.input.price_min {
                             expected_filters.push(format!("min_price: {}", min as i32));
                         }
-                        if let Some(sort_val) = sort_order
-                            && let Ok(sort_type) = SortType::try_from(sort_val)
-                        {
+                        if let Some(sort_type) = sort_order {
                             expected_filters.push(format!("sort: {}", sort_type.as_str_name()));
                         }
 
@@ -184,9 +200,7 @@ fn test_roundtrip_internal_codec() {
                         if let Some(p) = params.min_price {
                             actual_filters.push(format!("min_price: {}", p));
                         }
-                        if let Some(sort_val) = params.sort_order
-                            && let Ok(sort_type) = SortType::try_from(sort_val)
-                        {
+                        if let Some(sort_type) = params.sort_order {
                             actual_filters.push(format!("sort: {}", sort_type.as_str_name()));
                         }
                         actual_filters.sort();

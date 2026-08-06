@@ -54,6 +54,7 @@ pub fn meta_parse_f64(val: &str) -> Option<f64> {
     let parsed: f64 = match val.parse() {
         Ok(v) => v,
         Err(_) => {
+            // TODO side-effect to push to main: tracing::* logging in lib
             tracing::warn!("meta_parse_f64: non-numeric value '{}'", val);
             return None;
         }

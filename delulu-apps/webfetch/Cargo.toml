@@ -1,8 +1,9 @@
 [package]
 name = "delulu-webfetch"
-version = "0.1.0"
-edition = "2024"
-license = "AGPL-3.0"
+version = "0.2.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 description = "CLI tools and MCP server for web content fetching and markdown conversion"
 
 [features]
@@ -50,7 +51,7 @@ unicode-normalization = "0.1"
 
 [package.metadata.mcp]
 name = "delulu-webfetch"
-version = "0.1.0"
+version = "0.2.0"
 description = "Web content fetching and markdown conversion services"
 
 [[bin]]
@@ -80,6 +81,17 @@ path = "tests/pipeline_trafilatura/diag_tf_trace.rs"
 name = "t_webfetch_mcp"
 path = "tests/t_webfetch_mcp.rs"
 required-features = ["mcp"]
+
+[[test]]
+name = "t_ssrf_validate_url_e2e"
+path = "tests/t_ssrf_validate_url_e2e.rs"
+required-features = ["mcp"]
+
+[[test]]
+name = "t_ssrf_validate_url_unit"
+path = "tests/t_ssrf_validate_url_unit.rs"
+required-features = ["mcp"]
+
 
 [[test]]
 name = "t_fetch_doc_e2e"
