@@ -10,25 +10,15 @@ const MAX_OUTPUT_SIZE: usize = 500 * 1024; // 500 KiB
 
 /// Extract the code language and content from a `<pre>` block.
 ///
-/// The language is read from the `<pre>`'s own `class` first — the tf
-/// pipeline's `normalize_pre_block` hoists it there. Un-normalized shapes
-/// from other pipelines (rd keeps `pre>code`) fall back to a nested `<code>`
-/// child's class. Only the first whitespace-delimited token is used, so a
+/// The language is read from the `<pre>`'s own `class` — every pipeline
+/// normalizes code blocks (`normalize_code_blocks`) before lowering, so the
+/// language is always hoisted there and `pre>code` nesting never reaches the
+/// generator. Only the first whitespace-delimited token is used, so a
 /// multi-class value like `language-python highlight` yields `python`.
 fn extract_code_block(node: &DomNode) -> (String, String) {
     let language = node
         .attr("class")
         .and_then(code_language_token)
-        .or_else(|| {
-            // Fallback: canonical pre>code.language-x shapes that the tf
-            // normalization pass has not seen (e.g. rd pipeline output).
-            node.children().iter().find_map(|child| match child {
-                DomNode::Element { tag, attrs, .. } if tag == "code" => attrs
-                    .iter()
-                    .find_map(|(k, v)| (k == "class").then(|| code_language_token(v)).flatten()),
-                _ => None,
-            })
-        })
         .unwrap_or_default();
     let code = node
         .children()

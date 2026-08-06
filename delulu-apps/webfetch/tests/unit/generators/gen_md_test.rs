@@ -159,16 +159,13 @@ fn test_lower_unordered_list() {
 
 #[test]
 fn test_lower_code_block() {
+    // Contract: generators receive normalized <pre> blocks — the language is
+    // hoisted onto the pre's own class by normalize_code_blocks (every
+    // pipeline runs it), and the pre holds plain text.
     let nodes = [DomNode::Element {
         tag: "pre".into(),
-        attrs: vec![],
-        children: vec![DomNode::Element {
-            tag: "code".into(),
-            attrs: vec![("class".into(), "language-rust".into())],
-            children: vec![DomNode::Text("fn main() {}".into())],
-            scores: std::collections::HashMap::new(),
-            metadata: std::collections::HashMap::new(),
-        }],
+        attrs: vec![("class".into(), "language-rust".into())],
+        children: vec![DomNode::Text("fn main() {}".into())],
         scores: std::collections::HashMap::new(),
         metadata: std::collections::HashMap::new(),
     }];
@@ -446,9 +443,11 @@ fn test_extract_code_block() {
 }
 
 #[test]
-fn test_extract_code_block_nested_code_fallback() {
-    // Un-normalized pre>code.language-x shape (rd pipeline output): the
-    // language is read from the nested <code> child's class.
+fn test_extract_code_block_ignores_un_normalized_shape() {
+    // Contract: generators only ever receive normalized <pre> blocks (the
+    // normalize_code_blocks pass runs in every pipeline). A pre>code shape
+    // reaching gen_md is a pipeline bug; the generator reads only the pre's
+    // own class and renders the text — no nested-code language lookup.
     let pre = DomNode::Element {
         tag: "pre".into(),
         attrs: vec![],
@@ -463,7 +462,7 @@ fn test_extract_code_block_nested_code_fallback() {
         metadata: std::collections::HashMap::new(),
     };
     let (lang, code) = extract_code_block(&pre);
-    assert_eq!(lang, "rust");
+    assert_eq!(lang, "", "no nested-code language lookup in the generator");
     assert_eq!(code, "fn main() {}");
 }
 
@@ -825,24 +824,23 @@ fn test_lower_code_in_unknown_container_is_structurally_inline() {
     );
 }
 
-// ── SLOP-003: language class on a nested <code> child ─────────────────────
+// ── Language comes from the pre's own hoisted class ─────────────────────
 
 #[test]
-fn test_lower_multiline_code_language_from_nested_code_child() {
-    // Regression (SLOP-003): the canonical pre>code.language-rust shape
-    // reaching gen_md un-normalized (rd pipeline keeps pre>code) — the
-    // language class sits on the INNER code and must be read as a fallback.
+fn test_lower_multiline_code_language_from_pre_class() {
+    // The normalize_code_blocks pass hoists the language onto the pre's own
+    // class before lowering; the generator reads exactly that.
     let pre = DomNode::Element {
         tag: "pre".into(),
-        attrs: vec![],
-        children: vec![code_node(&[("class", "language-rust")], "fn main() {\n}")],
+        attrs: vec![("class".into(), "language-rust".into())],
+        children: vec![DomNode::Text("fn main() {\n}".into())],
         scores: std::collections::HashMap::new(),
         metadata: std::collections::HashMap::new(),
     };
     let md = MarkdownLowerer::lower(&pre, None);
     assert!(
         md.contains("```rust\nfn main() {\n}\n```\n\n"),
-        "language must come from the nested <code> class, got: {md}"
+        "language comes from the pre's own class, got: {md}"
     );
 }
 

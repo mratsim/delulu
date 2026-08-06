@@ -1,3 +1,4 @@
+pub mod code_blocks;
 pub mod dl_arxiv;
 pub mod dl_doc;
 pub mod rd_analysis;

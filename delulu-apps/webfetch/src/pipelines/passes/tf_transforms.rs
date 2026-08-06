@@ -55,28 +55,16 @@ pub fn tf_convert_lists(node: &mut DomNode) -> WalkerAction {
 }
 
 // ---------------------------------------------------------------------------
-// Quote/code conversion (blockquote, pre, q)
+// Quote conversion (blockquote, q)
 // ---------------------------------------------------------------------------
 
-/// Convert quotation tags and normalize code blocks.
+/// Convert quotation tags.
 ///
 /// - `blockquote`/`q` → `quote`
-/// - `pre` → stays `<pre>` (block code). The canonical `pre>code.language-x`
-///   shape is normalized in place: the `<code>` child is unwrapped (its
-///   children spliced into the pre) and the language is resolved from the
-///   pre's own class or the nested code's class, appended to the pre's class
-///   as a single `language-<lang>` token (see [`normalize_pre_block`]).
-///   Keeping `<pre>` as the block-code element makes block-ness structural —
-///   every backend lowers it without re-deciding inline vs. block (markdown:
-///   fenced block; HTML: `<pre>`).
-/// - `code` → stays `<code>` (inline)
-///
 ///   Reference: Trafilatura `htmlprocessing.py:287-303` `convert_quotes()`
 ///
-/// Deliberate deviation from python: python's `convert_quotes()` renames
-/// `pre` → `code`, losing block-ness in the XML schema — which is why
-/// python's own markdown output jams code blocks onto one line. We keep
-/// `<pre>` so the backends stay dumb.
+/// Code blocks are handled by the separate [`normalize_code_blocks`] pass —
+/// this pass only deals with quotations.
 pub fn tf_convert_quotes(node: &mut DomNode) -> WalkerAction {
     match node {
         DomNode::Element { tag, .. } if matches!(tag.as_str(), "blockquote" | "q") => {
@@ -84,85 +72,7 @@ pub fn tf_convert_quotes(node: &mut DomNode) -> WalkerAction {
             tag.push_str("quote");
             WalkerAction::Continue
         }
-        DomNode::Element {
-            tag,
-            attrs,
-            children,
-            ..
-        } if tag == "pre" => {
-            normalize_pre_block(attrs, children);
-            WalkerAction::Continue
-        }
         _ => WalkerAction::Continue,
-    }
-}
-
-/// First whitespace-delimited `language-*` token in `class`, if any.
-///
-/// `class="language-python highlight"` yields `python`, not `python highlight`
-/// (a multi-token class would produce an invalid fence info string).
-fn code_language_from_class(class: &str) -> Option<String> {
-    class
-        .split_whitespace()
-        .find_map(|token| token.strip_prefix("language-"))
-        .map(str::to_string)
-}
-
-/// Normalize a `<pre>` block in place: unwrap a nested `<code>` child and
-/// resolve the language onto the pre's own class.
-///
-/// After this, backends read the language from a single canonical place — the
-/// pre's `class` attribute — and the pre holds plain text (or inline markup)
-/// directly. The code child's children are spliced into the pre at its
-/// position; the pre's other children are untouched.
-fn normalize_pre_block(attrs: &mut Vec<(String, String)>, children: &mut Vec<DomNode>) {
-    // Resolve the language: the pre's own class takes precedence, then a
-    // nested <code> child's class (the canonical pre>code.language-x shape).
-    let mut language = attrs.iter().find_map(|(k, v)| {
-        if k == "class" {
-            code_language_from_class(v)
-        } else {
-            None
-        }
-    });
-    let mut spliced: Vec<DomNode> = Vec::with_capacity(children.len());
-    for child in children.drain(..) {
-        if let DomNode::Element {
-            tag,
-            attrs: code_attrs,
-            children: code_children,
-            ..
-        } = &child
-            && tag == "code"
-        {
-            if language.is_none() {
-                language = code_attrs.iter().find_map(|(k, v)| {
-                    if k == "class" {
-                        code_language_from_class(v)
-                    } else {
-                        None
-                    }
-                });
-            }
-            spliced.extend(code_children.clone());
-        } else {
-            spliced.push(child);
-        }
-    }
-    *children = spliced;
-    // Hoist the language onto the pre's own class (append, dedup).
-    if let Some(lang) = language {
-        if let Some((_, class)) = attrs.iter_mut().find(|(k, _)| k == "class") {
-            if !class
-                .split_whitespace()
-                .any(|t| t == format!("language-{lang}"))
-            {
-                class.push(' ');
-                class.push_str(&format!("language-{lang}"));
-            }
-        } else {
-            attrs.push(("class".to_string(), format!("language-{lang}")));
-        }
     }
 }
 
@@ -406,32 +316,29 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
 ///       (attributes preserved).
 /// Note: Port of Python `htmlprocessing.py:53-56`.
 pub fn tf_convert_figure_with_table(node: &mut DomNode) {
-    convert_figure_with_table(node);
-}
-
-/// Bottom-up recursive helper for [`tf_convert_figure_with_table`].
-///
-/// Returns whether this subtree contains a `<table>` (either the node itself
-/// is a table, or one of its children reported one). A `<figure>` whose
-/// subtree contains a table is renamed to `<div>` during the unwind, so
-/// nested figures convert inner-first. Visits every node exactly once — O(n).
-fn convert_figure_with_table(node: &mut DomNode) -> bool {
-    match node {
-        DomNode::Element { tag, children, .. } => {
-            let mut contains_table = tag == "table";
-            for child in children.iter_mut() {
-                if convert_figure_with_table(child) {
-                    contains_table = true;
+    /// Returns whether this subtree contains a `<table>` (either the node
+    /// itself is a table, or one of its children reported one). A `<figure>`
+    /// whose subtree contains a table is renamed to `<div>` during the unwind,
+    /// so nested figures convert inner-first. Visits every node once — O(n).
+    fn convert(node: &mut DomNode) -> bool {
+        match node {
+            DomNode::Element { tag, children, .. } => {
+                let mut contains_table = tag == "table";
+                for child in children.iter_mut() {
+                    if convert(child) {
+                        contains_table = true;
+                    }
                 }
+                if tag == "figure" && contains_table {
+                    tag.clear();
+                    tag.push_str("div");
+                }
+                contains_table
             }
-            if tag == "figure" && contains_table {
-                tag.clear();
-                tag.push_str("div");
-            }
-            contains_table
+            _ => false,
         }
-        _ => false,
     }
+    convert(node);
 }
 
 /// Convert div-based FAQ accordions to semantic `<details><summary>`.

@@ -128,59 +128,6 @@ fn test_tf_convert_quotes_q() {
     assert!(find_tag(&root, "quote"), "q should become quote");
 }
 
-#[test]
-fn test_tf_convert_quotes_pre_stays_pre() {
-    // Block code is structurally `<pre>`: tf_convert_quotes no longer renames
-    // pre -> code (that rename lost block-ness and forced backend hacks).
-    let mut root = parse_html("<pre>code here</pre>").unwrap();
-    walk_pre_mut_test(&mut root, &|n| tf_convert_quotes(n));
-    assert!(find_tag(&root, "pre"), "pre stays pre (block code)");
-    assert!(!find_tag(&root, "code"), "no spurious code element");
-}
-
-#[test]
-fn test_tf_convert_quotes_pre_with_code_child_unwraps_and_hoists_language() {
-    // Canonical pre>code.language-x shape: the code child is unwrapped and the
-    // language is hoisted onto the pre's own class.
-    let mut root = parse_html(
-        r#"<pre class="not-prose"><code class="language-rust">fn main() {}</code></pre>"#,
-    )
-    .unwrap();
-    walk_pre_mut_test(&mut root, &|n| tf_convert_quotes(n));
-    assert!(find_tag(&root, "pre"), "pre stays pre");
-    assert!(!find_tag(&root, "code"), "code child unwrapped");
-    let pre = find_node_matching(&root, "pre").expect("pre exists");
-    assert_eq!(
-        get_attr(pre, "class"),
-        Some("not-prose language-rust"),
-        "language hoisted onto pre class"
-    );
-    assert!(
-        pre.text_content().contains("fn main() {}"),
-        "code text spliced into pre"
-    );
-}
-
-#[test]
-fn test_tf_convert_quotes_pre_own_class_language_wins() {
-    // The pre's own language class takes precedence over a nested code's.
-    let mut root = parse_html(
-        r#"<pre class="language-python"><code class="language-rust">print('x')</code></pre>"#,
-    )
-    .unwrap();
-    walk_pre_mut_test(&mut root, &|n| tf_convert_quotes(n));
-    let pre = find_node_matching(&root, "pre").expect("pre exists");
-    assert_eq!(get_attr(pre, "class"), Some("language-python"));
-}
-
-#[test]
-fn test_tf_convert_quotes_inline_code_untouched() {
-    // Inline <code> is left as-is.
-    let mut root = parse_html("<p>run <code>cmd</code> now</p>").unwrap();
-    walk_pre_mut_test(&mut root, &|n| tf_convert_quotes(n));
-    assert!(find_tag(&root, "code"), "inline code stays code");
-}
-
 // ── tf_convert_formatting ───────────────────────────────────────────
 
 #[test]

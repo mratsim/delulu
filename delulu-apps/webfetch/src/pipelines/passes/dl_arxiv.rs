@@ -4,6 +4,7 @@
 //! before markdown lowering. Strips navigation chrome, arXiv headers/footers,
 //! and keeps only the article content.
 
+use super::code_blocks::normalize_code_blocks;
 use crate::pipelines::{DomNode, WalkerAction, walk_pre_mut};
 
 // ---------------------------------------------------------------------------
@@ -18,6 +19,9 @@ use crate::pipelines::{DomNode, WalkerAction, walk_pre_mut};
 pub fn filter_arxiv(node: &mut DomNode) {
     strip_arxiv_chrome(node);
     isolate_ltx_content(node);
+    // Normalize code blocks (pre stays pre; language hoisted) so gen_md
+    // renders canonical <pre> blocks as fenced code.
+    walk_pre_mut(node, &|n| normalize_code_blocks(n));
 }
 
 // ---------------------------------------------------------------------------

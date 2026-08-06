@@ -22,6 +22,7 @@ use std::collections::HashSet;
 use crate::pipelines::walkers::PassFn;
 use crate::pipelines::{DomNode, WalkerAction, walk_post_mut, walk_pre_mut};
 
+use super::passes::code_blocks::normalize_code_blocks;
 use super::passes::tf_analysis::{count_non_ws_chars, extract_jsonld_article_body};
 use super::passes::tf_filters::{
     collect_p_elements, tf_extract_script_templates, tf_fallback_content_container,
@@ -318,6 +319,9 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
         wrap_pass!(tf_convert_headings),
         wrap_pass!(tf_convert_lists),
         wrap_pass!(tf_convert_quotes),
+        // Normalize code blocks (pre stays pre; language hoisted) before the
+        // tag-catalog filter, so generators see canonical <pre> blocks.
+        wrap_pass!(normalize_code_blocks),
         wrap_pass!(tf_convert_formatting),
         wrap_pass!(tf_convert_breaks),
         wrap_pass!(tf_convert_refs_and_details),
@@ -369,6 +373,7 @@ pub static TF_BALANCED_NAMES: Lazy<&[&str]> = Lazy::new(|| {
         "tf_convert_headings",
         "tf_convert_lists",
         "tf_convert_quotes",
+        "normalize_code_blocks",
         "tf_convert_formatting",
         "tf_convert_breaks",
         "tf_convert_refs_and_details",
@@ -422,6 +427,8 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
         wrap_pass!(tf_convert_headings),
         wrap_pass!(tf_convert_lists),
         wrap_pass!(tf_convert_quotes),
+        // Same code-block normalization as Balanced.
+        wrap_pass!(normalize_code_blocks),
         wrap_pass!(tf_convert_formatting),
         wrap_pass!(tf_convert_breaks),
         wrap_pass!(tf_convert_refs_and_details),

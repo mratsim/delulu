@@ -123,3 +123,41 @@ fn test_extraction_regression() {
         "Output does not match expected snapshot. See output above."
     );
 }
+
+#[test]
+fn test_rd_pipeline_normalizes_code_blocks() {
+    // The rd pipeline must run normalize_code_blocks too, so gen_md only ever
+    // sees normalized <pre> (language hoisted onto the pre's own class).
+    let code = "fn main() {\n".to_string()
+        + &(0..30)
+            .map(|i| format!("    let v{i}: i32 = compute_v{i}();\n"))
+            .collect::<String>()
+        + "    println!(\"done\");\n}";
+    let paras: String = (0..8)
+        .map(|i| {
+            format!(
+                "<p>Paragraph {i}: the study of concurrent and distributed systems examines \
+                how independent components coordinate through message passing, shared state, \
+                and synchronization primitives. Recent advances in actor models and software \
+                transactional memory have reshaped how we reason about safety and liveness \
+                properties in large-scale deployments spanning thousands of nodes across \
+                geographically distributed data centers.</p>"
+            )
+        })
+        .collect();
+    let html = format!(
+        "<html><body><article><h1>Code sample</h1>{paras}<h2>Example</h2><pre class=\"not-prose\"><code class=\"language-rust\">{code}</code></pre></article></body></html>"
+    );
+    let mut root = parse_html(&html).expect("valid HTML");
+    filter_mozilla_readability(&mut root);
+    let md = crate::generators::gen_md::MarkdownLowerer::lower(&root, None);
+    // The rd pipeline must run normalize_code_blocks too: gen_md only ever sees
+    // canonical <pre> blocks (no pre>code nesting). Note rd's clean_classes
+    // strips class attributes by design (matches JS Readability), so the
+    // language is lost at the rd level — the structural contract is what we
+    // assert: the code renders as a fenced block, not inline backticks.
+    assert!(
+        md.contains("```\nfn main() {\n    let v0: i32 = compute_v0();\n"),
+        "rd pipeline must normalize pre>code so the code renders fenced, got: {md}"
+    );
+}
