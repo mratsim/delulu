@@ -38,6 +38,12 @@
   article extractors strip these links by design; the navigation mode must
   keep them. Raw HTML only (407 KB) — expected outputs come with the custom
   pipeline. Fetched: 2026-08-06 (curl, Safari UA).
+- `blog.html.zst` — Blog index page: https://lmsys.org/blog.
+  Next.js SPA shell: ~14 visible words, no server-rendered post links; only
+  3 post slugs recoverable from the __next_f payload (as image paths). The
+  full post list requires JS rendering (obscura) or the Next.js data route —
+  documents the JS-hydrated case for the navigation pipeline. Raw HTML only.
+  Fetched: 2026-08-06 (curl, Safari UA).
 ## wikipedia/
 - `rust-programming-language.html.zst` — Wikipedia article: Rust (programming language).
   Large encyclopedia article (~1 MB HTML): infobox, code examples, references.
