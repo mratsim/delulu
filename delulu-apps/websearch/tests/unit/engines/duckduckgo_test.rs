@@ -285,6 +285,28 @@ fn validate_n_token_accepts_valid_paths() {
     assert!(validate_n_token("/d.js"));
     assert!(validate_n_token("abc123/def"));
 }
+#[test]
+fn validate_n_token_accepts_percent_encoded_query() {
+    // Real DDG n_token: query params are percent-encoded (spaces -> %20).
+    // Regression: '%' was missing from the allowed set, so every real token
+    // was rejected and has_next_page was always false.
+    assert!(validate_n_token(
+        "/d.js?q=kimi%20k3%20open%20model&l=us-en&p=&s=10&ex=-1&dl=en&ct=FR&sp=0&vqd=4-2336",
+    ));
+    assert!(validate_n_token("/d.js?q=rust%20programming&s=20"));
+    assert!(validate_n_token("d.js?o=jsonp&q=test%20query"));
+}
+
+#[test]
+fn validate_n_token_percent_encoding_boundary() {
+    // `%` is allowed: DDG percent-encodes query params (%20 = space).
+    // Encoded traversal (%2e%2e) is accepted: it can only resolve inside
+    // links.duckduckgo.com (origin fixed by build_djs_url_from_token), so it is
+    // harmless. Literal `..` and protocol prefixes remain blocked.
+    assert!(validate_n_token("/d.js?q=%2e%2e/escape"));
+    assert!(!validate_n_token("/d.js?q=../escape"));
+    assert!(!validate_n_token("//evil.com/d.js"));
+}
 
 #[test]
 fn validate_n_token_rejects_path_traversal() {

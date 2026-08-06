@@ -82,11 +82,14 @@ impl Continuation for DuckDuckGoContinuation {
 /// Validate that n_token contains only safe URL path/query characters.
 /// This prevents SSRF via path traversal (`..`), protocol injection
 /// (`https://...`), or protocol-relative URLs (`//...`).
-/// Allowed: alphanumeric, `/`, `?`, `=`, `.`, `_`, `-`, `&`.
+/// Allowed: alphanumeric, `/`, `?`, `=`, `.`, `_`, `-`, `&`, `%`.
+/// `%` is required: DDG's real n_token contains percent-encoded query params
+/// (e.g. `/d.js?q=kimi%20k3...&s=10`). Without `%`, every token is rejected
+/// and `has_next_page` is always false.
 pub(crate) fn validate_n_token(token: &str) -> bool {
     !token.is_empty()
         && token.chars().all(|c| {
-            c.is_ascii_alphanumeric() || matches!(c, '/' | '?' | '=' | '.' | '_' | '-' | '&')
+            c.is_ascii_alphanumeric() || matches!(c, '/' | '?' | '=' | '.' | '_' | '-' | '&' | '%')
         })
         && !token.contains("..")
         && !token.starts_with("//")
