@@ -134,7 +134,7 @@ impl WebfetchServer {
         match fetch_and_extract(
             &input.url,
             &self.crawler,
-            &[crate::pipelines::mozilla_readability::filter_mozilla_readability],
+            &[crate::pipelines::trafilatura::filter_trafilatura],
         )
         .await
         {
@@ -169,7 +169,7 @@ impl WebfetchServer {
         match fetch_and_extract_with_status(
             &input.url,
             &self.crawler,
-            &[crate::pipelines::mozilla_readability::filter_mozilla_readability],
+            &[crate::pipelines::trafilatura::filter_trafilatura],
         )
         .await
         {

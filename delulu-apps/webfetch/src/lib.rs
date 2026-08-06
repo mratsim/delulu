@@ -426,7 +426,7 @@ async fn fetch_and_extract_inner_with_body(
 // extract
 // ---------------------------------------------------------------------------
 
-/// Extract content from a URL using the default Mozilla Readability pipeline.
+/// Extract content from a URL using the default Trafilatura pipeline.
 pub async fn extract(
     url: &str,
     crawler: &RateLimitedCrawler,
