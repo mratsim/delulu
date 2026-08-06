@@ -155,7 +155,7 @@ async fn test_redirect_chain_hops_limited() {
     for i in 1..=6 {
         let target = format!("http://localhost:{port}/r{}", i + 1);
         Mock::given(method("GET"))
-            .and(path(&format!("/r{i}")))
+            .and(path(format!("/r{i}")))
             .respond_with(ResponseTemplate::new(302).insert_header("Location", target))
             .mount(&mock_server)
             .await;
