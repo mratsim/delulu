@@ -42,6 +42,14 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use url::Host;
 
+/// Generic error label returned to MCP clients when a fetch fails (SEC-B-001).
+///
+/// Never leak internal Debug/Display rendering (redirect targets, resolved
+/// hosts, "too many redirects", timeouts, ...) to the client — that would turn
+/// the server into an oracle probing internal-network reachability. Full error
+/// details are still logged server-side via `tracing::warn!`.
+const GENERIC_FETCH_ERROR: &str = "fetch_failed";
+
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
@@ -131,10 +139,12 @@ impl WebfetchServer {
         .await
         {
             Ok(result) => Ok(md_doc_to_string(result)),
-            Err(e) => Ok(format!(
-                "---\nerror: true\nerror_type: {:?}\n---\n\nFetch failed",
-                e
-            )),
+            Err(e) => {
+                tracing::warn!(url = %input.url, "webfetch fetch failed: {e}");
+                Ok(format!(
+                    "---\nerror: true\nerror_type: {GENERIC_FETCH_ERROR}\n---\n\nFetch failed"
+                ))
+            }
         }
     }
 
@@ -167,11 +177,14 @@ impl WebfetchServer {
             // `page_status` key. Never nested under a
             // `result` wrapper.
             Ok((result, status)) => Ok(webfetch_raw_response(&result, &status)),
-            Err(e) => Ok(json!({
-                "error": true,
-                "error_type": e.to_string(),
-            })
-            .to_string()),
+            Err(e) => {
+                tracing::warn!(url = %input.url, "webfetch_raw fetch failed: {e}");
+                Ok(json!({
+                    "error": true,
+                    "error_type": GENERIC_FETCH_ERROR,
+                })
+                .to_string())
+            }
         }
     }
 
@@ -195,10 +208,12 @@ impl WebfetchServer {
         .await?;
         match crate::fetch_doc(&input.url, &self.crawler).await {
             Ok(result) => Ok(md_doc_to_string(result)),
-            Err(e) => Ok(format!(
-                "---\nerror: true\nerror_type: {:?}\n---\n\nFetch failed",
-                e
-            )),
+            Err(e) => {
+                tracing::warn!(url = %input.url, "fetch_doc fetch failed: {e}");
+                Ok(format!(
+                    "---\nerror: true\nerror_type: {GENERIC_FETCH_ERROR}\n---\n\nFetch failed"
+                ))
+            }
         }
     }
 }
