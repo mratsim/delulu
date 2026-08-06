@@ -357,6 +357,24 @@ impl MarkdownLowerer {
                     out.push(')');
                 }
             }
+            // "ref" elements carry links in trafilatura's internal schema:
+            // tf_convert_refs_and_details renames <a href> -> <ref target>.
+            // Render them as markdown links so include_links is on by default
+            // (python trafilatura defaults include_links=False; we want links).
+            "ref" => {
+                let target = node.attr("target").unwrap_or("");
+                let text = Self::lower_inline(children, base_url);
+                if target.is_empty() {
+                    out.push_str(&text);
+                } else {
+                    let resolved = resolve_url(target, base_url);
+                    out.push('[');
+                    out.push_str(&text);
+                    out.push_str("](");
+                    out.push_str(&resolved);
+                    out.push(')');
+                }
+            }
 
             // ── Images ─────────────────────────────────────────────────
             "img" => {

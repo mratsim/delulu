@@ -31,6 +31,35 @@ fn test_lower_link() {
     assert!(md.contains("[link](https://example.com)"));
 }
 
+#[test]
+fn test_lower_ref_link() {
+    // "ref" is trafilatura's internal link element (<a href> -> <ref target>
+    // via tf_convert_refs_and_details). Must render as a markdown link so
+    // include_links is on by default.
+    let nodes = [DomNode::Element {
+        tag: "ref".into(),
+        attrs: vec![("target".into(), "https://example.com/page".into())],
+        children: vec![DomNode::Text("link".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(md.contains("[link](https://example.com/page)"));
+}
+
+#[test]
+fn test_lower_ref_link_relative_resolves_base() {
+    let nodes = [DomNode::Element {
+        tag: "ref".into(),
+        attrs: vec![("target".into(), "/blog/2025-09-05-anatomy-of-vllm".into())],
+        children: vec![DomNode::Text("Anatomy of vLLM".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], Some("https://vllm.ai/blog"));
+    assert!(md.contains("[Anatomy of vLLM](https://vllm.ai/blog/2025-09-05-anatomy-of-vllm)"));
+}
+
 // ── Unordered list ──────────────────────────────────────────────────
 
 #[test]
