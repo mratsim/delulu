@@ -249,7 +249,7 @@ impl_server_handler!(WebfetchServer);
 /// Post: returns `Ok(())` when `expose_local_networks` is true or the URL
 /// resolves outside private ranges; returns `Err` with the detailed private-IP
 /// message for stdio/same-subnet requestors, or the generic "DNS resolution
-/// failed" message for external requestors. Unparseable URLs, missing hosts,
+/// failed" message for external requestors. Unparsable URLs, missing hosts,
 /// and DNS failures return the generic message for all requestors.
 pub async fn validate_url(
     url_str: &str,

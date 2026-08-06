@@ -328,7 +328,7 @@ fn blocks_non_http_schemes() {
 }
 
 #[test]
-fn blocks_unparseable_or_hostless_targets() {
+fn blocks_unparsable_or_hostless_targets() {
     // Not parseable as an absolute URL.
     assert_blocked("not a url", "http");
     // Relative-ish target with no host.
