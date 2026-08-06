@@ -346,7 +346,6 @@ pub fn pass_keep_qualifying_siblings(node: &mut DomNode) {
         let DomNode::Element {
             children: my_children,
             metadata,
-            tag: _,
             ..
         } = n
         else {
