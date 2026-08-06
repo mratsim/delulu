@@ -154,12 +154,18 @@ pub fn tf_convert_refs_and_details(node: &mut DomNode) -> WalkerAction {
         DomNode::Element { tag, attrs, .. } if tag == "a" => {
             tag.clear();
             tag.push_str("ref");
-            // Rename href to target
-            if let Some(href_pos) = attrs.iter().position(|(k, _)| k == "href") {
-                let href_val = attrs[href_pos].1.clone();
-                attrs[href_pos].0 = "target".to_string();
-                // Keep the value as-is
-                attrs[href_pos].1 = href_val;
+            // Rename href -> target, dropping any pre-existing target
+            // attribute (e.g. target="_blank") so the converted <ref>
+            // carries exactly ONE target: the URL. Keeping both makes
+            // attr("target") return whichever comes first in an arbitrary
+            // attr order, producing markdown links like [text](_blank).
+            let href_val = attrs
+                .iter()
+                .find(|(k, _)| k == "href")
+                .map(|(_, v)| v.clone());
+            attrs.retain(|(k, _)| k != "href" && k != "target");
+            if let Some(href_val) = href_val {
+                attrs.push(("target".to_string(), href_val));
             }
             WalkerAction::Continue
         }

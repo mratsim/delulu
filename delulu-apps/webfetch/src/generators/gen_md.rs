@@ -238,8 +238,9 @@ fn escape_markdown(text: &str) -> String {
             '(' => result.push_str("\\("),
             ')' => result.push_str("\\)"),
             '#' => result.push_str("\\#"),
-            '+' => result.push_str("\\+"),
-            '.' => result.push_str("\\."),
+            // NOTE: '+' and '.' are intentionally NOT escaped: they are only
+            // special as line-start list markers in CommonMark, and escaping them
+            // everywhere mangles decimals (3.1 -> 3\.1) and '+' signs (30%+).
             '|' => result.push_str("\\|"),
             _ => result.push(ch),
         }
@@ -311,6 +312,30 @@ impl MarkdownLowerer {
                 out.push(' ');
                 out.push_str(&text);
                 out.push_str("\n\n");
+            }
+
+            // ── Trafilatura headings: tf_convert_headings renames h1-h6 ->
+            // <head rend="h1..h6"> (trafilatura's XML schema). Render as
+            // markdown headings, not plain text, or the heading text jams
+            // onto the following paragraph ("FAQQuick answers").
+            "head" => {
+                let rend = node.attr("rend").unwrap_or("");
+                if let Some(level) = rend.strip_prefix('h').and_then(|n| n.parse::<usize>().ok())
+                    && (1..=6).contains(&level)
+                {
+                    let prefix = "#".repeat(level);
+                    let text = children
+                        .iter()
+                        .map(|c| c.text_content())
+                        .collect::<String>();
+                    out.push_str(&prefix);
+                    out.push(' ');
+                    out.push_str(&text);
+                    out.push_str("\n\n");
+                } else {
+                    // Non-heading <head> (e.g. document head) — render text only.
+                    Self::lower_nodes(children, base_url, out, indent);
+                }
             }
 
             // ── Paragraphs ─────────────────────────────────────────────
@@ -390,7 +415,7 @@ impl MarkdownLowerer {
             }
 
             // ── Unordered lists ────────────────────────────────────────
-            "ul" => {
+            "ul" | "list" => {
                 Self::lower_unordered_list(children, base_url, out, indent);
                 out.push('\n');
             }
@@ -494,7 +519,7 @@ impl MarkdownLowerer {
     ) {
         for child in children {
             if let DomNode::Element { tag, children, .. } = child
-                && tag == "li"
+                && (tag == "li" || tag == "item")
             {
                 // li branch
                 // Indent
@@ -521,7 +546,7 @@ impl MarkdownLowerer {
         let mut index = 1;
         for child in children {
             if let DomNode::Element { tag, children, .. } = child
-                && tag == "li"
+                && (tag == "li" || tag == "item")
             {
                 for _ in 0..indent {
                     out.push_str("  ");

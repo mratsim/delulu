@@ -63,6 +63,70 @@ fn test_lower_ref_link_relative_resolves_base() {
 // ── Unordered list ──────────────────────────────────────────────────
 
 #[test]
+fn test_lower_head_rend_heading() {
+    // tf_convert_headings renames h2 -> <head rend="h2">; must render as
+    // a markdown heading or the text jams onto the next paragraph
+    // ("FAQQuick answers").
+    let nodes = [DomNode::Element {
+        tag: "head".into(),
+        attrs: vec![("rend".into(), "h2".into())],
+        children: vec![DomNode::Text("FAQ".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        md.contains("## FAQ"),
+        "head rend=h2 -> ## heading, got: {md}"
+    );
+}
+
+#[test]
+fn test_lower_head_without_rend_renders_text() {
+    let nodes = [DomNode::Element {
+        tag: "head".into(),
+        attrs: vec![],
+        children: vec![DomNode::Text("plain".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(!md.contains('#'), "no rend -> plain text, got: {md}");
+}
+
+#[test]
+fn test_lower_list_item_tags() {
+    // tf_convert_lists renames ul->list, li->item; both must render as bullets.
+    let nodes = [DomNode::Element {
+        tag: "list".into(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "item".into(),
+            attrs: vec![],
+            children: vec![DomNode::Text("bullet".into())],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        md.contains("- bullet"),
+        "list/item -> '- bullet', got: {md}"
+    );
+}
+
+#[test]
+fn test_escape_markdown_keeps_dot_and_plus() {
+    // '.' and '+' are not escaped: decimals (3.1) and signs (30%+) stay clean.
+    let md = MarkdownLowerer::lower(&DomNode::Text("3.1x and 30%+ gain".into()), None);
+    assert!(
+        md.contains("3.1x and 30%+ gain"),
+        "no \\. or \\+, got: {md}"
+    );
+}
+#[test]
 fn test_lower_unordered_list() {
     let nodes = [DomNode::Element {
         tag: "ul".into(),

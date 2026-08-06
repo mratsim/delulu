@@ -203,6 +203,27 @@ fn test_tf_convert_refs_and_details_link() {
 }
 
 #[test]
+fn test_tf_convert_refs_drops_duplicate_target_attr() {
+    // <a href="URL" target="_blank"> must convert to a single
+    // <ref target="URL"> — a leftover target="_blank" would make
+    // attr("target") return "_blank" (markdown link [text](_blank)).
+    let mut root =
+        parse_html(r#"<a href="/blog/post" target="_blank" rel="noopener">Post</a>"#).unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_refs_and_details(n));
+    let ref_node = find_node_matching(&root, "ref").expect("should find <ref>");
+    assert_eq!(get_attr(ref_node, "target"), Some("/blog/post"));
+    let targets: Vec<&str> = match ref_node {
+        crate::pipelines::DomNode::Element { attrs, .. } => attrs
+            .iter()
+            .filter(|(k, _)| k == "target")
+            .map(|(_, v)| v.as_str())
+            .collect(),
+        _ => vec![],
+    };
+    assert_eq!(targets, vec!["/blog/post"], "exactly one target = the URL");
+}
+
+#[test]
 fn test_tf_convert_refs_and_details_details() {
     let mut root = parse_html("<details><summary>Info</summary><p>text</p></details>").unwrap();
     walk_pre_mut_test(&mut root, &|n| tf_convert_refs_and_details(n));
