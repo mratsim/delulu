@@ -432,16 +432,39 @@ fn test_resolve_url_no_base() {
 
 #[test]
 fn test_extract_code_block() {
-    let children = vec![DomNode::Element {
-        tag: "code".into(),
+    // Language read from the <pre>'s own class (tf normalization path).
+    let pre = DomNode::Element {
+        tag: "pre".into(),
         attrs: vec![("class".into(), "language-python".into())],
         children: vec![DomNode::Text("print('hello')".into())],
         scores: std::collections::HashMap::new(),
         metadata: std::collections::HashMap::new(),
-    }];
-    let (lang, code) = extract_code_block(&children);
+    };
+    let (lang, code) = extract_code_block(&pre);
     assert_eq!(lang, "python");
     assert_eq!(code, "print('hello')");
+}
+
+#[test]
+fn test_extract_code_block_nested_code_fallback() {
+    // Un-normalized pre>code.language-x shape (rd pipeline output): the
+    // language is read from the nested <code> child's class.
+    let pre = DomNode::Element {
+        tag: "pre".into(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "code".into(),
+            attrs: vec![("class".into(), "language-rust".into())],
+            children: vec![DomNode::Text("fn main() {}".into())],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    let (lang, code) = extract_code_block(&pre);
+    assert_eq!(lang, "rust");
+    assert_eq!(code, "fn main() {}");
 }
 
 // ---------------------------------------------------------------------------
@@ -528,11 +551,25 @@ fn code_node(attrs: &[(&str, &str)], text: &str) -> DomNode {
     }
 }
 
+/// Build a `<pre>` block node (block code is structurally `<pre>`).
+fn pre_node(attrs: &[(&str, &str)], text: &str) -> DomNode {
+    DomNode::Element {
+        tag: "pre".into(),
+        attrs: attrs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        children: vec![DomNode::Text(text.into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }
+}
+
 #[test]
 fn test_lower_multiline_code_fenced_block() {
-    // Multi-line <code> (from pre->code conversion) must render as a fenced
-    // block, not inline backticks, or the lines collapse onto one line.
-    let node = code_node(
+    // A multi-line `<pre>` (block code) must render as a fenced block, not
+    // inline backticks, or the lines collapse onto one line.
+    let node = pre_node(
         &[],
         "pip install sglang[all]\npython -m sglang.launch_server --model-path meta-llama/Llama-3.1-8B-Instruct --port 8000",
     );
@@ -541,23 +578,23 @@ fn test_lower_multiline_code_fenced_block() {
         md.contains(
             "```\npip install sglang[all]\npython -m sglang.launch_server --model-path meta-llama/Llama-3.1-8B-Instruct --port 8000\n```\n\n"
         ),
-        "multi-line code must be a fenced block, got: {md}"
+        "multi-line pre must be a fenced block, got: {md}"
     );
 }
 
 #[test]
 fn test_lower_multiline_code_fenced_block_with_trailing_newline() {
     // Source text already ends with '\n': no extra newline is inserted before
-    // the closing fence (mirrors the "pre" case).
-    let node = code_node(&[], "line1\nline2\n");
+    // the closing fence.
+    let node = pre_node(&[], "line1\nline2\n");
     let md = MarkdownLowerer::lower(&node, None);
     assert_eq!(md, "```\nline1\nline2\n```\n\n", "got: {md}");
 }
 
 #[test]
 fn test_lower_multiline_code_fenced_block_with_language() {
-    // A `language-*` class on the code element is appended to the opening fence.
-    let node = code_node(
+    // A `language-*` class on the pre is appended to the opening fence.
+    let node = pre_node(
         &[("class", "language-bash")],
         "pip install vllm\nvllm serve",
     );
@@ -616,15 +653,15 @@ fn test_lower_head_after_loose_text_starts_fresh_line() {
 
 #[test]
 fn test_lower_multiline_code_after_loose_text_fence_opener_at_line_start() {
-    // Regression (GOAL-001): a block-level multi-line <code> following loose
-    // text (e.g. a "BASH" code-block header label) must have its opening
-    // fence at line-start — `BASH```` is not a valid CommonMark fence opener.
+    // Regression (GOAL-001): a block `<pre>` following loose text (e.g. a
+    // "BASH" code-block header label) must have its opening fence at
+    // line-start — `BASH```` is not a valid CommonMark fence opener.
     let container = DomNode::Element {
         tag: "div".into(),
         attrs: vec![],
         children: vec![
             DomNode::Text("BASH".into()),
-            code_node(
+            pre_node(
                 &[],
                 "pip install sglang[all]\npython -m sglang.launch_server --model-path meta-llama/Llama-3.1-8B-Instruct --port 8000",
             ),
@@ -759,10 +796,11 @@ fn test_lower_multiline_code_in_del_wrapper_in_paragraph_stays_inline() {
 }
 
 #[test]
-fn test_lower_unknown_container_at_root_multiline_code_still_fences() {
-    // Control (GOAL-001): an unknown container at ROOT (inline_ctx=false)
-    // holding a multi-line <code> must still emit a block-level fence at
-    // line-start. The inline_ctx pass-through must not regress this.
+fn test_lower_code_in_unknown_container_is_structurally_inline() {
+    // Structural rule: block-ness lives in the tag. A <code> is inline even at
+    // root inside an unknown container (the tf pipeline normalizes block code
+    // to <pre>, so a root-level <code> is a degenerate shape) — newlines
+    // normalize to spaces and it renders as inline backticks, never a fence.
     let div = DomNode::Element {
         tag: "div".into(),
         attrs: vec![],
@@ -778,28 +816,30 @@ fn test_lower_unknown_container_at_root_multiline_code_still_fences() {
     };
     let md = MarkdownLowerer::lower(&div, None);
     assert!(
-        md.contains("BASH\n```\npip install sglang[all]\n"),
-        "block-level code in a root unknown container must still fence, got: {md}"
+        !md.contains("```"),
+        "code is structurally inline, got: {md}"
     );
-    assert!(!md.contains("BASH```"), "no `BASH```` jam, got: {md}");
+    assert!(
+        md.contains("`pip install sglang[all] python -m sglang.launch_server --port 8000`"),
+        "inline code with normalized newlines, got: {md}"
+    );
 }
 
 // ── SLOP-003: language class on a nested <code> child ─────────────────────
 
 #[test]
 fn test_lower_multiline_code_language_from_nested_code_child() {
-    // Regression (SLOP-003): after tf_convert_quotes renames <pre> to <code>,
-    // pre>code.language-rust reaches gen_md as code>code.language-rust — the
-    // language class sits on the INNER code. The "code" case must fall back to
-    // scanning children for the language class.
-    let outer = DomNode::Element {
-        tag: "code".into(),
+    // Regression (SLOP-003): the canonical pre>code.language-rust shape
+    // reaching gen_md un-normalized (rd pipeline keeps pre>code) — the
+    // language class sits on the INNER code and must be read as a fallback.
+    let pre = DomNode::Element {
+        tag: "pre".into(),
         attrs: vec![],
         children: vec![code_node(&[("class", "language-rust")], "fn main() {\n}")],
         scores: std::collections::HashMap::new(),
         metadata: std::collections::HashMap::new(),
     };
-    let md = MarkdownLowerer::lower(&outer, None);
+    let md = MarkdownLowerer::lower(&pre, None);
     assert!(
         md.contains("```rust\nfn main() {\n}\n```\n\n"),
         "language must come from the nested <code> class, got: {md}"
@@ -812,7 +852,7 @@ fn test_lower_multiline_code_language_from_nested_code_child() {
 fn test_lower_multiline_code_language_token_split_on_whitespace() {
     // Regression (SLOP-003): a multi-class value like "language-python highlight"
     // must yield "python" — not the bogus token "python highlight".
-    let node = code_node(
+    let node = pre_node(
         &[("class", "language-python highlight")],
         "print('x')\nprint('y')",
     );

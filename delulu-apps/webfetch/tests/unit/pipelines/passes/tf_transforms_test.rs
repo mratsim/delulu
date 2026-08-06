@@ -129,11 +129,56 @@ fn test_tf_convert_quotes_q() {
 }
 
 #[test]
-fn test_tf_convert_quotes_pre() {
+fn test_tf_convert_quotes_pre_stays_pre() {
+    // Block code is structurally `<pre>`: tf_convert_quotes no longer renames
+    // pre -> code (that rename lost block-ness and forced backend hacks).
     let mut root = parse_html("<pre>code here</pre>").unwrap();
     walk_pre_mut_test(&mut root, &|n| tf_convert_quotes(n));
-    assert!(find_tag(&root, "code"), "pre should become code");
-    assert!(!find_tag(&root, "pre"), "pre should not remain");
+    assert!(find_tag(&root, "pre"), "pre stays pre (block code)");
+    assert!(!find_tag(&root, "code"), "no spurious code element");
+}
+
+#[test]
+fn test_tf_convert_quotes_pre_with_code_child_unwraps_and_hoists_language() {
+    // Canonical pre>code.language-x shape: the code child is unwrapped and the
+    // language is hoisted onto the pre's own class.
+    let mut root = parse_html(
+        r#"<pre class="not-prose"><code class="language-rust">fn main() {}</code></pre>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_quotes(n));
+    assert!(find_tag(&root, "pre"), "pre stays pre");
+    assert!(!find_tag(&root, "code"), "code child unwrapped");
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        Some("not-prose language-rust"),
+        "language hoisted onto pre class"
+    );
+    assert!(
+        pre.text_content().contains("fn main() {}"),
+        "code text spliced into pre"
+    );
+}
+
+#[test]
+fn test_tf_convert_quotes_pre_own_class_language_wins() {
+    // The pre's own language class takes precedence over a nested code's.
+    let mut root = parse_html(
+        r#"<pre class="language-python"><code class="language-rust">print('x')</code></pre>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_quotes(n));
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(get_attr(pre, "class"), Some("language-python"));
+}
+
+#[test]
+fn test_tf_convert_quotes_inline_code_untouched() {
+    // Inline <code> is left as-is.
+    let mut root = parse_html("<p>run <code>cmd</code> now</p>").unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_quotes(n));
+    assert!(find_tag(&root, "code"), "inline code stays code");
 }
 
 // ── tf_convert_formatting ───────────────────────────────────────────
@@ -420,7 +465,7 @@ fn test_tf_convert_figure_with_table_converts_to_div() {
         "<figure><div><div><table><thead><tr><th>A</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table></div></div></figure>",
     )
     .unwrap();
-    walk_pre_mut_test(&mut root, &|n| tf_convert_figure_with_table(n));
+    tf_convert_figure_with_table(&mut root);
     assert!(
         !find_tag(&root, "figure"),
         "<figure> with table should be renamed to <div>"
@@ -436,7 +481,7 @@ fn test_tf_convert_figure_with_table_keeps_attributes() {
         r#"<figure class="w-full" data-x="y"><div><table><tr><td>1</td></tr></table></div></figure>"#,
     )
     .unwrap();
-    walk_pre_mut_test(&mut root, &|n| tf_convert_figure_with_table(n));
+    tf_convert_figure_with_table(&mut root);
     let div = find_node_matching(&root, "div").expect("renamed <div> should exist");
     assert_eq!(get_attr(div, "class"), Some("w-full"), "class preserved");
     assert_eq!(get_attr(div, "data-x"), Some("y"), "data-x preserved");
@@ -450,7 +495,7 @@ fn test_tf_convert_figure_without_table_still_removed_by_cleaning() {
         "<figure><img src='x.png'></figure><figure><div><table><tr><td>1</td></tr></table></div></figure><p>keep</p>",
     )
     .unwrap();
-    walk_pre_mut_test(&mut root, &|n| tf_convert_figure_with_table(n));
+    tf_convert_figure_with_table(&mut root);
     // Plain figure (image only) stays a figure at this point.
     let mut figures = 0;
     collect_tag_count(&root, "figure", &mut figures);
@@ -472,7 +517,7 @@ fn test_tf_convert_figure_with_table_nested_figures_both_convert() {
         r#"<figure class="outer"><figure class="inner"><div><table><tr><td>1</td></tr></table></div></figure></figure>"#,
     )
     .unwrap();
-    walk_pre_mut_test(&mut root, &|n| tf_convert_figure_with_table(n));
+    tf_convert_figure_with_table(&mut root);
     assert!(
         !find_tag(&root, "figure"),
         "both nested figures should convert to <div>"

@@ -298,7 +298,7 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
         tf_extract_script_templates,
         // Pre-cleaning conversions: must run BEFORE tf_remove_cleaned or the
         // figure-wrapped tables and FAQ accordion questions are destroyed.
-        wrap_pass!(tf_convert_figure_with_table),
+        tf_convert_figure_with_table,
         wrap_pass!(tf_convert_accordion_to_details),
         wrap_pass!(tf_remove_cleaned),
         #[cfg(not(feature = "use-xpath"))]
@@ -402,7 +402,7 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
         tf_extract_script_templates,
         // Pre-cleaning conversions: must run BEFORE tf_remove_cleaned or the
         // figure-wrapped tables and FAQ accordion questions are destroyed.
-        wrap_pass!(tf_convert_figure_with_table),
+        tf_convert_figure_with_table,
         wrap_pass!(tf_convert_accordion_to_details),
         wrap_pass!(tf_remove_cleaned),
         #[cfg(not(feature = "use-xpath"))]
