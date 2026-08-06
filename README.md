@@ -150,7 +150,9 @@ A prebuilt OCI image is published on GitHub Container Registry (GHCR):
 - `ghcr.io/mratsim/delulu/all-mcp` (unified all-mcp server, all 21 tools)
 
 ```bash
-# HTTP transport (for remote clients)  
+# HTTP transport (for remote clients) — NO built-in authentication!
+# Put it behind a TLS-terminating reverse proxy that enforces auth
+# (mTLS or bearer token), or restrict the port with a firewall.
 docker run -p 8080:8080 \
   --env RUST_LOG=info \
   ghcr.io/mratsim/delulu/all-mcp:latest \
@@ -211,7 +213,8 @@ The standalone per-package binaries keep their unprefixed names.
 # CLI transport (Claude Desktop-friendly):
 delulu-all-mcp stdio
 
-# HTTP transport (for remote clients):
+# HTTP transport (for remote clients) — NO built-in authentication!
+# Put it behind a TLS-terminating reverse proxy with auth, or a firewall.
 delulu-all-mcp http --host 0.0.0.0 --port 8080
 ```
 
