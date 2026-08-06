@@ -81,20 +81,47 @@ impl Continuation for DuckDuckGoContinuation {
 
 /// Validate that n_token contains only safe URL path/query characters.
 /// This prevents SSRF via path traversal (`..`), protocol injection
-/// (`https://...`), or protocol-relative URLs (`//...`).
-/// Allowed: alphanumeric, `/`, `?`, `=`, `.`, `_`, `-`, `&`, `%`.
+/// (`https://...`), protocol-relative URLs (`//...`), and host-suffix
+/// attacks (`.attacker.example/d.js` -> `links.duckduckgo.com.attacker.example`).
+/// Allowed: alphanumeric, `/`, `?`, `=`, `.`, `_`, `-`, `&`, and `%`
+/// followed by exactly two ASCII hex digits.
 /// `%` is required: DDG's real n_token contains percent-encoded query params
 /// (e.g. `/d.js?q=kimi%20k3...&s=10`). Without `%`, every token is rejected
 /// and `has_next_page` is always false.
 pub(crate) fn validate_n_token(token: &str) -> bool {
-    !token.is_empty()
-        && token.chars().all(|c| {
-            c.is_ascii_alphanumeric() || matches!(c, '/' | '?' | '=' | '.' | '_' | '-' | '&' | '%')
-        })
-        && !token.contains("..")
-        && !token.starts_with("//")
-        && !token.starts_with("https://")
-        && !token.starts_with("http://")
+    if token.is_empty()
+        || !token.starts_with('/')
+        || token.contains("..")
+        || token.starts_with("//")
+        || token.starts_with("https://")
+        || token.starts_with("http://")
+    {
+        return false;
+    }
+
+    let bytes = token.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                // Percent-escapes must be complete: exactly two ASCII hex digits.
+                if i + 2 >= bytes.len()
+                    || !bytes[i + 1].is_ascii_hexdigit()
+                    || !bytes[i + 2].is_ascii_hexdigit()
+                {
+                    return false;
+                }
+                i += 3;
+            }
+            c if c.is_ascii_alphanumeric()
+                || matches!(c, b'/' | b'?' | b'=' | b'.' | b'_' | b'-' | b'&') =>
+            {
+                i += 1;
+            }
+            _ => return false,
+        }
+    }
+    true
 }
 
 impl DuckDuckGoEngine {
@@ -182,12 +209,16 @@ impl DuckDuckGoEngine {
     ///
     /// The n_token from DDG's d.js response is always a relative path like
     /// `/d.js?q=...&s=20`. The n_token has already been validated by
-    /// `validate_n_token()` before reaching this function (no `:` allowed),
+    /// `validate_n_token()` before reaching this function (leading `/`
+    /// required — a slashless token would concatenate onto the host and
+    /// could redirect to an attacker-controlled origin),
     /// so the assert below only fires on programming errors.
     pub fn build_djs_url_from_token(n_token: &str) -> String {
         debug_assert!(
-            !n_token.starts_with("https://") && !n_token.starts_with("http://"),
-            "n_token should be a relative path, got: {n_token}"
+            n_token.starts_with('/')
+                && !n_token.starts_with("https://")
+                && !n_token.starts_with("http://"),
+            "n_token should be a relative path starting with '/', got: {n_token}"
         );
         format!("https://links.duckduckgo.com{n_token}")
     }

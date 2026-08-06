@@ -281,9 +281,29 @@ fn duckduckgo_continuation_from_json() {
 #[test]
 fn validate_n_token_accepts_valid_paths() {
     assert!(validate_n_token("/d.js?q=rust&vqd=abc"));
-    assert!(validate_n_token("d.js?o=jsonp&q=test"));
+    assert!(validate_n_token("/d.js?o=jsonp&q=test"));
     assert!(validate_n_token("/d.js"));
-    assert!(validate_n_token("abc123/def"));
+    assert!(validate_n_token("/abc123/def"));
+}
+
+#[test]
+fn validate_n_token_rejects_slashless_token() {
+    // Without a leading '/', build_djs_url_from_token concatenates directly
+    // onto the host: ".attacker.example/d.js" would resolve to
+    // https://links.duckduckgo.com.attacker.example/d.js — an
+    // attacker-controlled origin (SSRF).
+    assert!(!validate_n_token("d.js?o=jsonp&q=test"));
+    assert!(!validate_n_token("abc123/def"));
+    assert!(!validate_n_token(".attacker.example/d.js"));
+}
+
+#[test]
+fn validate_n_token_rejects_malformed_percent_escapes() {
+    // '%' must be followed by exactly two ASCII hex digits.
+    assert!(!validate_n_token("/d.js?q=%"));
+    assert!(!validate_n_token("/d.js?q=%2"));
+    assert!(!validate_n_token("/d.js?q=%GG"));
+    assert!(!validate_n_token("/d.js?q=%2G"));
 }
 #[test]
 fn validate_n_token_accepts_percent_encoded_query() {
@@ -294,7 +314,7 @@ fn validate_n_token_accepts_percent_encoded_query() {
         "/d.js?q=kimi%20k3%20open%20model&l=us-en&p=&s=10&ex=-1&dl=en&ct=FR&sp=0&vqd=4-2336",
     ));
     assert!(validate_n_token("/d.js?q=rust%20programming&s=20"));
-    assert!(validate_n_token("d.js?o=jsonp&q=test%20query"));
+    assert!(validate_n_token("/d.js?o=jsonp&q=test%20query"));
 }
 
 #[test]
