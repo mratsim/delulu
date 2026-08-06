@@ -15,6 +15,28 @@
 - `ethresear-reed-solomon-readability-0.6.0.html` — Readability.js v0.6.0 expected output.
 - `ethresear-reed-solomon-trafilatura-2.1.0.md` — Trafilatura v2.1.0 expected output.
 
+## blog/gwern.net/
+- `complement.html.zst` — Long-form essay: “Laws of Tech: Commoditize Your Complement”.
+  Gwern's annotation-heavy personal site; section headings + footnotes + backlinks in the HTML.
+  The backlink/similar-link contexts are JS-fetched at runtime and are NOT in the raw HTML
+  (see TODO_fixtures.md — static extraction covers ~62% of the Firefox-rendered page).
+  Fetched: 2026-08-06 (curl, Safari UA).
+- `gwern-complement-readability-0.6.0.html` — Readability.js v0.6.0 expected output.
+- `gwern-complement-trafilatura-2.1.0.md` — Trafilatura v2.1.0 expected output.
+
+## blog/jaymartin.substack.com/
+- `china-doesnt-need-to-win-the-ai-race.html.zst` — Substack article: “China Doesn't Need to Win the AI Race”.
+  Server-rendered article body; comments/subscribe chrome present in the HTML.
+  Fetched: 2026-08-06 (curl, Safari UA).
+- `jaymartin-china-doesnt-need-to-win-the-ai-race-readability-0.6.0.html` — Readability.js v0.6.0 expected output.
+- `jaymartin-china-doesnt-need-to-win-the-ai-race-trafilatura-2.1.0.md` — Trafilatura v2.1.0 expected output.
+
+## wikipedia/
+- `rust-programming-language.html.zst` — Wikipedia article: Rust (programming language).
+  Large encyclopedia article (~1 MB HTML): infobox, code examples, references.
+  Fetched: 2026-08-06 (curl, Safari UA).
+- `rust-programming-language-readability-0.6.0.html` — Readability.js v0.6.0 expected output.
+- `rust-programming-language-trafilatura-2.1.0.md` — Trafilatura v2.1.0 expected output.
 ## reddit/
 - `reddit-thread-simple.json.zst` — Reddit API response (simple thread with nested replies).
 
