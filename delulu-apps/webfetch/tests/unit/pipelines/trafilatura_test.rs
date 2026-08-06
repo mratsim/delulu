@@ -451,6 +451,19 @@ fn find_tag(node: &DomNode, tag: &str) -> bool {
     }
 }
 
+/// Helper: find the first element with the given tag.
+fn find_node_matching<'a>(node: &'a DomNode, tag: &str) -> Option<&'a DomNode> {
+    match node {
+        DomNode::Element {
+            tag: t, children, ..
+        } if t == tag => Some(node),
+        DomNode::Element { children, .. } => {
+            children.iter().find_map(|c| find_node_matching(c, tag))
+        }
+        _ => None,
+    }
+}
+
 /// Helper: find a <head> element carrying the given rend attribute.
 fn find_head_with_rend<'a>(node: &'a DomNode, expected_rend: &str) -> Option<&'a DomNode> {
     match node {
@@ -485,8 +498,9 @@ fn find_head_with_rend<'a>(node: &'a DomNode, expected_rend: &str) -> Option<&'a
 /// Integration: the pre-cleaning conversions + full TF_BALANCED pipeline.
 ///
 /// - particula-style accordion (div > button[aria-expanded] + content)
-///   becomes <details><summary> in the intermediate tree and a
-///   <head rend="h3"> heading in the final output.
+///   becomes <details><summary> and STAYS that way through the whole
+///   pipeline (the details/summary structure is the end state: gen_md emits
+///   it as a raw-HTML block that GFM renders collapsible).
 /// - a <figure> wrapping a <table> is renamed to <div> so the data table
 ///   survives the whole pipeline (tf HTML output keeps <table>).
 #[test]
@@ -532,7 +546,7 @@ fn test_bal_pipeline_accordion_details_and_table_survival() {
         "accordion buttons must be converted to <summary> before tf_remove_cleaned would delete them"
     );
 
-    // Full pipeline: table survives, accordions become h3 headings.
+    // Full pipeline: table survives, accordions stay <details><summary>.
     for pass in &passes[3..] {
         pass(&mut doc);
     }
@@ -541,12 +555,12 @@ fn test_bal_pipeline_accordion_details_and_table_survival() {
         "table must survive the full TF_BALANCED pipeline"
     );
     assert!(
-        !find_tag(&doc, "details"),
-        "details must be converted away by tf_convert_refs_and_details"
+        find_tag(&doc, "details"),
+        "details must survive the full pipeline (it IS the end state)"
     );
     assert!(
-        !find_tag(&doc, "summary"),
-        "summary must be converted to <head rend=h3>"
+        find_tag(&doc, "summary"),
+        "summary must survive the full pipeline"
     );
     let text = doc.text_content();
     assert!(
@@ -561,12 +575,11 @@ fn test_bal_pipeline_accordion_details_and_table_survival() {
         text.contains("Second answer."),
         "second answer must survive"
     );
-    let head =
-        find_head_with_rend(&doc, "h3").expect(r#"summary-derived <head rend="h3"> must exist"#);
+    let summary = find_node_matching(&doc, "summary").expect("summary exists");
     assert_eq!(
-        head.text_content().trim(),
+        summary.text_content().trim(),
         "Is SGLang faster than vLLM?",
-        "h3 heading must carry the question text"
+        "summary must carry the question text"
     );
 }
 
@@ -598,8 +611,12 @@ fn test_recall_pipeline_preserves_accordion_question() {
         "FAQ answer text must survive TF_RECALL, got: {text}"
     );
     assert!(
-        find_head_with_rend(&doc, "h3").is_some(),
-        "summary-derived <head rend=h3> must survive TF_RECALL"
+        find_tag(&doc, "details"),
+        "<details> must survive TF_RECALL (the structure IS the end state)"
+    );
+    assert!(
+        find_tag(&doc, "summary"),
+        "<summary> must survive TF_RECALL"
     );
 }
 #[test]

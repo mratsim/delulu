@@ -40,9 +40,9 @@ use super::passes::tf_transforms::{
     tf_canonicalize_strip_non_content, tf_canonicalize_unwrap_containers,
 };
 use super::passes::tf_transforms::{
-    tf_convert_accordion_to_details, tf_convert_breaks, tf_convert_figure_with_table,
-    tf_convert_formatting, tf_convert_headings, tf_convert_lists, tf_convert_quotes,
-    tf_convert_refs_and_details,
+    tf_convert_accordion_to_details, tf_convert_breaks, tf_convert_code_header_label,
+    tf_convert_figure_with_table, tf_convert_formatting, tf_convert_headings, tf_convert_lists,
+    tf_convert_quotes, tf_convert_refs_and_details,
 };
 
 // ---------------------------------------------------------------------------
@@ -335,6 +335,10 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
         #[cfg(feature = "use-xpath")]
         wrap_pass!(tf_discard_image_elements_xpath),
         tf_canonicalize_unwrap_containers,
+        // Code header labels ("BASH" pill) -> language class on the pre.
+        // Must run after unwrap (the label is a sibling of the pre) and
+        // before the tag catalog.
+        tf_convert_code_header_label,
         // Final tag whitelist — remove any tags not in TAG_CATALOG
         apply_tf_filter_tag_catalog,
     ]
@@ -387,6 +391,7 @@ pub static TF_BALANCED_NAMES: Lazy<&[&str]> = Lazy::new(|| {
         #[cfg(feature = "use-xpath")]
         "tf_discard_image_elements_xpath",
         "tf_canonicalize_unwrap_containers",
+        "tf_convert_code_header_label",
         "tf_filter_tag_catalog",
     ]
 });
@@ -442,6 +447,10 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
         #[cfg(feature = "use-xpath")]
         wrap_pass!(tf_discard_image_elements_xpath),
         tf_canonicalize_unwrap_containers,
+        // Code header labels ("BASH" pill) -> language class on the pre.
+        // Must run after unwrap (the label is a sibling of the pre) and
+        // before the tag catalog.
+        tf_convert_code_header_label,
         // Final tag whitelist — remove any tags not in TAG_CATALOG
         apply_tf_filter_tag_catalog,
     ]

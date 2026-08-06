@@ -220,10 +220,13 @@ fn test_tf_convert_refs_drops_duplicate_target_attr() {
 fn test_tf_convert_refs_and_details_details() {
     let mut root = parse_html("<details><summary>Info</summary><p>text</p></details>").unwrap();
     walk_pre_mut_test(&mut root, &|n| tf_convert_refs_and_details(n));
-    assert!(find_tag(&root, "div"), "details should become div");
-    assert!(find_tag(&root, "head"), "summary should become head");
-    assert!(!find_tag(&root, "details"), "details should not remain");
-    assert!(!find_tag(&root, "summary"), "summary should not remain");
+    assert!(find_tag(&root, "details"), "details must be preserved");
+    assert!(find_tag(&root, "summary"), "summary must be preserved");
+    assert!(!find_tag(&root, "div"), "details must not become div");
+    assert!(
+        find_head_with_rend(&root, "h3").is_none(),
+        "summary must not be converted to <head rend=h3>"
+    );
 }
 
 // ── tf_canonicalize_strip_non_content ───────────────────────────────
@@ -725,25 +728,35 @@ fn test_tf_convert_accordion_aria_hidden_false_kept_in_summary() {
     );
 }
 
-// ── R3a: summary -> head rend="h3" ────────────────────────────────────
+// ── R3a: details/summary are preserved ────────────────────────────────
 
 #[test]
-fn test_summary_to_head_gains_rend_h3() {
+fn test_refs_and_details_preserves_details_and_summary() {
+    // The accordion pass produces <details><summary>; tf_convert_refs_and_details
+    // must NOT flatten it back to div + head — the details/summary structure IS
+    // the end state (gen_md emits it as a raw-HTML block, GFM renders it
+    // collapsible).
     let mut root = parse_html("<details><summary>Info</summary><p>text</p></details>").unwrap();
     walk_pre_mut_test(&mut root, &|n| tf_convert_refs_and_details(n));
-    let head = find_head_with_rend(&root, "h3").expect(r#"summary should become <head rend="h3">"#);
-    assert_eq!(get_attr(head, "rend"), Some("h3"));
-    assert_eq!(head.text_content(), "Info");
+    assert!(find_tag(&root, "details"), "details must survive");
+    assert!(find_tag(&root, "summary"), "summary must survive");
+    assert!(
+        find_head_with_rend(&root, "h3").is_none(),
+        "summary must not become <head rend=h3>"
+    );
+    let summary = find_node_matching(&root, "summary").expect("summary exists");
+    assert_eq!(summary.text_content(), "Info");
 }
 
 #[test]
-fn test_summary_to_head_keeps_existing_rend() {
-    // A summary that already carries a rend keeps it (h3 is only the default).
+fn test_refs_and_details_keeps_summary_rend_attr() {
+    // A summary's own rend attribute is left untouched (it is only meaningful
+    // if a later pass converts summary -> head, which no longer happens).
     let mut root =
         parse_html(r#"<details><summary rend="h2">Info</summary><p>text</p></details>"#).unwrap();
     walk_pre_mut_test(&mut root, &|n| tf_convert_refs_and_details(n));
-    let head = find_head_with_rend(&root, "h2").expect("existing rend must be kept");
-    assert_eq!(get_attr(head, "rend"), Some("h2"));
+    let summary = find_node_matching(&root, "summary").expect("summary exists");
+    assert_eq!(get_attr(summary, "rend"), Some("h2"));
 }
 
 // ── Helper: count tags in a tree ──────────────────────────────────────
@@ -760,4 +773,101 @@ fn collect_tag_count(node: &DomNode, tag: &str, count: &mut usize) {
             collect_tag_count(child, tag, count);
         }
     }
+}
+
+// ── tf_convert_code_header_label ─────────────────────────────────────
+
+#[test]
+fn test_code_header_label_hoists_language_and_removes_label() {
+    // <p>BASH</p><pre>code</pre> — the label becomes the fence language and
+    // is deleted (its content is fully represented by the fence info string).
+    let mut root = parse_html("<p>BASH</p><pre>pip install sglang</pre>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        Some("language-bash"),
+        "label language must be hoisted onto the pre class"
+    );
+    assert!(
+        !root.text_content().contains("BASH"),
+        "label element must be removed, got: {}",
+        root.text_content()
+    );
+}
+
+#[test]
+fn test_code_header_label_ignores_non_language_label() {
+    // A multi-word or non-language label ("Output:", "Run the tests") is
+    // NOT a language — the label must stay and the pre must not gain a class.
+    let mut root = parse_html("<p>Output:</p><pre>42</pre>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(get_attr(pre, "class"), None, "no language hoisted");
+    assert!(
+        root.text_content().contains("Output:"),
+        "non-language label must survive"
+    );
+}
+
+#[test]
+fn test_code_header_label_requires_adjacent_sibling() {
+    // The label must be the IMMEDIATE preceding sibling (skipping whitespace
+    // text); a paragraph two slots away is unrelated content.
+    let mut root = parse_html("<p>Python</p><div><pre>print(1)</pre></div>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(get_attr(pre, "class"), None, "non-adjacent label ignored");
+    assert!(
+        root.text_content().contains("Python"),
+        "non-adjacent paragraph must survive"
+    );
+}
+
+// ── tf_canonicalize_unwrap_containers: text-only div → <p> (TL;DR) ────
+
+#[test]
+fn test_unwrap_text_only_div_becomes_p() {
+    // A div whose children are all inline is a paragraph, not layout: it must
+    // become <p>, NOT unwrap to loose text (which jams onto the next block —
+    // "TL;DRSGLang's..."). The label and the summary paragraph stay separate
+    // in the generated markdown.
+    let mut root = parse_html(
+        "<div><div>TL;DR</div><p>SGLang's RadixAttention gives it a 29% edge.</p></div>",
+    )
+    .unwrap();
+    tf_canonicalize_unwrap_containers(&mut root);
+    assert!(
+        find_tag(&root, "p"),
+        "label div must become <p> (and the summary <p> stays)"
+    );
+    let md = crate::generators::gen_md::MarkdownLowerer::lower(&root, None);
+    assert!(
+        md.contains("TL;DR\n\nSGLang"),
+        "TL;DR must be its own paragraph, got: {md}"
+    );
+    assert!(
+        !md.contains("TL;DRSGLang"),
+        "label must not jam onto the paragraph, got: {md}"
+    );
+}
+
+#[test]
+fn test_unwrap_div_with_block_child_still_unwraps() {
+    // A div with a block child (another div, a p, ...) is layout: it unwraps
+    // as before (no <p> wrapping of the whole thing).
+    let mut root = parse_html("<div><div>a</div><div>b</div></div>").unwrap();
+    tf_canonicalize_unwrap_containers(&mut root);
+    // Inner text-only divs become <p>; the outer layout div unwraps.
+    let p_count = {
+        let mut count = 0;
+        collect_tag_count(&root, "p", &mut count);
+        count
+    };
+    assert_eq!(p_count, 2, "both inner divs must become <p>, got {p_count}");
+    let md = crate::generators::gen_md::MarkdownLowerer::lower(&root, None);
+    assert!(
+        md.contains("a\n\nb"),
+        "inner paragraphs must not jam in markdown, got: {md}"
+    );
 }

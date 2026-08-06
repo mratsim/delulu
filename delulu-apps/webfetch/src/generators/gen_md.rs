@@ -347,6 +347,44 @@ impl MarkdownLowerer {
                 }
             }
 
+            // ── FAQ accordions: raw HTML <details><summary> ─────────────
+            // tf_convert_accordion_to_details restructures div-based FAQ
+            // accordions into semantic <details><summary> and the pipeline
+            // keeps them (tf_convert_refs_and_details no longer flattens
+            // them). GFM renders <details> blocks as collapsible sections,
+            // which is exactly how the FAQ accordions should behave.
+            "details" => {
+                if !out.is_empty() && !out.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push_str("<details>\n");
+                for child in children {
+                    if let DomNode::Element { tag: t, .. } = child
+                        && t == "summary"
+                    {
+                        let text = child.text_content().trim().to_string();
+                        out.push_str("<summary>");
+                        out.push_str(&escape_markdown(&text));
+                        out.push_str("</summary>\n");
+                        // Blank line after <summary> so the body parses as
+                        // markdown inside the block (GFM: content separated
+                        // from raw HTML by blank lines is parsed).
+                        out.push('\n');
+                    } else {
+                        Self::lower_node(child, base_url, out, indent);
+                    }
+                }
+                // Blank line before </details> so the body parses as
+                // markdown inside the block (GFM requirement).
+                if !out.ends_with("\n\n") {
+                    if !out.ends_with('\n') {
+                        out.push('\n');
+                    }
+                    out.push('\n');
+                }
+                out.push_str("</details>\n\n");
+            }
+
             // ── Paragraphs ─────────────────────────────────────────────
             "p" => {
                 Self::lower_nodes(children, base_url, out, indent);
@@ -586,6 +624,38 @@ impl MarkdownLowerer {
         }
     }
 
+    /// Escape a GFM table cell.
+    ///
+    /// Only `|` needs escaping in a cell. `escape_markdown` also escapes
+    /// parens (`\(`/`\)`) — harmless in prose (GFM renders them as `(`),
+    /// but some renderers show the backslash literally inside table cells,
+    /// which makes the header look broken ("vLLM \\(PagedAttention\\)").
+    /// Revert exactly those two, keep everything else escaped.
+    fn escape_table_cell(cell: &str) -> String {
+        let mut out = String::with_capacity(cell.len());
+        let mut chars = cell.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => match chars.peek() {
+                    Some('(') | Some(')') => {
+                        // revert \\( / \\) from escape_markdown
+                        out.push(chars.next().unwrap());
+                    }
+                    _ => {
+                        out.push('\\');
+                        if let Some(&n) = chars.peek() {
+                            out.push(n);
+                            chars.next();
+                        }
+                    }
+                },
+                '|' => out.push_str("\\|"),
+                other => out.push(other),
+            }
+        }
+        out
+    }
+
     /// Lower a table into GFM pipe-table format.
     /// Lower a table. Dispatches to raw HTML for complex tables (colspan,
     /// rowspan, block content in cells) or GFM pipe tables for simple tables.
@@ -661,7 +731,7 @@ impl MarkdownLowerer {
         for cell in header_row {
             out.push(' ');
             // Escape pipe characters inside cell content
-            let escaped = cell.replace('|', "\\|");
+            let escaped = Self::escape_table_cell(cell);
             out.push_str(&escaped);
             out.push_str(" |");
         }
@@ -680,7 +750,7 @@ impl MarkdownLowerer {
             out.push('|');
             for cell in row {
                 out.push(' ');
-                let escaped = cell.replace('|', "\\|");
+                let escaped = Self::escape_table_cell(cell);
                 out.push_str(&escaped);
                 out.push_str(" |");
             }

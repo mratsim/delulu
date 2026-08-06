@@ -1023,6 +1023,7 @@ pub fn tf_filter_tag_catalog(node: &mut DomNode) -> WalkerAction {
                 "blockquote"
                     | "code"
                     | "del"
+                    | "details"
                     | "head"
                     | "hi"
                     | "lb"
@@ -1030,6 +1031,7 @@ pub fn tf_filter_tag_catalog(node: &mut DomNode) -> WalkerAction {
                     | "p"
                     | "pre"
                     | "quote"
+                    | "summary"
             ) {
                 return WalkerAction::Continue;
             }

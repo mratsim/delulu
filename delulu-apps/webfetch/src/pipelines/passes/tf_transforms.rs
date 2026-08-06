@@ -143,12 +143,15 @@ pub fn tf_convert_breaks(node: &mut DomNode) -> WalkerAction {
 /// Convert links and details elements.
 ///
 /// - `a` → `ref`, move `href` → `target`
-/// - `details` → `div`
-/// - `summary` → `head` with `rend="h3"` (when the summary has no rend of its own)
-///   Deliberate deviation from python: python's `convert_details()`
-///   (`htmlprocessing.py:334-338`) sets no rend and renders summary-heads as
-///   plain newline blocks. We set `rend="h3"` so gen_md renders them as `###`
-///   markdown headings (LLM readability, matching FAQ heading levels).
+/// - `details`/`summary` are LEFT AS-IS so the generators can emit them:
+///   gen_md renders `<details><summary>` as a raw-HTML block (GFM renders
+///   collapsible FAQ items) and gen_html emits the real tags (browsers get
+///   the native accordion). This is a deliberate deviation from python
+///   trafilatura, whose `convert_details()` (`htmlprocessing.py:334-338`)
+///   flattens `details → div` and `summary → head` — which is exactly why
+///   `tf_convert_accordion_to_details` would be pointless: it converts a
+///   div-accordion INTO `<details><summary>` only to have this pass flatten
+///   it right back. The accordion structure IS the end state.
 ///   Reference: Trafilatura `htmlprocessing.py:334-338` `convert_details()` + `htmlprocessing.py:364-373` `convert_link()`
 pub fn tf_convert_refs_and_details(node: &mut DomNode) -> WalkerAction {
     match node {
@@ -170,23 +173,8 @@ pub fn tf_convert_refs_and_details(node: &mut DomNode) -> WalkerAction {
             }
             WalkerAction::Continue
         }
-        DomNode::Element { tag, .. } if tag == "details" => {
-            tag.clear();
-            tag.push_str("div");
-            WalkerAction::Continue
-        }
-        DomNode::Element { tag, attrs, .. } if tag == "summary" => {
-            tag.clear();
-            tag.push_str("head");
-            // Deliberate deviation from python: python's convert_details
-            // (htmlprocessing.py:334-338) sets no rend on the summary-head and
-            // renders it as a plain newline block. We set rend="h3" so gen_md
-            // renders summary-derived heads as `###` markdown headings (LLM
-            // readability, matching the FAQ heading level). Only set when the
-            // summary has no rend of its own.
-            if !attrs.iter().any(|(k, _)| k == "rend") {
-                attrs.push(("rend".to_string(), "h3".to_string()));
-            }
+        // details/summary: preserved as-is (see doc comment).
+        DomNode::Element { tag, .. } if tag == "details" || tag == "summary" => {
             WalkerAction::Continue
         }
         _ => WalkerAction::Continue,
@@ -253,6 +241,57 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
     const CONTAINER_TAGS: &[&str] = &[
         "div", "span", "section", "article", "header", "main", "body", "html",
     ];
+
+    // Tags that make a container a block-level layout wrapper. A `<div>`
+    // whose children are all inline (text/spans/links) is a *paragraph*, not
+    // layout — see the `tag == "div"` arm below.
+    const BLOCK_TAGS: &[&str] = &[
+        "p",
+        "div",
+        "section",
+        "article",
+        "header",
+        "footer",
+        "main",
+        "body",
+        "html",
+        "ul",
+        "ol",
+        "list",
+        "item",
+        "table",
+        "tr",
+        "td",
+        "th",
+        "row",
+        "cell",
+        "pre",
+        "blockquote",
+        "quote",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "head",
+        "details",
+        "figure",
+        "dl",
+        "form",
+        "nav",
+        "aside",
+        "hr",
+    ];
+
+    fn is_inline_content(n: &DomNode) -> bool {
+        match n {
+            DomNode::Element { tag, .. } => !BLOCK_TAGS.contains(&tag.as_str()),
+            // Text/comments are inline content.
+            _ => true,
+        }
+    }
+
     let mut unwrap_filter = |n: &mut DomNode| -> WalkerAction {
         let is_data_table = matches!(n, DomNode::Element { tag, metadata, .. } if tag == "table"
         && metadata.iter().any(|(k, v)|
@@ -265,12 +304,27 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
         ));
 
         match n {
-            DomNode::Element { tag, .. } => {
+            DomNode::Element { tag, children, .. } => {
                 if is_data_table {
                     WalkerAction::Continue
                 } else if tag == "table" && has_is_data_table_key {
                     // Explicitly marked as layout (is_data_table set to non-true) — unwrap
                     WalkerAction::ReplaceWithChildren
+                } else if tag == "div"
+                    && children.iter().all(|c| is_inline_content(c))
+                    && children
+                        .iter()
+                        .any(|c| !matches!(c, DomNode::Text(t) if t.trim().is_empty()))
+                {
+                    // A div whose children are all inline is a paragraph,
+                    // not a layout container. Unwrapping it would demote the
+                    // text to loose nodes that jam onto the next block
+                    // (a "TL;DR" label div before the summary paragraph
+                    // rendered as "TL;DRSGLang's..."). Rename to <p> to keep
+                    // the paragraph boundary.
+                    tag.clear();
+                    tag.push_str("p");
+                    WalkerAction::Continue
                 } else if CONTAINER_TAGS.contains(&tag.as_str()) {
                     WalkerAction::ReplaceWithChildren
                 } else {
@@ -472,6 +526,143 @@ fn collect_visible_text(node: &DomNode, buf: &mut String) {
             }
         }
         DomNode::Comment(_) | DomNode::Doctype(_) => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Code header label → pre language (chrome removal)
+// ---------------------------------------------------------------------------
+
+/// Recognize code-block header labels (e.g. a "BASH" pill in a code header
+/// bar) that sit as a sibling immediately before a `<pre>` and hoist them
+/// onto the pre's class as `language-<name>`.
+///
+/// Sites like particula.tech render code blocks as a chrome header bar
+/// (macOS traffic lights + a language pill like "BASH" + a copy button)
+/// followed by a bare `<pre>` with NO language class and no nested `<code>`:
+///
+/// ```html
+/// <div class="…header bar…"><span>BASH</span><button>…copy…</button></div>
+/// <pre>pip install sglang[all]</pre>
+/// ```
+///
+/// Without this pass the markdown output carries a stray "BASH" paragraph
+/// and a fence with an empty info string. This pass runs AFTER
+/// [`tf_canonicalize_unwrap_containers`] (which converts the header bar div
+/// to `<p>BASH</p>`): when a `<pre>` is immediately preceded by a sibling
+/// element whose text is a single known language name, the language is
+/// appended to the pre's class and the label element is deleted (its content
+/// is fully represented by the fence info string).
+///
+/// Pre: DOM tree is fully parsed; `unwrap_containers` has run (the label is
+///      a direct sibling of the pre).
+/// Post: The pre carries `language-<name>`; the label element is removed.
+/// Note: No direct Python trafilatura equivalent — Rust-specific.
+pub fn tf_convert_code_header_label(node: &mut DomNode) {
+    let mut filter = |n: &mut DomNode| -> WalkerAction {
+        if let DomNode::Element { children, .. } = n {
+            let mut i = 0;
+            while i < children.len() {
+                let is_pre = matches!(&children[i], DomNode::Element { tag, .. } if tag == "pre");
+                if is_pre && let Some(label_idx) = prev_label_sibling(children, i) {
+                    let label_text = children[label_idx].text_content();
+                    if let Some(lang) = code_label_language(label_text.trim()) {
+                        if let DomNode::Element { attrs, .. } = &mut children[i] {
+                            push_language_class(attrs, &lang);
+                        }
+                        children.remove(label_idx);
+                        // The pre shifted down one slot; re-scan it.
+                        i -= 1;
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+        }
+        WalkerAction::Continue
+    };
+    // walk_post_mut never runs filters on the ROOT node itself — apply the
+    // filter to the root explicitly so a <pre> whose label sits directly
+    // under <html> (or any root) is still handled.
+    let _ = filter(node);
+    let mut filters: Vec<&mut WalkerFilter> = vec![&mut filter];
+    walk_post_mut(node, &mut filters, None);
+}
+
+/// Index of the nearest preceding sibling of `children[i]`, skipping
+/// whitespace-only text nodes and comments (pretty-printed HTML).
+fn prev_label_sibling(children: &[DomNode], i: usize) -> Option<usize> {
+    let mut j = i;
+    while j > 0 {
+        j -= 1;
+        match &children[j] {
+            DomNode::Text(t) if t.trim().is_empty() => continue,
+            DomNode::Comment(_) | DomNode::Doctype(_) => continue,
+            _ => return Some(j),
+        }
+    }
+    None
+}
+
+/// Map a single-token code header label ("BASH", "Python", …) to a fence
+/// info string, or `None` if it is not a known language name.
+fn code_label_language(label: &str) -> Option<String> {
+    if label.split_whitespace().count() != 1 {
+        return None;
+    }
+    let lower = label.to_lowercase();
+    let lang = match lower.as_str() {
+        "bash" | "sh" | "shell" | "zsh" => "bash",
+        "python" | "py" => "python",
+        "rust" | "rs" => "rust",
+        "javascript" | "js" => "javascript",
+        "typescript" | "ts" => "typescript",
+        "json" => "json",
+        "yaml" | "yml" => "yaml",
+        "toml" => "toml",
+        "xml" => "xml",
+        "html" => "html",
+        "css" | "scss" | "sass" => "css",
+        "sql" => "sql",
+        "go" | "golang" => "go",
+        "java" => "java",
+        "c" => "c",
+        "c++" | "cpp" | "cxx" => "cpp",
+        "c#" | "csharp" | "cs" => "csharp",
+        "ruby" | "rb" => "ruby",
+        "php" => "php",
+        "swift" => "swift",
+        "kotlin" | "kt" => "kotlin",
+        "scala" => "scala",
+        "perl" => "perl",
+        "lua" => "lua",
+        "r" => "r",
+        "matlab" => "matlab",
+        "powershell" | "ps1" => "powershell",
+        "bat" | "cmd" => "bat",
+        "dockerfile" => "dockerfile",
+        "makefile" => "makefile",
+        "terraform" | "hcl" => "hcl",
+        "graphql" => "graphql",
+        "diff" => "diff",
+        "markdown" | "md" => "markdown",
+        "text" | "txt" | "plain" | "plaintext" => "text",
+        _ => return None,
+    };
+    Some(lang.to_string())
+}
+
+/// Append `language-<lang>` to an element's `class` (creating it if absent,
+/// deduplicating existing tokens).
+fn push_language_class(attrs: &mut Vec<(String, String)>, lang: &str) {
+    let token = format!("language-{lang}");
+    if let Some((_, class)) = attrs.iter_mut().find(|(k, _)| k == "class") {
+        if !class.split_whitespace().any(|t| t == token) {
+            class.push(' ');
+            class.push_str(&token);
+        }
+    } else {
+        attrs.push(("class".to_string(), token));
     }
 }
 

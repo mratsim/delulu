@@ -864,3 +864,78 @@ fn test_lower_multiline_code_language_token_split_on_whitespace() {
         "no bogus 'python highlight' token, got: {md}"
     );
 }
+
+// ── FAQ: <details><summary> raw-HTML block (GFM collapsible) ─────────
+
+#[test]
+fn test_lower_details_summary_block() {
+    let nodes = [DomNode::Element {
+        tag: "details".into(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Element {
+                tag: "summary".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("Is SGLang faster than vLLM?".into())],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+            DomNode::Element {
+                tag: "p".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("Yes, on prefix-heavy workloads.".into())],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+        ],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        md.contains("<details>\n<summary>Is SGLang faster than vLLM?</summary>\n"),
+        "summary must render inside <details>, got: {md}"
+    );
+    assert!(
+        md.contains("\n\nYes, on prefix-heavy workloads.\n\n</details>"),
+        "answer must be a markdown paragraph inside the block, got: {md}"
+    );
+    assert!(
+        md.ends_with("</details>\n\n"),
+        "block must close, got: {md}"
+    );
+}
+
+// ── Table cells: parens must NOT be backslash-escaped ────────────────
+
+#[test]
+fn test_lower_table_cell_parens_not_escaped() {
+    let nodes = [DomNode::Element {
+        tag: "table".into(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "tr".into(),
+            attrs: vec![],
+            children: vec![DomNode::Element {
+                tag: "td".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("vLLM (PagedAttention)".into())],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            }],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        md.contains("| vLLM (PagedAttention) |"),
+        "cell parens must not be escaped, got: {md}"
+    );
+    assert!(
+        !md.contains("\\("),
+        "no \\( in table cells (some renderers show the backslash literally), got: {md}"
+    );
+}
