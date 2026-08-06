@@ -74,7 +74,9 @@ impl IacrClient {
     }
 
     pub fn with_base_url(mut self, url: String) -> Self {
-        self.base_url = url;
+        // Trim trailing slashes so downstream `format!("{}/...", base_url)`
+        // calls never produce double slashes (BUG-B-001).
+        self.base_url = url.trim_end_matches('/').to_string();
         self
     }
 

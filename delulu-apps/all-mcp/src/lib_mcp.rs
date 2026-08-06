@@ -154,16 +154,19 @@ pub struct AllMcpConfig {
     pub max_resp_size_mb: u32,
 }
 
-/// Parse and validate a URL flag value, returning a normalized string.
+/// Parse and validate a URL flag value, returning the ORIGINAL input string.
 ///
 /// Pre: `s` is a non-empty string.
-/// Post: returns the parsed URL if it is an absolute URL with an http/https
-/// scheme; otherwise returns a human-readable clap error.
+/// Post: returns `s` unchanged if it is an absolute URL with an http/https
+/// scheme (validation only, no normalization — `Url::to_string()` would
+/// append a trailing slash to bare origins like `https://eprint.iacr.org`,
+/// which downstream clients then double with their own `/`); otherwise
+/// returns a human-readable clap error.
 /// Panic-if: never.
 fn parse_url(s: &str) -> Result<String, String> {
     let parsed = url::Url::parse(s).map_err(|e| format!("invalid URL '{s}': {e}"))?;
     match parsed.scheme() {
-        "http" | "https" => Ok(parsed.to_string()),
+        "http" | "https" => Ok(s.to_string()),
         other => Err(format!(
             "invalid URL '{s}': scheme '{other}' is not allowed (expected http or https)"
         )),
@@ -403,5 +406,52 @@ impl ServerHandler for AllServer {
                 ServerId::Pubmed => self.pubmed.call_tool(forward, context).await,
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_url;
+
+    #[test]
+    fn parse_url_returns_original_input_without_trailing_slash() {
+        // BUG-B-001 regression: the parser must VALIDATE without normalizing.
+        // `Url::to_string()` appends a trailing slash to bare origins, which
+        // downstream clients (e.g. IacrClient) would then double.
+        assert_eq!(
+            parse_url("https://eprint.iacr.org").unwrap(),
+            "https://eprint.iacr.org"
+        );
+        assert_eq!(
+            parse_url("https://export.arxiv.org/api/query").unwrap(),
+            "https://export.arxiv.org/api/query"
+        );
+        assert_eq!(
+            parse_url("http://localhost:8080").unwrap(),
+            "http://localhost:8080"
+        );
+    }
+
+    #[test]
+    fn parse_url_keeps_explicit_trailing_slash() {
+        // User-provided trailing slash is preserved verbatim.
+        assert_eq!(
+            parse_url("https://eprint.iacr.org/").unwrap(),
+            "https://eprint.iacr.org/"
+        );
+    }
+
+    #[test]
+    fn parse_url_rejects_non_http_schemes() {
+        assert!(parse_url("ftp://example.com").is_err());
+        assert!(parse_url("file:///etc/passwd").is_err());
+        assert!(parse_url("javascript:alert(1)").is_err());
+    }
+
+    #[test]
+    fn parse_url_rejects_relative_urls() {
+        assert!(parse_url("eprint.iacr.org").is_err());
+        assert!(parse_url("/api/query").is_err());
+        assert!(parse_url("").is_err());
     }
 }
