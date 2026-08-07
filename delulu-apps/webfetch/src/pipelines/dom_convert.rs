@@ -70,10 +70,15 @@ pub(crate) fn convert_node(
         }
         ScraperNode::Element(element) => {
             let tag = element.name().to_string();
-            let attrs: Vec<(String, String)> = element
+            let mut attrs: Vec<(String, String)> = element
                 .attrs()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect();
+            // scraper stores attributes in a hash map (ahash) whose iteration
+            // order is randomized per process — serializing that order made the
+            // HTML/markdown output non-deterministic run-to-run. Sort by key so
+            // every run produces identical output (keys are already lowercase).
+            attrs.sort_by(|a, b| a.0.cmp(&b.0));
 
             let mut children = Vec::new();
             for child in node.children() {

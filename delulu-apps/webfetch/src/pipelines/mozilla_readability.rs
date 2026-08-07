@@ -2,6 +2,7 @@ use once_cell::sync::Lazy;
 
 use crate::pipelines::{DomNode, PassFn, walk_pre_mut};
 
+use super::passes::code_blocks::normalize_code_blocks;
 use super::passes::rd_analysis::{
     rd_score_mozilla_readability, rd_score_mozilla_readability_no_class_weights,
 };
@@ -63,6 +64,9 @@ pub static READABILITY_LEVEL_1_STRICT: Lazy<&[PassFn]> = Lazy::new(|| {
         (|node| walk_pre_mut(node, &|n| remove_empty_paragraphs(n))) as fn(&mut DomNode),
         (|node| walk_pre_mut(node, &|n| clean_matched_nodes(n))) as fn(&mut DomNode),
         (|node| walk_pre_mut(node, &|n| strip_heading_edit_suffixes(n))) as fn(&mut DomNode),
+        // Normalize code blocks (pre stays pre; language hoisted) so generators
+        // see canonical <pre> blocks (markdown fences / HTML <pre>).
+        (|node| walk_pre_mut(node, &|n| normalize_code_blocks(n))) as fn(&mut DomNode),
     ]
 });
 
@@ -100,6 +104,9 @@ pub static READABILITY_LEVEL_2_KEEP_UNLIKELY: Lazy<&[PassFn]> = Lazy::new(|| {
         (|node| walk_pre_mut(node, &|n| remove_empty_paragraphs(n))) as fn(&mut DomNode),
         (|node| walk_pre_mut(node, &|n| clean_matched_nodes(n))) as fn(&mut DomNode),
         (|node| walk_pre_mut(node, &|n| strip_heading_edit_suffixes(n))) as fn(&mut DomNode),
+        // Normalize code blocks (pre stays pre; language hoisted) so generators
+        // see canonical <pre> blocks (markdown fences / HTML <pre>).
+        (|node| walk_pre_mut(node, &|n| normalize_code_blocks(n))) as fn(&mut DomNode),
     ]
 });
 
@@ -138,6 +145,9 @@ pub static READABILITY_LEVEL_3_IGNORE_CLASS_WEIGHTS: Lazy<&[PassFn]> = Lazy::new
         (|node| walk_pre_mut(node, &|n| remove_empty_paragraphs(n))) as fn(&mut DomNode),
         (|node| walk_pre_mut(node, &|n| clean_matched_nodes(n))) as fn(&mut DomNode),
         (|node| walk_pre_mut(node, &|n| strip_heading_edit_suffixes(n))) as fn(&mut DomNode),
+        // Normalize code blocks (pre stays pre; language hoisted) so generators
+        // see canonical <pre> blocks (markdown fences / HTML <pre>).
+        (|node| walk_pre_mut(node, &|n| normalize_code_blocks(n))) as fn(&mut DomNode),
         rd_strip_non_content,
         rd_unwrap_structural_wrappers,
     ]
@@ -178,6 +188,9 @@ pub static READABILITY_LEVEL_4_NO_SCORE_FILTER: Lazy<&[PassFn]> = Lazy::new(|| {
         (|node| walk_pre_mut(node, &|n| remove_empty_paragraphs(n))) as fn(&mut DomNode),
         (|node| walk_pre_mut(node, &|n| clean_matched_nodes(n))) as fn(&mut DomNode),
         (|node| walk_pre_mut(node, &|n| strip_heading_edit_suffixes(n))) as fn(&mut DomNode),
+        // Normalize code blocks (pre stays pre; language hoisted) so generators
+        // see canonical <pre> blocks (markdown fences / HTML <pre>).
+        (|node| walk_pre_mut(node, &|n| normalize_code_blocks(n))) as fn(&mut DomNode),
         rd_strip_non_content,
         rd_unwrap_structural_wrappers,
     ]

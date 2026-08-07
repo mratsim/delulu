@@ -4,7 +4,8 @@
 //! conversion) before markdown lowering. Strips scripts, styles, and empty
 //! elements while preserving void elements like `<img>`, `<br>`, `<hr>`, `<wbr>`.
 
-use crate::pipelines::{DomNode, WalkerAction, walk_post_mut};
+use super::code_blocks::normalize_code_blocks;
+use crate::pipelines::{DomNode, WalkerAction, walk_post_mut, walk_pre_mut};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -37,6 +38,9 @@ pub fn filter_doc(node: &mut DomNode) {
         WalkerAction::Continue
     };
     walk_post_mut(node, &mut [&mut filter], None);
+    // Normalize code blocks (pre stays pre; language hoisted) so gen_md
+    // renders canonical <pre> blocks as fenced code.
+    walk_pre_mut(node, &|n| normalize_code_blocks(n));
 }
 
 // ---------------------------------------------------------------------------

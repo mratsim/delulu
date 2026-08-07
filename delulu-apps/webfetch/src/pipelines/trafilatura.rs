@@ -22,6 +22,7 @@ use std::collections::HashSet;
 use crate::pipelines::walkers::PassFn;
 use crate::pipelines::{DomNode, WalkerAction, walk_post_mut, walk_pre_mut};
 
+use super::passes::code_blocks::normalize_code_blocks;
 use super::passes::tf_analysis::{count_non_ws_chars, extract_jsonld_article_body};
 use super::passes::tf_filters::{
     collect_p_elements, tf_extract_script_templates, tf_fallback_content_container,
@@ -39,7 +40,8 @@ use super::passes::tf_transforms::{
     tf_canonicalize_strip_non_content, tf_canonicalize_unwrap_containers,
 };
 use super::passes::tf_transforms::{
-    tf_convert_breaks, tf_convert_formatting, tf_convert_headings, tf_convert_lists,
+    tf_convert_accordion_to_details, tf_convert_breaks, tf_convert_code_header_label,
+    tf_convert_figure_with_table, tf_convert_formatting, tf_convert_headings, tf_convert_lists,
     tf_convert_quotes, tf_convert_refs_and_details,
 };
 
@@ -277,19 +279,28 @@ fn apply_tf_filter_tag_catalog(node: &mut DomNode) {
 /// Post: `node` is mutated in-place. Output contains only tags in TAG_CATALOG.
 ///
 /// Order (as listed in `TF_BALANCED`):
-/// 1. Remove MANUALLY_CLEANED tags (figure, script, nav, etc.)
-/// 2. Remove TEASER_DISCARD elements (teaser in class/id)
-/// 3. Remove UNLIKELY_CANDIDATES elements (class/id matches OVERALL_DISCARD_XPATH)
-/// 4. Unwrap MANUALLY_STRIPPED tags (abbr, address, etc.)
-/// 5. Remove CUT_EMPTY_ELEMS (empty p, div, li, etc.)
-/// 6. Remove high-link-density elements (sidebar ads, nav blocks, etc.)
-/// 7. Tag conversion passes (headings, lists, quotes, formatting, breaks, refs)
-/// 8. Canonicalization (strip non-content, unwrap containers)
-/// 9. DISCARD_IMAGE_ELEMENTS (remove caption elements)
-/// 10. TAG_CATALOG filter (whitelist allowed output tags)
+/// 1. Extract `<script type="text/template">` content into divs
+/// 2. Pre-cleaning conversions: `<figure>` with descendant `<table>` → `<div>`
+///    (tables survive) and accordion `div[button[aria-expanded] + content]`
+///    → `<details><summary>` (FAQ questions survive)
+/// 3. Remove MANUALLY_CLEANED tags (figure, script, nav, etc.)
+/// 4. Remove TEASER_DISCARD elements (teaser in class/id)
+/// 5. Remove UNLIKELY_CANDIDATES elements (class/id matches OVERALL_DISCARD_XPATH)
+/// 6. Unwrap MANUALLY_STRIPPED tags (abbr, address, etc.)
+/// 7. Remove CUT_EMPTY_ELEMS (empty p, div, li, etc.)
+/// 8. Remove high-link-density elements (sidebar ads, nav blocks, etc.)
+/// 9. Tag conversion passes (headings, lists, quotes, formatting, breaks, refs)
+/// 10. Canonicalization: strip non-content, isolate container
+/// 11. DISCARD_IMAGE_ELEMENTS (remove caption elements)
+/// 12. Unwrap layout containers (div, span, section, …; data tables preserved)
+/// 13. TAG_CATALOG filter (whitelist allowed output tags)
 pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
     &[
         tf_extract_script_templates,
+        // Pre-cleaning conversions: must run BEFORE tf_remove_cleaned or the
+        // figure-wrapped tables and FAQ accordion questions are destroyed.
+        tf_convert_figure_with_table,
+        wrap_pass!(tf_convert_accordion_to_details),
         wrap_pass!(tf_remove_cleaned),
         #[cfg(not(feature = "use-xpath"))]
         wrap_pass!(tf_remove_teaser),
@@ -308,6 +319,9 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
         wrap_pass!(tf_convert_headings),
         wrap_pass!(tf_convert_lists),
         wrap_pass!(tf_convert_quotes),
+        // Normalize code blocks (pre stays pre; language hoisted) before the
+        // tag-catalog filter, so generators see canonical <pre> blocks.
+        wrap_pass!(normalize_code_blocks),
         wrap_pass!(tf_convert_formatting),
         wrap_pass!(tf_convert_breaks),
         wrap_pass!(tf_convert_refs_and_details),
@@ -321,6 +335,10 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
         #[cfg(feature = "use-xpath")]
         wrap_pass!(tf_discard_image_elements_xpath),
         tf_canonicalize_unwrap_containers,
+        // Code header labels ("BASH" pill) -> language class on the pre.
+        // Must run after unwrap (the label is a sibling of the pre) and
+        // before the tag catalog.
+        tf_convert_code_header_label,
         // Final tag whitelist — remove any tags not in TAG_CATALOG
         apply_tf_filter_tag_catalog,
     ]
@@ -339,6 +357,8 @@ pub static TF_BALANCED: Lazy<&[PassFn]> = Lazy::new(|| {
 pub static TF_BALANCED_NAMES: Lazy<&[&str]> = Lazy::new(|| {
     &[
         "tf_extract_script_templates",
+        "tf_convert_figure_with_table",
+        "tf_convert_accordion_to_details",
         "tf_remove_cleaned",
         #[cfg(not(feature = "use-xpath"))]
         "tf_remove_teaser",
@@ -357,6 +377,7 @@ pub static TF_BALANCED_NAMES: Lazy<&[&str]> = Lazy::new(|| {
         "tf_convert_headings",
         "tf_convert_lists",
         "tf_convert_quotes",
+        "normalize_code_blocks",
         "tf_convert_formatting",
         "tf_convert_breaks",
         "tf_convert_refs_and_details",
@@ -370,19 +391,29 @@ pub static TF_BALANCED_NAMES: Lazy<&[&str]> = Lazy::new(|| {
         #[cfg(feature = "use-xpath")]
         "tf_discard_image_elements_xpath",
         "tf_canonicalize_unwrap_containers",
+        "tf_convert_code_header_label",
         "tf_filter_tag_catalog",
     ]
 });
 
-/// Level: Recall — same as Balanced but WITHOUT `tf_remove_empty_cut` and WITH `apply_tf_filter_tag_catalog`.
+/// Level: Recall — Balanced but WITHOUT `tf_remove_empty_cut` and WITH `apply_tf_filter_tag_catalog`.
+///
+/// Same pre-cleaning conversions as Balanced (`tf_convert_figure_with_table`,
+/// `tf_convert_accordion_to_details`) run BEFORE `tf_remove_cleaned`, so
+/// figure-wrapped tables and FAQ accordion questions survive at recall level
+/// too (recall is the "preserve everything" fallback level).
 ///
 /// Pre: `node` is a valid DOM tree. `rd_analysis::mark_data_tables_by_structure` has been called.
-/// Post: All 15 passes are applied in order. `node` is mutated in-place. `tf_remove_empty_cut` is NOT applied, but `apply_tf_filter_tag_catalog` IS applied.
+/// Post: All passes are applied in order. `node` is mutated in-place. `tf_remove_empty_cut` is NOT applied, but `apply_tf_filter_tag_catalog` IS applied.
 ///
 /// Less aggressive filtering. Use as fallback when Balanced produces too little output.
 pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
     &[
         tf_extract_script_templates,
+        // Pre-cleaning conversions: must run BEFORE tf_remove_cleaned or the
+        // figure-wrapped tables and FAQ accordion questions are destroyed.
+        tf_convert_figure_with_table,
+        wrap_pass!(tf_convert_accordion_to_details),
         wrap_pass!(tf_remove_cleaned),
         #[cfg(not(feature = "use-xpath"))]
         wrap_pass!(tf_remove_teaser),
@@ -401,6 +432,8 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
         wrap_pass!(tf_convert_headings),
         wrap_pass!(tf_convert_lists),
         wrap_pass!(tf_convert_quotes),
+        // Same code-block normalization as Balanced.
+        wrap_pass!(normalize_code_blocks),
         wrap_pass!(tf_convert_formatting),
         wrap_pass!(tf_convert_breaks),
         wrap_pass!(tf_convert_refs_and_details),
@@ -414,8 +447,63 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
         #[cfg(feature = "use-xpath")]
         wrap_pass!(tf_discard_image_elements_xpath),
         tf_canonicalize_unwrap_containers,
+        // Code header labels ("BASH" pill) -> language class on the pre.
+        // Must run after unwrap (the label is a sibling of the pre) and
+        // before the tag catalog.
+        tf_convert_code_header_label,
         // Final tag whitelist — remove any tags not in TAG_CATALOG
         apply_tf_filter_tag_catalog,
+    ]
+});
+
+/// Human-readable names for each pass in [`TF_RECALL`], aligned index-for-index.
+///
+/// Diagnostic/test-only export mirroring [`TF_BALANCED_NAMES`] so per-pass
+/// trace tooling can label recall-level passes too.
+///
+/// Pre: Same feature-gating as `TF_RECALL` so both slices stay aligned under
+///      both `use-xpath` and non-`use-xpath` builds.
+/// Post: `TF_RECALL_NAMES.len() == TF_RECALL.len()`, each name non-empty.
+///
+/// Does not affect extraction behavior in any way.
+pub static TF_RECALL_NAMES: Lazy<&[&str]> = Lazy::new(|| {
+    &[
+        "tf_extract_script_templates",
+        "tf_convert_figure_with_table",
+        "tf_convert_accordion_to_details",
+        "tf_remove_cleaned",
+        #[cfg(not(feature = "use-xpath"))]
+        "tf_remove_teaser",
+        #[cfg(feature = "use-xpath")]
+        "tf_remove_teaser_xpath",
+        #[cfg(not(feature = "use-xpath"))]
+        "apply_tf_remove_unlikely_candidates_with_backup",
+        #[cfg(feature = "use-xpath")]
+        "apply_tf_remove_unlikely_candidates_xpath_with_backup",
+        "tf_strip_unwrapped",
+        #[cfg(not(feature = "use-xpath"))]
+        "apply_tf_filter_by_link_density_with_backup",
+        #[cfg(feature = "use-xpath")]
+        "apply_tf_filter_by_link_density_xpath_with_backup",
+        "tf_convert_headings",
+        "tf_convert_lists",
+        "tf_convert_quotes",
+        "normalize_code_blocks",
+        "tf_convert_formatting",
+        "tf_convert_breaks",
+        "tf_convert_refs_and_details",
+        "tf_canonicalize_strip_non_content",
+        #[cfg(not(feature = "use-xpath"))]
+        "apply_tf_isolate_container_with_backup",
+        #[cfg(feature = "use-xpath")]
+        "apply_tf_isolate_container_xpath_with_backup",
+        #[cfg(not(feature = "use-xpath"))]
+        "tf_discard_image_elements",
+        #[cfg(feature = "use-xpath")]
+        "tf_discard_image_elements_xpath",
+        "tf_canonicalize_unwrap_containers",
+        "tf_convert_code_header_label",
+        "tf_filter_tag_catalog",
     ]
 });
 

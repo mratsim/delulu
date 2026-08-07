@@ -665,6 +665,12 @@ pub fn clean_styles(node: &mut DomNode) -> WalkerAction {
 ///
 /// This is an in-place mutation. The element structure is preserved.
 ///
+/// Note: this also strips `language-*` tokens from `<pre>` code blocks, so
+/// the rd pipeline cannot carry a code language to the generators — they
+/// render rd code fences bare. That matches JS Readability (which strips
+/// classes) and predates `normalize_code_blocks`; recover the language here
+/// (e.g. preserve only `language-*` tokens) if rd fences should be tagged.
+///
 /// Pre: DOM tree is fully parsed.
 /// Post: No `class` attributes remain on any element.
 pub fn clean_classes(node: &mut DomNode) -> WalkerAction {

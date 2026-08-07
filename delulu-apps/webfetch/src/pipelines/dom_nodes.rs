@@ -45,6 +45,15 @@ impl DomNode {
         }
     }
 
+    /// Direct element children (empty for Text/Comment/Doctype).
+    /// Panic-if: Never panics (infallible).
+    pub fn children(&self) -> &[DomNode] {
+        match self {
+            DomNode::Element { children, .. } => children,
+            DomNode::Text(_) | DomNode::Comment(_) | DomNode::Doctype(_) => &[],
+        }
+    }
+
     /// Concatenated text of all descendant Text nodes (raw, no normalization).
     /// Equivalent to Python lxml's `HtmlElement.text_content()`.
     /// Panic-if: Never panics (infallible).

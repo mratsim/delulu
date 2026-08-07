@@ -1622,3 +1622,33 @@ fn test_link_density_stats_matches_get_inner_text_and_count_link_text() {
     };
     assert_eq!(multi_a.link_density_stats(), (11, 2), "multi_a");
 }
+
+#[test]
+fn test_parse_html_attrs_sorted_deterministic() {
+    // scraper stores attributes in a hash map with randomized per-process
+    // iteration order (ahash); dom_convert must sort them by key so HTML and
+    // markdown serialization are byte-identical run-to-run.
+    let html = r#"<meta content="x" name="description" id="m1"><div style="color:red" class="c" data-z="1" aria-hidden="true"><p title="t">hi</p></div>"#;
+    let root = crate::pipelines::parse_html(html).unwrap();
+    fn assert_sorted(n: &crate::pipelines::DomNode) {
+        if let crate::pipelines::DomNode::Element {
+            tag,
+            attrs,
+            children,
+            ..
+        } = n
+        {
+            let keys: Vec<&str> = attrs.iter().map(|(k, _)| k.as_str()).collect();
+            let mut sorted = keys.clone();
+            sorted.sort();
+            assert_eq!(
+                keys, sorted,
+                "attrs of <{tag}> must be sorted by key, got: {keys:?}"
+            );
+            for c in children {
+                assert_sorted(c);
+            }
+        }
+    }
+    assert_sorted(&root);
+}

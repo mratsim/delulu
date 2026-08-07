@@ -8,30 +8,64 @@ const MAX_OUTPUT_SIZE: usize = 500 * 1024; // 500 KiB
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Extract the code language and content from a <pre><code> block.
-fn extract_code_block(nodes: &[DomNode]) -> (String, String) {
-    for node in nodes {
-        if let DomNode::Element { tag, children, .. } = node
-            && tag == "code"
-        {
-            let language = node
-                .attr("class")
-                .and_then(|c| c.strip_prefix("language-"))
-                .unwrap_or_default()
-                .to_string();
-            return (
-                language,
-                children
-                    .iter()
-                    .map(|c| c.text_content())
-                    .collect::<String>(),
-            );
-        }
-    }
-    (
-        String::new(),
-        nodes.iter().map(|c| c.text_content()).collect::<String>(),
-    )
+/// Extract the code language and content from a `<pre>` block.
+///
+/// The language is read from the `<pre>`'s own `class` — every pipeline
+/// normalizes code blocks (`normalize_code_blocks`) before lowering, so the
+/// language is always hoisted there and `pre>code` nesting never reaches the
+/// generator. Only the first whitespace-delimited token is used, so a
+/// multi-class value like `language-python highlight` yields `python`.
+fn extract_code_block(node: &DomNode) -> (String, String) {
+    let language = node
+        .attr("class")
+        .and_then(code_language_token)
+        .unwrap_or_default();
+    let code = node
+        .children()
+        .iter()
+        .map(|c| c.text_content())
+        .collect::<String>();
+    (language, code)
+}
+
+/// Length of the longest consecutive run of backticks in `s` (0 if none).
+/// Used to size fenced-code delimiters so interior backtick runs never
+/// close the fence early.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
+fn longest_backtick_run(s: &str) -> usize {
+    s.chars()
+        .fold((0usize, 0usize), |(cur, mx), ch| {
+            if ch == '`' {
+                (cur + 1, mx.max(cur + 1))
+            } else {
+                (0, mx)
+            }
+        })
+        .1
+}
+
+/// Escape text for safe inclusion as raw-HTML element content (`<summary>`).
+/// `&`, `<` and `>` are escaped so attacker-sourced text cannot prematurely
+/// close the raw-HTML tag or inject markup; the text renders cleanly with no
+/// literal backslashes.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create dedicated AST node + lowering pass for this so the generator stays a dumb converter.
+fn escape_html_content(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// First whitespace-delimited `language-*` token in a class value, if any.
+fn code_language_token(class: &str) -> Option<String> {
+    class
+        .split_whitespace()
+        .find_map(|token| token.strip_prefix("language-"))
+        .map(str::to_string)
 }
 
 /// Collect rows from a <table> element.
@@ -80,6 +114,10 @@ fn collect_cells(nodes: &[DomNode]) -> Vec<DomNode> {
 
 /// Check if a table element has colspan, rowspan, or block content in any cell.
 /// Such tables cannot be represented as GFM pipe tables and must be emitted as raw HTML.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
 fn table_is_complex(node: &DomNode) -> bool {
     if let DomNode::Element { tag, children, .. } = node {
         if tag == "td" || tag == "th" {
@@ -188,6 +226,10 @@ fn serialize_node_to_html(node: &DomNode) -> String {
 }
 
 /// Resolve a potentially relative URL against a base URL.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
 fn resolve_url(url: &str, base_url: Option<&str>) -> String {
     if url.starts_with("http://") || url.starts_with("https://") {
         return url.to_string();
@@ -223,6 +265,10 @@ fn resolve_url(url: &str, base_url: Option<&str>) -> String {
 }
 
 /// Escape Markdown special characters.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
 fn escape_markdown(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -238,13 +284,154 @@ fn escape_markdown(text: &str) -> String {
             '(' => result.push_str("\\("),
             ')' => result.push_str("\\)"),
             '#' => result.push_str("\\#"),
-            '+' => result.push_str("\\+"),
-            '.' => result.push_str("\\."),
+            // NOTE: '+' and '.' are intentionally NOT escaped: they are only
+            // special as line-start list markers in CommonMark, and escaping them
+            // everywhere mangles decimals (3.1 -> 3\.1) and '+' signs (30%+).
             '|' => result.push_str("\\|"),
             _ => result.push(ch),
         }
     }
     result
+}
+
+/// Canonicalize a RAW inline fragment so it is safe to embed in markdown
+/// output AND cannot desync the heading link-neutralizer (`escape_heading_links`).
+///
+/// This is the single source of truth for making raw-emission content (e.g.
+/// an `<img alt>` attribute, a degenerate `<code>` fragment, or a raw body
+/// text node) inert before it enters a heading or body line. On top of
+/// `escape_markdown` (which escapes `\ _ * { } [ ] ( ) # | \` and backticks)
+/// it additionally:
+///   1. escapes `<` and `>` to `\<` / `\>` so CommonMark sees literal text
+///      instead of a LIVE `<scheme:...>` autolink or a raw HTML tag (the
+///      angle-bracket / autolink injection class — `escape_markdown` leaves
+///      these unescaped, and this wrapper closes that gap),
+///   2. doubles every backslash (including a lone TRAILING backslash), so a
+///      `C:\` fragment can never form an escape-pair that eats a following
+///      closing delimiter (the escape-pair desync class).
+///
+/// `.` and `+` are intentionally NOT escaped (they are only special as
+/// line-start list markers, which cannot occur mid-heading / mid-line), so
+/// decimals like `3.1` and signs like `30%+` stay clean. The result is
+/// idempotent for the content the pipeline emits: already-escaped text is
+/// preserved except for a second pass over `<`/`>`, which finds nothing to
+/// escape. It is a no-op for content with no special characters.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
+fn escape_inline_fragment(s: &str) -> String {
+    let escaped = escape_markdown(s);
+    // Escape the angle brackets `escape_markdown` left bare so they cannot
+    // open a live autolink (`<scheme:...>`) or raw HTML tag.
+    let mut out = String::with_capacity(escaped.len() + 2);
+    for ch in escaped.chars() {
+        match ch {
+            '<' => out.push_str("\\<"),
+            '>' => out.push_str("\\>"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Neutralize markdown link/emphasis delimiters in a heading WITHOUT
+/// double-escaping already-escaped raw text.
+///
+/// `lower_inline` already runs `escape_markdown` on every raw text node, so
+/// a plain `(2024)` becomes `\(2024\)` (single-escaped) and a constructed
+/// `<ref>/<a>/<img>` is emitted as live `[docs](url)` / `![alt](src)` with
+/// **unescaped** brackets. Re-running `escape_markdown` on the whole string
+/// would re-escape the backslashes (`\(`) and show a *visible* `\(` on
+/// render. Instead we escape only the *unescaped* `[`/`]`/`(`/`)` markers that
+/// `lower_inline` injected for constructed links/images, turning them into
+/// inert literal text (a `javascript:`/`data:`/`vbscript:`/`file:` link or
+/// image src can never stay live out of an ATX line).
+///
+/// ## Robustness
+///
+/// This pass is **code-span aware**, but deliberately NOT a fragile
+/// backtick-toggle machine. An inline `<code>` span is emitted as a raw
+/// backtick span whose content is *literal* CommonMark (a backtick run of
+/// length N closes a span opened by a run of length >= N; shorter interior
+/// runs and `\`-escapes inside the span are plain content). The walker
+/// therefore tracks only the opened delimiter run and copies every code span
+/// verbatim — it can never desync on:
+///   * an odd number of inner backticks,
+///   * a backslash immediately before a backtick,
+///   * content ending in a single backslash such as a Windows path `C:\`
+///     — the trailing `\` is literal span content, NOT an escape
+///     pair that would eat the closing backtick and turn a following link
+///     delimiters into a LIVE link.
+///
+/// Brackets/parens OUTSIDE any code span are genuine link/image delimiters
+/// and are escaped (made inert); inside a span they are preserved verbatim so
+/// `` `func(a, b)` `` and `` `a[0]` `` render cleanly with no backslash.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
+fn escape_heading_links(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    // Length of the backtick run that opened the current code span, if any.
+    let mut open_run: Option<usize> = None;
+    while let Some(c) = chars.next() {
+        if c == '`' {
+            // Count the full contiguous backtick run.
+            let mut run = 1;
+            while chars.peek() == Some(&'`') {
+                chars.next();
+                run += 1;
+            }
+            match open_run {
+                None => {
+                    // Opens a code span; its interior is literal content, so
+                    // brackets/parens inside must be preserved (no escape).
+                    open_run = Some(run);
+                    out.push_str(&"`".repeat(run));
+                }
+                Some(open) if run >= open => {
+                    // A backtick run >= the opener closes the span. The run may
+                    // be LONGER than the opener when two code spans sit next to
+                    // each other (close-run + next open-run merge into one run);
+                    // the surplus backticks reopen a new span so a following
+                    // link is still correctly seen as OUTSIDE any code span.
+                    out.push_str(&"`".repeat(run));
+                    let surplus = run - open;
+                    open_run = if surplus > 0 { Some(surplus) } else { None };
+                }
+                Some(_) => {
+                    // A shorter interior run is literal span content.
+                    out.push_str(&"`".repeat(run));
+                }
+            }
+        } else if c == '\\' && open_run.is_none() {
+            // Outside a code span, keep an existing escape sequence
+            // (already-escaped raw text) as-is so it is not double-escaped.
+            out.push(c);
+            if let Some(&n) = chars.peek() {
+                out.push(n);
+                chars.next();
+            }
+        } else if open_run.is_none() && matches!(c, '<' | '>') {
+            // Outside a code span, escape `<`/`>` so a raw angle bracket
+            // cannot open a live autolink (`<scheme:...>`) or raw HTML tag
+            // out of the ATX heading line. Inside a code span they stay
+            // literal (a code span is already inert content).
+            out.push('\\');
+            out.push(c);
+        } else if open_run.is_none() && matches!(c, '[' | ']' | '(' | ')') {
+            // Outside a code span, an unescaped bracket/paren can only come
+            // from a constructed link/image marker — make it inert literal
+            // text.
+            out.push('\\');
+            out.push(c);
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +470,10 @@ impl MarkdownLowerer {
     fn lower_node(node: &DomNode, base_url: Option<&str>, out: &mut String, indent: usize) {
         match node {
             DomNode::Text(text) => {
-                out.push_str(&escape_markdown(text));
+                // Route every raw text node (body + heading text) through the
+                // canonicalizer so `<`/`>` (and all other markdown specials)
+                // cannot reconstruct a live autolink or raw HTML tag.
+                out.push_str(&escape_inline_fragment(text));
             }
             el @ DomNode::Element { .. } => Self::lower_element(el, base_url, out, indent),
             DomNode::Comment(_) | DomNode::Doctype(_) => {
@@ -300,17 +490,116 @@ impl MarkdownLowerer {
         };
         match tag.as_str() {
             // ── Headings ───────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 let level = tag[1..].parse::<usize>().unwrap_or(1);
                 let prefix = "#".repeat(level);
-                let text = children
-                    .iter()
-                    .map(|c| c.text_content())
-                    .collect::<String>();
+                // Build heading text via the inline lowering path so inline
+                // links/code/emphasis survive, then collapse attacker newlines
+                // and trim it. lower_inline already escapes every raw text
+                // node; escape_heading_links neutralizes ONLY the constructed
+                // link delimiters so plain text is never double-escaped.
+                let text = escape_heading_links(
+                    Self::lower_inline(children, base_url)
+                        .replace('\n', " ")
+                        .trim(),
+                );
+                // Block-level output: ensure the heading lands at line-start
+                // even when the preceding sibling was loose text — a `## `
+                // marker glued mid-line is body text, not a CommonMark heading.
+                if !out.is_empty() && !out.ends_with('\n') {
+                    out.push('\n');
+                }
                 out.push_str(&prefix);
                 out.push(' ');
                 out.push_str(&text);
                 out.push_str("\n\n");
+            }
+
+            // ── Trafilatura headings: tf_convert_headings renames h1-h6 ->
+            // <head rend="h1..h6"> (trafilatura's XML schema). Render as
+            // markdown headings, not plain text, or the heading text jams
+            // onto the following paragraph ("FAQQuick answers").
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
+            "head" => {
+                let rend = node.attr("rend").unwrap_or("");
+                if let Some(level) = rend.strip_prefix('h').and_then(|n| n.parse::<usize>().ok())
+                    && (1..=6).contains(&level)
+                {
+                    let prefix = "#".repeat(level);
+                    // Build heading text via the inline lowering path so inline
+                    // links/code/emphasis survive, then collapse attacker
+                    // newlines and trim it. lower_inline already escapes every
+                    // raw text node; escape_heading_links neutralizes ONLY the
+                    // constructed link delimiters so plain text is never
+                    // double-escaped.
+                    let text = escape_heading_links(
+                        Self::lower_inline(children, base_url)
+                            .replace('\n', " ")
+                            .trim(),
+                    );
+                    // Block-level output: ensure the heading lands at
+                    // line-start even when the preceding sibling was loose
+                    // text — a `### ` marker glued mid-line is body text, not
+                    // a CommonMark heading.
+                    if !out.is_empty() && !out.ends_with('\n') {
+                        out.push('\n');
+                    }
+                    out.push_str(&prefix);
+                    out.push(' ');
+                    out.push_str(&text);
+                    out.push_str("\n\n");
+                } else {
+                    // Non-heading <head> (e.g. document head) — render text only.
+                    Self::lower_nodes(children, base_url, out, indent);
+                }
+            }
+
+            // ── FAQ accordions: raw HTML <details><summary> ─────────────
+            // tf_convert_accordion_to_details restructures div-based FAQ
+            // accordions into semantic <details><summary> and the pipeline
+            // keeps them (tf_convert_refs_and_details no longer flattens
+            // them). GFM renders <details> blocks as collapsible sections,
+            // which is exactly how the FAQ accordions should behave.
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create dedicated AST node + lowering pass for this so the generator stays a dumb converter.
+            "details" => {
+                if !out.is_empty() && !out.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push_str("<details>\n");
+                for child in children {
+                    if let DomNode::Element { tag: t, .. } = child
+                        && t == "summary"
+                    {
+                        let text = child.text_content().trim().to_string();
+                        out.push_str("<summary>");
+                        out.push_str(&escape_html_content(&text));
+                        out.push_str("</summary>\n");
+                        // Blank line after <summary> so the body parses as
+                        // markdown inside the block (GFM: content separated
+                        // from raw HTML by blank lines is parsed).
+                        out.push('\n');
+                    } else {
+                        Self::lower_node(child, base_url, out, indent);
+                    }
+                }
+                // Blank line before </details> so the body parses as
+                // markdown inside the block (GFM requirement).
+                if !out.ends_with("\n\n") {
+                    if !out.ends_with('\n') {
+                        out.push('\n');
+                    }
+                    out.push('\n');
+                }
+                out.push_str("</details>\n\n");
             }
 
             // ── Paragraphs ─────────────────────────────────────────────
@@ -343,6 +632,10 @@ impl MarkdownLowerer {
             }
 
             // ── Links ──────────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "a" => {
                 let href = node.attr("href").unwrap_or("");
                 let text = Self::lower_inline(children, base_url);
@@ -361,6 +654,10 @@ impl MarkdownLowerer {
             // tf_convert_refs_and_details renames <a href> -> <ref target>.
             // Render them as markdown links so include_links is on by default
             // (python trafilatura defaults include_links=False; we want links).
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "ref" => {
                 let target = node.attr("target").unwrap_or("");
                 let text = Self::lower_inline(children, base_url);
@@ -377,20 +674,32 @@ impl MarkdownLowerer {
             }
 
             // ── Images ─────────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "img" => {
                 let src = node.attr("src").unwrap_or("");
-                let alt = node.attr("alt").unwrap_or("");
+                // Canonicalize the alt as raw inline content via
+                // escape_inline_fragment (escape_markdown). This escapes any
+                // brackets/parens, backticks, and backslashes (including a lone
+                // trailing backslash) in the alt BEFORE it enters the heading
+                // string. Critically it doubles a backslash that precedes a
+                // backtick, so escape_heading_links consumes both as a complete
+                // escape pair and can never leave a bare backtick to open a
+                // phantom code span (the backslash-before-backtick desync class).
+                let alt = escape_inline_fragment(node.attr("alt").unwrap_or(""));
                 let resolved = resolve_url(src, base_url);
                 out.push('!');
                 out.push('[');
-                out.push_str(alt);
+                out.push_str(&alt);
                 out.push_str("](");
                 out.push_str(&resolved);
                 out.push(')');
             }
 
             // ── Unordered lists ────────────────────────────────────────
-            "ul" => {
+            "ul" | "list" => {
                 Self::lower_unordered_list(children, base_url, out, indent);
                 out.push('\n');
             }
@@ -402,6 +711,10 @@ impl MarkdownLowerer {
             }
 
             // ── Blockquotes ────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "blockquote" => {
                 let inner = Self::lower_inline_block(children, base_url);
                 for line in inner.lines() {
@@ -417,30 +730,93 @@ impl MarkdownLowerer {
             }
 
             // ── Code blocks ────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create dedicated AST node + lowering pass for this so the generator stays a dumb converter.
             "pre" => {
-                let (lang, code) = extract_code_block(children);
-                out.push_str("```");
+                // Block code is structurally `<pre>` (the tf pipeline keeps
+                // pre as pre and hoists the language into its class); lower it
+                // as a fenced block. Block output must land at line-start even
+                // when the preceding sibling is loose text (e.g. a "BASH"
+                // code-block header label) — `BASH```` is not a valid
+                // CommonMark fence opener.
+                let (lang, code) = extract_code_block(node);
+                // Size the fence longer than the longest interior backtick run
+                // so a code line containing 3+ consecutive backticks cannot close
+                // the block early and leak the rest as markdown. Default is 3.
+                let longest_run = longest_backtick_run(&code);
+                let fence = "`".repeat(longest_run.saturating_add(1).max(3));
+                if !out.is_empty() && !out.ends_with('\n') {
+                    out.push('\n');
+                }
+                out.push_str(&fence);
                 out.push_str(&lang);
                 out.push('\n');
                 out.push_str(&code);
                 if !code.ends_with('\n') {
                     out.push('\n');
                 }
-                out.push_str("```\n\n");
+                out.push_str(&fence);
+                out.push_str("\n\n");
             }
 
             // ── Inline code ────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create dedicated AST node + lowering pass for this so the generator stays a dumb converter.
             "code" => {
+                // Inline code is structurally `<code>`; render as an inline
+                // backtick span, collapsing newlines to spaces so a degenerate
+                // multi-line inline <code> stays valid inline markdown.
                 let text = children
                     .iter()
                     .map(|c| c.text_content())
                     .collect::<String>();
-                out.push('`');
-                out.push_str(&text);
-                out.push('`');
+                let content = text.replace('\n', " ");
+                // CommonMark code spans are parsed by BACKTICK-RUN LENGTH: the
+                // span opens/closes with a backtick run and its interior (literal
+                // content) may hold shorter runs. To keep the emitted span
+                // well-formed for ANY content we wrap it in ONE MORE backtick than
+                // the longest interior run, so interior backticks stay literal
+                // (no visible backslash: `func(a, b)`, `a`b`, `C:\` all stay clean).
+                // The ONE degenerate case that can never be wrapped safely is
+                // content with a leading or trailing backtick: that backtick would
+                // merge with the wrapping delimiter into a single longer unclosed
+                // run, letting a following dangerous link bypass the neutralizer.
+                // For that case we fall back to emitting the whole fragment as
+                // canonicalized literal text (escape_inline_fragment), which is
+                // provably safe because no bare backtick run survives to desync
+                // the heading link-neutralizer.
+                // An empty inline <code> renders as nothing: emitting the empty
+                // span (`` ``) would look like a single unclosed backtick run to
+                // the heading neutralizer and let a following link bypass it.
+                if content.is_empty() {
+                    // skip
+                } else if content.starts_with('`') || content.ends_with('`') {
+                    out.push_str(&escape_inline_fragment(&content));
+                } else {
+                    let max_run = content
+                        .chars()
+                        .fold((0usize, 0usize), |(cur, mx), ch| {
+                            if ch == '`' {
+                                (cur + 1, mx.max(cur + 1))
+                            } else {
+                                (0, mx)
+                            }
+                        })
+                        .1;
+                    let delim = "`".repeat(max_run + 1);
+                    out.push_str(&delim);
+                    out.push_str(&content);
+                    out.push_str(&delim);
+                }
             }
 
             // ── Math (LaTeXML MathML) ────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "math" => {
                 let alttext = node.attr("alttext").unwrap_or("");
                 let display = node.attr("display").unwrap_or("inline");
@@ -467,6 +843,9 @@ impl MarkdownLowerer {
             }
 
             // ── Fallback: render inner text only ───────────────────────
+            // Unknown containers render their children inline; block-ness is
+            // carried by the tags themselves (pre stays pre), so there is no
+            // context to thread.
             _ => {
                 Self::lower_nodes(children, base_url, out, indent);
             }
@@ -486,6 +865,10 @@ impl MarkdownLowerer {
 
     /// Lower an unordered list.
     #[allow(clippy::collapsible_if)]
+    /// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+    /// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+    /// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+    /// html/markdown conversion is as straightforward as possible.
     fn lower_unordered_list(
         children: &[DomNode],
         base_url: Option<&str>,
@@ -494,7 +877,7 @@ impl MarkdownLowerer {
     ) {
         for child in children {
             if let DomNode::Element { tag, children, .. } = child
-                && tag == "li"
+                && (tag == "li" || tag == "item")
             {
                 // li branch
                 // Indent
@@ -512,6 +895,10 @@ impl MarkdownLowerer {
 
     /// Lower an ordered list.
     #[allow(clippy::collapsible_if)]
+    /// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+    /// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+    /// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+    /// html/markdown conversion is as straightforward as possible.
     fn lower_ordered_list(
         children: &[DomNode],
         base_url: Option<&str>,
@@ -521,7 +908,7 @@ impl MarkdownLowerer {
         let mut index = 1;
         for child in children {
             if let DomNode::Element { tag, children, .. } = child
-                && tag == "li"
+                && (tag == "li" || tag == "item")
             {
                 for _ in 0..indent {
                     out.push_str("  ");
@@ -537,9 +924,51 @@ impl MarkdownLowerer {
         }
     }
 
+    /// Escape a GFM table cell.
+    ///
+    /// Only `|` needs escaping in a cell. `escape_markdown` also escapes
+    /// parens (`\(`/`\)`) — harmless in prose (GFM renders them as `(`),
+    /// but some renderers show the backslash literally inside table cells,
+    /// which makes the header look broken ("vLLM \\(PagedAttention\\)").
+    /// Revert exactly those two, keep everything else escaped. Embedded
+    /// newlines (`\n`/`\r`) in cell text are collapsed to a single space so
+    /// an escaped cell can never carry a newline that would break the pipe row.
+    /// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+    /// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+    /// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+    /// html/markdown conversion is as straightforward as possible.
+    fn escape_table_cell(cell: &str) -> String {
+        let mut out = String::with_capacity(cell.len());
+        let mut chars = cell.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => match chars.peek() {
+                    Some('(') | Some(')') => {
+                        // revert \\( / \\) from escape_markdown
+                        out.push(chars.next().unwrap());
+                    }
+                    _ => {
+                        out.push('\\');
+                        if let Some(&n) = chars.peek() {
+                            out.push(n);
+                            chars.next();
+                        }
+                    }
+                },
+                '|' => out.push_str("\\|"),
+                '\n' | '\r' => out.push(' '),
+                other => out.push(other),
+            }
+        }
+        out
+    }
+
     /// Lower a table into GFM pipe-table format.
     /// Lower a table. Dispatches to raw HTML for complex tables (colspan,
     /// rowspan, block content in cells) or GFM pipe tables for simple tables.
+    /// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+    /// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+    /// TODO: create dedicated AST node + lowering pass for this so the generator stays a dumb converter.
     fn lower_table(node: &DomNode, base_url: Option<&str>, out: &mut String) {
         let DomNode::Element { children, .. } = node else {
             return;
@@ -600,51 +1029,83 @@ impl MarkdownLowerer {
             }
         }
 
-        // Write header
-        let header_row = if has_header {
-            &md_rows[0]
-        } else {
-            // Generate empty header
-            &vec![String::new(); col_count]
-        };
+        // Escape every cell first (| -> \|, revert \\( etc.) so padding
+        // reflects what is actually written.
+        let md_rows: Vec<Vec<String>> = md_rows
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .map(|c| Self::escape_table_cell(&c))
+                    .collect()
+            })
+            .collect();
 
-        out.push('|');
-        for cell in header_row {
-            out.push(' ');
-            // Escape pipe characters inside cell content
-            let escaped = cell.replace('|', "\\|");
-            out.push_str(&escaped);
-            out.push_str(" |");
+        // Column widths from the escaped cell text — drives right-padding
+        // (aligned columns) and the dash separator row.
+        let mut col_widths = vec![0usize; col_count];
+        for row in &md_rows {
+            for (j, cell) in row.iter().enumerate() {
+                col_widths[j] = col_widths[j].max(cell.len());
+                // Bound the alignment width: a single pathological wide cell
+                // must not amplify right-padding across all N rows to
+                // O(N * max_cell_width) — cap each column at 64 chars so
+                // output stays O(N * M * 64).
+                col_widths[j] = col_widths[j].min(64);
+            }
         }
-        out.push('\n');
 
-        // Separator row
-        out.push('|');
-        for _ in 0..col_count {
-            out.push_str(" --- |");
-        }
-        out.push('\n');
-
-        // Data rows
-        let data_start = if has_header { 1 } else { 0 };
-        for row in &md_rows[data_start..] {
+        // Write one padded row: `| cell padded | cell padded |`
+        let write_row = |row: &[String], out: &mut String| {
             out.push('|');
-            for cell in row {
+            for (j, cell) in row.iter().enumerate() {
                 out.push(' ');
-                let escaped = cell.replace('|', "\\|");
-                out.push_str(&escaped);
+                out.push_str(cell);
+                for _ in cell.len()..col_widths[j] {
+                    out.push(' ');
+                }
                 out.push_str(" |");
             }
             out.push('\n');
+        };
+
+        // Header row (or empty header when the table has no <th>).
+        if has_header {
+            write_row(&md_rows[0], out);
+        } else {
+            write_row(&vec![String::new(); col_count], out);
+        }
+
+        // Separator row: one dash per column slot (width + surrounding
+        // spaces). Aligned, dash-only — matches what renders correctly in
+        // VSCode's markdown preview (unaligned `| --- |` rows were dropped).
+        out.push('|');
+        for w in &col_widths {
+            for _ in 0..(w + 2) {
+                out.push('-');
+            }
+            out.push('|');
+        }
+        out.push('\n');
+
+        // Data rows.
+        let data_start = if has_header { 1 } else { 0 };
+        for row in &md_rows[data_start..] {
+            write_row(row, out);
         }
 
         out.push('\n');
     }
 
-    /// Cap output size to MAX_OUTPUT_SIZE bytes.
+    /// Cap output size to MAX_OUTPUT_SIZE bytes, truncating at the last
+    /// UTF-8 char boundary <= MAX_OUTPUT_SIZE so `truncate` never panics
+    /// mid-character on multibyte output (CJK/emoji pages).
     fn cap_size(mut s: String) -> String {
         if s.len() > MAX_OUTPUT_SIZE {
-            s.truncate(MAX_OUTPUT_SIZE);
+            let mut end = MAX_OUTPUT_SIZE;
+            while end > 0 && !s.is_char_boundary(end) {
+                end -= 1;
+            }
+            s.truncate(end);
             s.push_str("\n\n[truncated: output exceeded 500 KiB]");
         }
         s
