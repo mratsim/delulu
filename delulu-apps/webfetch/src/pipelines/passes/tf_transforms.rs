@@ -573,29 +573,23 @@ fn collect_visible_text(node: &DomNode, buf: &mut String) {
 /// Without this pass the markdown output carries a stray "BASH" paragraph
 /// and a fence with an empty info string. This pass runs AFTER
 /// [`tf_canonicalize_unwrap_containers`], which converts the header-bar div
-/// (whose children are all inline) into a `<p>` that RETAINS the header bar's
-/// `class` attribute. The pass is therefore deliberately conservative: a
-/// `<pre>` is only treated as having a chrome label when it is immediately
-/// preceded by a `<p>`/`<span>`/`<div>` sibling that carries a
-/// **chrome-correlating** `class` token (see [`is_chrome_label`]) AND whose
-/// text is a single known language name. Requiring a chrome-correlating class
-/// is the discriminator: a real chrome pill
-/// (`<div class="...codeblock-header...">BASH</div>` ->
-/// `<p class="...codeblock-header...">BASH</p>`) is treated as chrome, while
-/// genuine content such as a bare `<p>Go</p>`, a `<div>Python</div>` section
-/// header, or a classed content element whose class does NOT correlate with a
-/// code/highlight/header chrome theme (`section-title`, `note`, …) is left
-/// untouched and never deleted. When the label matches chrome, the language is
-/// appended to the pre's class and the label element is deleted (its content
-/// is fully represented by the fence info string).
+/// (whose children are all inline) into a `<p>`/`<span>` that RETAINS the
+/// header bar's `class` attribute. The pass treats any `<p>`/`<span>`/`<div>`
+/// that sits immediately before a `<pre>` and whose text is a single known
+/// language name (see [`code_label_language`]) as a code-header label: the
+/// language is appended to the pre's class and the label element is deleted
+/// (its content is fully represented by the fence info string). The single
+/// known-language token is the discriminator.
 ///
-/// Known residual limitation (undecidable from DOM alone): a class carrying a
-/// chrome-correlating token but used for genuine content (e.g. a
-/// `<p class="highlight">python</p>` that is a real highlighted note rather
-/// than a chrome pill) is conservatively treated as chrome and may be removed.
-/// Conversely a genuinely class-less chrome pill is treated as content and is
-/// NOT deleted. A `<pre>` that already carries a `language-*` token never gets
-/// its label deleted either.
+/// Known residual limitation (undecidable from DOM alone): a genuine content
+/// element that is a single known language word placed immediately before a
+/// `<pre>` — such as a bare `<p>Go</p>` or a `<div>Python</div>` section
+/// header — is indistinguishable from a chrome label and is therefore
+/// treated as chrome: it is hoisted onto the pre and removed. This is the
+/// accepted tradeoff that allows Tailwind/utility-class language pills (e.g.
+/// particula.tech's `<span class="text-ink-label">BASH</span>`, whose class
+/// carries no chrome token) to be recognized. A `<pre>` that already carries
+/// a `language-*` token never gets its label deleted either.
 ///
 /// Pre: DOM tree is fully parsed; `unwrap_containers` has run (the label is
 ///      a direct sibling of the pre).
@@ -640,41 +634,16 @@ pub fn tf_convert_code_header_label(node: &mut DomNode) {
     walk_post_mut(node, &mut filters, None);
 }
 
-/// True if the element plausibly comes from a code-chrome header bar based
-/// on its `class` tokens (a chrome label is wrapped in a code/highlight/header
-/// themed container, not an arbitrary content section). A generic content
-/// class such as `section-title` or `note` does NOT correlate with chrome and
-/// is treated as content (preserved).
-fn is_chrome_label(attrs: &[(String, String)]) -> bool {
-    attrs
-        .iter()
-        .filter(|(k, _)| k == "class")
-        .flat_map(|(_, v)| v.split_whitespace())
-        .any(|t| {
-            let l = t.to_lowercase();
-            l.contains("codeblock")
-                || l.contains("code-block")
-                || l.contains("header")
-                || l.contains("highlight")
-                || l.contains("language")
-                || l.contains("lang")
-                || l == "hljs"
-        })
-}
-
 /// Index of the nearest preceding sibling of `children[i]` that is a
-/// plausible code-header chrome label element: a `<p>`, `<span>`, or `<div>`
-/// whose `class` tokens correlate with a code/highlight/header chrome theme
-/// (see [`is_chrome_label`]), skipping whitespace-only text nodes and comments
-/// (pretty-printed HTML). The chrome-correlating-class requirement keeps
-/// genuine content safe: a bare `<p>Go</p>`, a `<div>Python</div>` section
-/// header, or a classed content element whose class does NOT correlate with a
-/// chrome theme (`section-title`, `note`, …) is indistinguishable from content
-/// and is treated as such — it must never be deleted. A `highlight` class DOES
-/// correlate with chrome (a highlighted language pill), so that much is still
-/// treated as a chrome candidate. Returns `None` when the nearest preceding
-/// sibling is a non-chrome `p`/`span`/`div`, any other element (e.g. a `head`,
-/// `pre`, `li`, `summary`), or a non-whitespace text node.
+/// code-header label element: a `<p>`, `<span>`, or `<div>` whose text is a
+/// single known language name, skipping whitespace-only text nodes and
+/// comments (pretty-printed HTML). The single known-language token (see
+/// [`code_label_language`]) is the only discriminator: any `p`/`span`/`div`
+/// immediately before a `<pre>` is a label candidate regardless of its
+/// `class`, so Tailwind/utility-class pills (e.g. `class="text-ink-label"`)
+/// are recognized. Returns `None` when the nearest preceding sibling is any
+/// other element (e.g. a `head`, `pre`, `li`, `summary`), or a non-whitespace
+/// text node.
 fn prev_label_sibling(children: &[DomNode], i: usize) -> Option<usize> {
     let mut j = i;
     while j > 0 {
@@ -683,11 +652,8 @@ fn prev_label_sibling(children: &[DomNode], i: usize) -> Option<usize> {
             DomNode::Text(t) if t.trim().is_empty() => continue,
             DomNode::Comment(_) | DomNode::Doctype(_) => continue,
             DomNode::Element {
-                tag,
-                attrs,
-                children: _,
-                ..
-            } if matches!(tag.as_str(), "p" | "span" | "div") && is_chrome_label(attrs) => {
+                tag, children: _, ..
+            } if matches!(tag.as_str(), "p" | "span" | "div") => {
                 return Some(j);
             }
             _ => return None,

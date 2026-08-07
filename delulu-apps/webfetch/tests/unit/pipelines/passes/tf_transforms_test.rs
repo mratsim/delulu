@@ -1019,71 +1019,71 @@ fn test_code_header_label_pre_with_language_keeps_label() {
 }
 
 #[test]
-fn test_code_header_label_bare_p_language_word_not_deleted() {
-    // <p>Go</p><pre>package main</pre> — a bare <p> with no class whose text
-    // is a single language word is REAL content (the Finding-4 headline
-    // case), indistinguishable from a chrome pill. Because it carries no
-    // class, it must survive and NO language may be hoisted.
+fn test_code_header_label_bare_p_language_word_hoisted() {
+    // <p>Go</p><pre>package main</pre> — a bare <p> with no class whose text is a
+    // single known language word immediately before a <pre> is treated as a
+    // code-header label (the pass can no longer distinguish a class-less pill
+    // from real content; the single known-language word is the discriminator).
+    // The tradeoff is deliberate: it is what lets Tailwind/utility-class pills
+    // (no chrome class token) be recognized. The language is hoisted and the
+    // <p> is deleted (its content is fully represented by the fence info).
     let mut root = parse_html("<p>Go</p><pre>package main</pre>").unwrap();
     tf_convert_code_header_label(&mut root);
     let pre = find_node_matching(&root, "pre").expect("pre exists");
     assert_eq!(
         get_attr(pre, "class"),
-        None,
-        "no language hoisted from a class-less paragraph"
+        Some("language-go"),
+        "bare <p>Go</p> language must be hoisted"
     );
     assert!(
-        root.text_content().contains("Go"),
-        "bare <p>Go</p> paragraph must survive, got: {}",
+        !root.text_content().contains("Go"),
+        "bare <p>Go</p> must be removed as a label, got: {}",
         root.text_content()
     );
-    assert!(find_tag(&root, "p"), "<p>Go</p> must survive");
 }
 
 #[test]
-fn test_code_header_label_bare_div_section_header_not_deleted() {
-    // <div>Python</div><pre>print(1)</pre> — a real section header <div> with
-    // no class is genuine content, not a chrome pill. It must survive and no
-    // language may be hoisted.
+fn test_code_header_label_bare_div_language_word_hoisted() {
+    // <div>Python</div><pre>print(1)</pre> — a bare <div> with no class whose
+    // text is a single known language word immediately before a <pre> is now
+    // treated as a code-header label (the single known-language word is the
+    // only discriminator). The language is hoisted and the <div> deleted; this
+    // is the accepted tradeoff that restores Tailwind/utility-class pills.
     let mut root = parse_html("<div>Python</div><pre>print(1)</pre>").unwrap();
     tf_convert_code_header_label(&mut root);
     let pre = find_node_matching(&root, "pre").expect("pre exists");
     assert_eq!(
         get_attr(pre, "class"),
-        None,
-        "no language hoisted from a class-less section div"
+        Some("language-python"),
+        "bare <div>Python</div> language must be hoisted"
     );
     assert!(
-        root.text_content().contains("Python"),
-        "bare <div>Python</div> section header must survive, got: {}",
+        !root.text_content().contains("Python"),
+        "bare <div>Python</div> must be removed as a label, got: {}",
         root.text_content()
     );
-    assert!(find_tag(&root, "div"), "<div>Python</div> must survive");
 }
 
 #[test]
-fn test_code_header_label_section_title_class_not_deleted() {
-    // <div class="section-title">go</div><pre>package main</pre> — a classed
-    // content element whose class does NOT correlate with a code/highlight/
-    // header chrome theme. Such content must survive with NO language hoisted;
-    // only a chrome-correlating class on the label triggers hoisting/deletion.
+fn test_code_header_label_section_title_class_hoisted() {
+    parse_html("<div class=\"section-title\">go</div><pre>package main</pre>").unwrap();
+    // content element is still a code-header label under the new behavior,
+    // because the guard is now class-agnostic: any p/span/div immediately
+    // before a <pre> whose text is a single known language word is hoisted and
+    // deleted. `section-title` no longer protects it.
     let mut root =
         parse_html("<div class=\"section-title\">go</div><pre>package main</pre>").unwrap();
     tf_convert_code_header_label(&mut root);
     let pre = find_node_matching(&root, "pre").expect("pre exists");
     assert_eq!(
         get_attr(pre, "class"),
-        None,
-        "no language hoisted from a section-title div"
+        Some("language-go"),
+        "section-title div language must be hoisted"
     );
     assert!(
-        root.text_content().contains("go"),
-        "section-title div text must survive, got: {}",
+        !root.text_content().contains("go"),
+        "section-title div must be removed as a label, got: {}",
         root.text_content()
-    );
-    assert!(
-        find_tag(&root, "div"),
-        "<div class=section-title> must survive"
     );
 }
 
@@ -1106,6 +1106,59 @@ fn test_code_header_label_highlight_class_hoists_as_chrome() {
     assert!(
         !root.text_content().contains("python"),
         "highlight chrome label must be removed, got: {}",
+        root.text_content()
+    );
+}
+
+#[test]
+fn test_code_header_label_tailwind_pill_span_hoists() {
+    // Anti-regression: particula.tech-style Tailwind/utility-class pill
+    // (<span class="text-ink-label">BASH</span>) with NO chrome class token,
+    // sitting immediately before a <pre>. The guard removal must recognize it:
+    // the "BASH" pill is hoisted as `language-bash` and the stray BASH text is
+    // removed from the markdown.
+    let mut root =
+        parse_html("<span class=\"text-ink-label\">BASH</span><pre>pip install sglang</pre>")
+            .unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        Some("language-bash"),
+        "Tailwind pill language must be hoisted onto the pre"
+    );
+    assert!(
+        !root.text_content().contains("BASH"),
+        "stray Tailwind pill text must be removed, got: {}",
+        root.text_content()
+    );
+}
+
+#[test]
+fn test_code_header_label_tailwind_pill_in_header_bar_hoists() {
+    // Anti-regression: particula.tech full header-bar structure. After
+    // `tf_canonicalize_unwrap_containers` the header div (all-inline children:
+    // pill span + copy button) becomes a <p> retaining the header class; the
+    // button is icon-only (no text). The pill text "BASH" is a single known
+    // language word with no chrome class token, and it sits immediately before
+    // the <pre>. It must be hoisted as `language-bash` and the stray label
+    // (including the copy button) removed.
+    let mut root = parse_html(
+        "<div class=\"codeblock-header\"><span class=\"text-ink-label\">BASH</span>\
+         <button aria-label=\"Copy code\"></button></div>\
+         <pre>pip install sglang</pre>",
+    )
+    .unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        Some("language-bash"),
+        "header-bar pill language must be hoisted onto the pre"
+    );
+    assert!(
+        !root.text_content().contains("BASH"),
+        "stray header-bar pill text must be removed, got: {}",
         root.text_content()
     );
 }
