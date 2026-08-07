@@ -31,6 +31,10 @@ fn extract_code_block(node: &DomNode) -> (String, String) {
 /// Length of the longest consecutive run of backticks in `s` (0 if none).
 /// Used to size fenced-code delimiters so interior backtick runs never
 /// close the fence early.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
 fn longest_backtick_run(s: &str) -> usize {
     s.chars()
         .fold((0usize, 0usize), |(cur, mx), ch| {
@@ -47,6 +51,9 @@ fn longest_backtick_run(s: &str) -> usize {
 /// `&`, `<` and `>` are escaped so attacker-sourced text cannot prematurely
 /// close the raw-HTML tag or inject markup; the text renders cleanly with no
 /// literal backslashes.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create dedicated AST node + lowering pass for this so the generator stays a dumb converter.
 fn escape_html_content(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -107,6 +114,10 @@ fn collect_cells(nodes: &[DomNode]) -> Vec<DomNode> {
 
 /// Check if a table element has colspan, rowspan, or block content in any cell.
 /// Such tables cannot be represented as GFM pipe tables and must be emitted as raw HTML.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
 fn table_is_complex(node: &DomNode) -> bool {
     if let DomNode::Element { tag, children, .. } = node {
         if tag == "td" || tag == "th" {
@@ -215,6 +226,10 @@ fn serialize_node_to_html(node: &DomNode) -> String {
 }
 
 /// Resolve a potentially relative URL against a base URL.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
 fn resolve_url(url: &str, base_url: Option<&str>) -> String {
     if url.starts_with("http://") || url.starts_with("https://") {
         return url.to_string();
@@ -250,6 +265,10 @@ fn resolve_url(url: &str, base_url: Option<&str>) -> String {
 }
 
 /// Escape Markdown special characters.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
 fn escape_markdown(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -297,6 +316,10 @@ fn escape_markdown(text: &str) -> String {
 /// idempotent for the content the pipeline emits: already-escaped text is
 /// preserved except for a second pass over `<`/`>`, which finds nothing to
 /// escape. It is a no-op for content with no special characters.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
 fn escape_inline_fragment(s: &str) -> String {
     let escaped = escape_markdown(s);
     // Escape the angle brackets `escape_markdown` left bare so they cannot
@@ -344,6 +367,10 @@ fn escape_inline_fragment(s: &str) -> String {
 /// Brackets/parens OUTSIDE any code span are genuine link/image delimiters
 /// and are escaped (made inert); inside a span they are preserved verbatim so
 /// `` `func(a, b)` `` and `` `a[0]` `` render cleanly with no backslash.
+/// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+/// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+/// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+/// html/markdown conversion is as straightforward as possible.
 fn escape_heading_links(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
@@ -463,6 +490,10 @@ impl MarkdownLowerer {
         };
         match tag.as_str() {
             // ── Headings ───────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 let level = tag[1..].parse::<usize>().unwrap_or(1);
                 let prefix = "#".repeat(level);
@@ -492,6 +523,10 @@ impl MarkdownLowerer {
             // <head rend="h1..h6"> (trafilatura's XML schema). Render as
             // markdown headings, not plain text, or the heading text jams
             // onto the following paragraph ("FAQQuick answers").
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "head" => {
                 let rend = node.attr("rend").unwrap_or("");
                 if let Some(level) = rend.strip_prefix('h').and_then(|n| n.parse::<usize>().ok())
@@ -532,6 +567,9 @@ impl MarkdownLowerer {
             // keeps them (tf_convert_refs_and_details no longer flattens
             // them). GFM renders <details> blocks as collapsible sections,
             // which is exactly how the FAQ accordions should behave.
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create dedicated AST node + lowering pass for this so the generator stays a dumb converter.
             "details" => {
                 if !out.is_empty() && !out.ends_with('\n') {
                     out.push('\n');
@@ -594,6 +632,10 @@ impl MarkdownLowerer {
             }
 
             // ── Links ──────────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "a" => {
                 let href = node.attr("href").unwrap_or("");
                 let text = Self::lower_inline(children, base_url);
@@ -612,6 +654,10 @@ impl MarkdownLowerer {
             // tf_convert_refs_and_details renames <a href> -> <ref target>.
             // Render them as markdown links so include_links is on by default
             // (python trafilatura defaults include_links=False; we want links).
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "ref" => {
                 let target = node.attr("target").unwrap_or("");
                 let text = Self::lower_inline(children, base_url);
@@ -628,6 +674,10 @@ impl MarkdownLowerer {
             }
 
             // ── Images ─────────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "img" => {
                 let src = node.attr("src").unwrap_or("");
                 // Canonicalize the alt as raw inline content via
@@ -661,6 +711,10 @@ impl MarkdownLowerer {
             }
 
             // ── Blockquotes ────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "blockquote" => {
                 let inner = Self::lower_inline_block(children, base_url);
                 for line in inner.lines() {
@@ -676,6 +730,9 @@ impl MarkdownLowerer {
             }
 
             // ── Code blocks ────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create dedicated AST node + lowering pass for this so the generator stays a dumb converter.
             "pre" => {
                 // Block code is structurally `<pre>` (the tf pipeline keeps
                 // pre as pre and hoists the language into its class); lower it
@@ -704,6 +761,9 @@ impl MarkdownLowerer {
             }
 
             // ── Inline code ────────────────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create dedicated AST node + lowering pass for this so the generator stays a dumb converter.
             "code" => {
                 // Inline code is structurally `<code>`; render as an inline
                 // backtick span, collapsing newlines to spaces so a degenerate
@@ -753,6 +813,10 @@ impl MarkdownLowerer {
             }
 
             // ── Math (LaTeXML MathML) ────────────────────────────────
+            // ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+            // (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+            // TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+            // html/markdown conversion is as straightforward as possible.
             "math" => {
                 let alttext = node.attr("alttext").unwrap_or("");
                 let display = node.attr("display").unwrap_or("inline");
@@ -801,6 +865,10 @@ impl MarkdownLowerer {
 
     /// Lower an unordered list.
     #[allow(clippy::collapsible_if)]
+    /// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+    /// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+    /// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+    /// html/markdown conversion is as straightforward as possible.
     fn lower_unordered_list(
         children: &[DomNode],
         base_url: Option<&str>,
@@ -827,6 +895,10 @@ impl MarkdownLowerer {
 
     /// Lower an ordered list.
     #[allow(clippy::collapsible_if)]
+    /// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+    /// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+    /// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+    /// html/markdown conversion is as straightforward as possible.
     fn lower_ordered_list(
         children: &[DomNode],
         base_url: Option<&str>,
@@ -861,6 +933,10 @@ impl MarkdownLowerer {
     /// Revert exactly those two, keep everything else escaped. Embedded
     /// newlines (`\n`/`\r`) in cell text are collapsed to a single space so
     /// an escaped cell can never carry a newline that would break the pipe row.
+    /// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+    /// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+    /// TODO: create a dedicated lowering pass (or dedicated AST node + lowering pass) so that
+    /// html/markdown conversion is as straightforward as possible.
     fn escape_table_cell(cell: &str) -> String {
         let mut out = String::with_capacity(cell.len());
         let mut chars = cell.chars().peekable();
@@ -890,6 +966,9 @@ impl MarkdownLowerer {
     /// Lower a table into GFM pipe-table format.
     /// Lower a table. Dispatches to raw HTML for complex tables (colspan,
     /// rowspan, block content in cells) or GFM pipe tables for simple tables.
+    /// ⚠️ CUSTOM / NON-TRIVIAL — this does more than a literal 1:1 DOM→markdown conversion
+    /// (it computes/presents layout, escaping, or structure that a dumb conversion would not).
+    /// TODO: create dedicated AST node + lowering pass for this so the generator stays a dumb converter.
     fn lower_table(node: &DomNode, base_url: Option<&str>, out: &mut String) {
         let DomNode::Element { children, .. } = node else {
             return;

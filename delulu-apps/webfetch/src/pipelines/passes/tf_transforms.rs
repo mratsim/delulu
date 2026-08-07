@@ -141,6 +141,17 @@ pub fn tf_convert_breaks(node: &mut DomNode) -> WalkerAction {
 // Link/details conversion (a → ref, details → div, summary → head)
 // ---------------------------------------------------------------------------
 
+/// ⚠️ CUSTOM PASS — not present in reference trafilatura (v2.1.0).
+/// Improves fixture: `blog/particula.tech/sglang-vs-vllm-inference-engine-comparison`
+/// (and any accordion-style `<details>`/`<summary>` content). The `a → ref` link
+/// conversion is a 1:1 port of trafilatura's `convert_link()`, but the
+/// `details`/`summary` *preservation* below deliberately overrides reference
+/// trafilatura's `convert_details()` (`htmlprocessing.py:334-338`), which flattens
+/// `details → div` and `summary → head`. We keep them so the accordion pass and
+/// the generators can emit native collapsible markup.
+/// TODO: create a custom webfetch pipeline so that we can have the proper canonical
+/// trafilatura behavior in the trafilatura pipeline (this logic belongs in a webfetch-specific
+/// pipeline, not baked into the TF pipeline).
 /// Convert links and details elements.
 ///
 /// - `a` → `ref`, move `href` → `target`
@@ -221,6 +232,13 @@ pub fn tf_canonicalize_strip_non_content(node: &mut DomNode) {
 // tf_canonicalize_unwrap_containers — unwraps 8 tags (div, span, section, article, header, main, body, html); rd_unwrap_structural_wrappers only unwraps 3 (html, head, body)
 // ---------------------------------------------------------------------------
 
+/// ⚠️ CUSTOM PASS — not present in reference trafilatura (v2.1.0).
+/// Improves fixture: `blog/particula.tech/sglang-vs-vllm-inference-engine-comparison`
+/// (the `<div>` TL;DR label must be demoted to a `<p>`, not unwrapped into loose
+/// text that jams onto the following paragraph).
+/// TODO: create a custom webfetch pipeline so that we can have the proper canonical
+/// trafilatura behavior in the trafilatura pipeline (this logic belongs in a webfetch-specific
+/// pipeline, not baked into the TF pipeline).
 /// Unwrap layout container elements by replacing each container node with its
 /// child nodes, simplifying the DOM tree for downstream passes.
 ///
@@ -413,6 +431,12 @@ fn is_accordion_container(tag: &str) -> bool {
     !PAGE_LEVEL_TAGS.contains(&tag)
 }
 
+/// ⚠️ CUSTOM PASS — not present in reference trafilatura (v2.1.0).
+/// Improves fixture: `blog/particula.tech/sglang-vs-vllm-inference-engine-comparison`
+/// (div-based FAQ accordions with `<button aria-expanded>` headers).
+/// TODO: create a custom webfetch pipeline so that we can have the proper canonical
+/// trafilatura behavior in the trafilatura pipeline (this logic belongs in a webfetch-specific
+/// pipeline, not baked into the TF pipeline).
 /// Convert div-based FAQ accordions to semantic `<details><summary>`.
 ///
 /// Many sites (e.g. particula.tech) build FAQ items as:
@@ -557,6 +581,12 @@ fn collect_visible_text(node: &DomNode, buf: &mut String) {
 // Code header label → pre language (chrome removal)
 // ---------------------------------------------------------------------------
 
+/// ⚠️ CUSTOM PASS — not present in reference trafilatura (v2.1.0).
+/// Improves fixture: `blog/particula.tech/sglang-vs-vllm-inference-engine-comparison`
+/// (chrome header-bar language pills hoisted onto the `<pre>` fence info).
+/// TODO: create a custom webfetch pipeline so that we can have the proper canonical
+/// trafilatura behavior in the trafilatura pipeline (this logic belongs in a webfetch-specific
+/// pipeline, not baked into the TF pipeline).
 /// Recognize code-block header labels (e.g. a "BASH" pill in a code header
 /// bar) that sit as a sibling immediately before a `<pre>` and hoist them
 /// onto the pre's class as `language-<name>`.

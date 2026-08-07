@@ -12,6 +12,13 @@ use crate::pipelines::{DomNode, WalkerAction};
 // Code block normalization (pre)
 // ---------------------------------------------------------------------------
 
+/// ⚠️ CUSTOM PASS — not present in reference trafilatura (v2.1.0).
+/// Improves general code-block markdown serialization: python's `convert_quotes()`
+/// renames `pre → code`, losing block-ness in the XML schema; this module keeps
+/// `<pre>` so generators emit fenced blocks. Used by the TF pipeline among others.
+/// TODO: create a custom webfetch pipeline so that we can have the proper canonical
+/// trafilatura behavior in the trafilatura pipeline (this logic belongs in a webfetch-specific
+/// pipeline, not baked into the TF pipeline).
 /// Normalize code blocks: `<pre>` stays `<pre>` (block code), inline `<code>`
 /// stays `<code>`.
 ///

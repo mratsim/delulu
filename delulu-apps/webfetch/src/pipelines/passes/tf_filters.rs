@@ -67,6 +67,12 @@ pub const TF_CLEANED_TAGS: &[&str] = &[
     "use",
 ];
 
+/// ⚠️ CUSTOM PASS — not present in reference trafilatura (v2.1.0).
+/// Improves fixture: Google Blogger pages that embed article HTML inside
+/// `<script type="text/template">` elements (`fixtures-readability/blogger`).
+/// TODO: create a custom webfetch pipeline so that we can have the proper canonical
+/// trafilatura behavior in the trafilatura pipeline (this logic belongs in a webfetch-specific
+/// pipeline, not baked into the TF pipeline).
 /// Extract content from `<script type="text/template">` elements before they are removed.
 ///
 /// Some websites (e.g., Google Blogger) embed article HTML inside `<script type='text/template'>`
@@ -904,6 +910,12 @@ fn apply_path(nodes: &mut Vec<DomNode>, path: &[usize]) {
 // BODY_XPATH FALLBACK — heuristic container isolation when patterns fail
 // ---------------------------------------------------------------------------
 
+/// ⚠️ CUSTOM PASS — not present in reference trafilatura (v2.1.0).
+/// Improves general CMS layouts (Webflow, headless CMS, table-based layouts)
+/// where BODY_XPATH patterns cannot identify the main container.
+/// TODO: create a custom webfetch pipeline so that we can have the proper canonical
+/// trafilatura behavior in the trafilatura pipeline (this logic belongs in a webfetch-specific
+/// pipeline, not baked into the TF pipeline).
 /// Fallback content container isolation for when BODY_XPATH patterns don't match.
 ///
 /// When `tf_isolate_content_container` finds no matching container (tree still has
@@ -986,6 +998,13 @@ pub fn tf_fallback_content_container(node: &mut DomNode) {
 // TAG_CATALOG — whitelist of allowed output tags
 // ---------------------------------------------------------------------------
 
+/// ⚠️ CUSTOM PASS — present in reference trafilatura (v2.1.0) as `TAG_CATALOG`
+/// (`settings.py:441`) but EXTENDED here with `<details>`/`<summary>` (and table
+/// row/cell tags). The extra tags exist solely to preserve the output of the
+/// custom accordion pass for `blog/particula.tech/sglang-vs-vllm-inference-engine-comparison`.
+/// TODO: create a custom webfetch pipeline so that we can have the proper canonical
+/// trafilatura behavior in the trafilatura pipeline (this logic belongs in a webfetch-specific
+/// pipeline, not baked into the TF pipeline).
 /// Set of tags allowed in the final tf output after all conversions.
 ///
 /// Maps to Trafilatura's `TAG_CATALOG` (settings.py:462):
