@@ -93,6 +93,220 @@ fn test_lower_head_without_rend_renders_text() {
     let md = MarkdownLowerer::lower(&nodes[0], None);
     assert!(!md.contains('#'), "no rend -> plain text, got: {md}");
 }
+// ── Heading text: inline-lowered, newline-collapsed, trimmed, links neutralized ──
+
+#[test]
+fn test_heading_link_in_heading_is_escaped() {
+    // A heading that itself contains a link element (`<ref target>`, i.e.
+    // trafilatura's `<a href>`) must NOT render as a live markdown link out
+    // of the ATX line. The inline lowering produces `[docs](url)` and
+    // escape_heading_links neutralizes the unescaped `[`/`]`/`(`/`)` so a
+    // javascript:/data: target can never become clickable.
+    let nodes = [DomNode::Element {
+        tag: "h2".into(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "ref".into(),
+            attrs: vec![("target".into(), "javascript:alert(1)".into())],
+            children: vec![DomNode::Text("docs".into())],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        !md.contains("](javascript:"),
+        "live javascript: link must be neutralized, got: {md}"
+    );
+    assert!(
+        md.contains("## "),
+        "heading marker must still be emitted, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_escapes_raw_markdown_specials() {
+    // Raw text special characters in a heading must not break the ATX line
+    // or inject document-level markdown. lower_inline escapes raw specials
+    // ONCE (so `*c*` is `\*c\*`, not emphasis); we must NOT re-escape them
+    // (that would show a visible backslash). escape_heading_links keeps this
+    // single-escaped raw text intact while neutralising only constructed
+    // link delimiters.
+    let nodes = [DomNode::Element {
+        tag: "h3".into(),
+        attrs: vec![],
+        children: vec![DomNode::Text("a [b] *c* _d_".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        !md.contains(" *c* "),
+        "raw asterisk emphasis must not render as emphasis, got: {md}"
+    );
+    assert!(
+        md.contains("##") || md.contains("###"),
+        "heading marker must be present, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_inline_lowering_preserves_structure() {
+    // Heading text must be built via the inline lowering path so inline
+    // structure (code, links) survives. `<code>` renders as a live backtick
+    // code span (raw backticks are not a link vector); only constructed link
+    // delimiters are neutralized by escape_heading_links.
+    let nodes = [DomNode::Element {
+        tag: "h2".into(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("Install ".into()),
+            DomNode::Element {
+                tag: "code".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("--port".into())],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+            DomNode::Text(" now".into()),
+        ],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        md.contains("## Install `--port` now"),
+        "inline code must survive as a live backtick span in the heading, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_collapses_newlines_and_trims() {
+    // Attacker/pretty-printed newlines in heading text must collapse to
+    // spaces and leading/trailing whitespace must be trimmed so the ATX line
+    // stays a single valid heading.
+    let nodes = [DomNode::Element {
+        tag: "head".into(),
+        attrs: vec![("rend".into(), "h3".into())],
+        children: vec![DomNode::Text("\nMulti\nLine heading\n".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        md.contains("### Multi Line heading"),
+        "newlines collapse and edges trim, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_plain_parens_not_double_escaped() {
+    // Plain parenthesized headings ("(2024)", "(Part 2)", function sigs) must
+    // NOT be double-escaped into a visible literal `\(`. lower_inline escapes
+    // raw parens once (`\(2024\)`); escape_heading_links leaves that intact.
+    // The buggy double-escape (`escape_markdown(lower_inline(..))`) produced
+    // `\(2024\)`, which renders with a stray visible backslash.
+    let nodes = [DomNode::Element {
+        tag: "h2".into(),
+        attrs: vec![],
+        children: vec![DomNode::Text("Quantum Computing (2024) Guide".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        !md.contains("\\\\("),
+        "parens must not be double-escaped (visible backslash), got: {md}"
+    );
+    assert!(
+        md.contains("## Quantum Computing"),
+        "heading text must be present, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_code_span_parens_not_escaped() {
+    // Parens/brackets INSIDE an inline `<code>` span in a heading are genuine
+    // function/array syntax, not link delimiters. escape_heading_links must be
+    // code-span aware and leave them untouched — otherwise the user sees a
+    // visible `\(` inside the backtick span; such pairs must be left untouched.
+    let nodes = [DomNode::Element {
+        tag: "h2".into(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("Use ".into()),
+            DomNode::Element {
+                tag: "code".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("func(a, b)".into())],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+            DomNode::Text(" now".into()),
+        ],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        md.contains("`func(a, b)`"),
+        "code span must survive with no escaping, got: {md}"
+    );
+    assert!(
+        !md.contains("func\\("),
+        "no backslash injected inside the code span, got: {md}"
+    );
+    assert!(
+        md.contains("## Use"),
+        "heading marker must be present, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_code_span_brackets_and_link_not_escaped_inside() {
+    // A heading containing BOTH an inline code span (with brackets) and a
+    // constructed link: the code span must stay literal (no escaping) while the
+    // link delimiters OUTSIDE it remain neutralized.
+    let nodes = [DomNode::Element {
+        tag: "h2".into(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("Access ".into()),
+            DomNode::Element {
+                tag: "code".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("a[0]".into())],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+            DomNode::Text(" ".into()),
+            DomNode::Element {
+                tag: "ref".into(),
+                attrs: vec![("target".into(), "javascript:x".into())],
+                children: vec![DomNode::Text("docs".into())],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+        ],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        md.contains("`a[0]`"),
+        "code span brackets must be preserved unescaped, got: {md}"
+    );
+    assert!(
+        !md.contains("`a\\[0]`"),
+        "no backslash injected inside the code span, got: {md}"
+    );
+    assert!(
+        !md.contains("](javascript:"),
+        "constructed link must still be neutralized, got: {md}"
+    );
+}
 
 #[test]
 fn test_lower_list_item_tags() {
@@ -252,6 +466,69 @@ fn test_lower_table() {
     assert!(md.contains("| Alice"), "should contain data cell Alice");
 }
 
+#[test]
+fn test_lower_table_wide_cell_bounds_padding() {
+    // PERF-F-2: a single pathological wide cell must NOT right-pad every other
+    // cell in its column to the max width (O(N * max_cell_width)). The
+    // col_widths cap (min(64)) bounds the padding while the wide content itself
+    // is preserved in full.
+    let cell = |text: String, tag: &str| DomNode::Element {
+        tag: tag.into(),
+        attrs: vec![],
+        children: vec![DomNode::Text(text)],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    let row = |cells: Vec<DomNode>| DomNode::Element {
+        tag: "tr".into(),
+        attrs: vec![],
+        children: cells,
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    let to = |tag: &str, rows: Vec<DomNode>| DomNode::Element {
+        tag: tag.into(),
+        attrs: vec![],
+        children: rows,
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+
+    let wide = "x".repeat(10_000);
+    let table = to(
+        "table",
+        vec![
+            to(
+                "thead",
+                vec![row(vec![cell("h".into(), "th"), cell("w".into(), "th")])],
+            ),
+            to(
+                "tbody",
+                vec![
+                    row(vec![cell("a".into(), "td"), cell(wide.clone(), "td")]),
+                    row(vec![cell("b".into(), "td"), cell("c".into(), "td")]),
+                    row(vec![cell("d".into(), "td"), cell("e".into(), "td")]),
+                    row(vec![cell("f".into(), "td"), cell("g".into(), "td")]),
+                ],
+            ),
+        ],
+    );
+
+    let md = MarkdownLowerer::lower(&table, None);
+    // The full wide cell content must be preserved (no data loss)...
+    assert!(md.contains(&wide), "wide cell content must be emitted");
+    assert!(md.contains("---"), "dash separator row must survive");
+    // ...but the output must be bounded: the wide cell itself (~10k) plus a
+    // small constant for the short cells/separators. Without the col_widths
+    // min(64) cap, the three short second-column cells would each be
+    // right-padded to ~10k, blowing output up to ~40k+.
+    assert!(
+        md.len() < 10_000 + 2_048,
+        "output must be bounded to ~max_cell_width + constant, not amplified, got {}",
+        md.len()
+    );
+}
+
 // ── Special characters ──────────────────────────────────────────────
 
 #[test]
@@ -309,6 +586,34 @@ fn test_output_size_cap() {
         "output should be capped at MAX_OUTPUT_SIZE"
     );
     assert!(md.contains("[truncated: output exceeded 500 KiB]"));
+}
+
+#[test]
+fn test_cap_size_multibyte_no_panic() {
+    // Pure multibyte string with NO ASCII prefix ("€" is 3 bytes) so byte
+    // 512,000 (MAX_OUTPUT_SIZE) lands MID-character: 512000 % 3 == 2. The old
+    // `s.truncate(MAX_OUTPUT_SIZE)` would therefore panic; cap_size must walk
+    // back to the last char boundary. (A "head\n" prefix would shift the byte
+    // offset onto a char boundary and make this regression guard tautological.)
+    let huge = "€".repeat(200_000); // 600_000 bytes raw
+    let out = MarkdownLowerer::cap_size(huge);
+    assert!(
+        out.len() <= MAX_OUTPUT_SIZE + 64,
+        "output should be capped near MAX_OUTPUT_SIZE, got {}",
+        out.len()
+    );
+    assert!(
+        out.ends_with("[truncated: output exceeded 500 KiB]"),
+        "must end with the truncation marker, got: {:?}",
+        &out[out.len().saturating_sub(60)..]
+    );
+    // Truncation must land on a char boundary: the portion before the marker
+    // is valid UTF-8 (no panic already proves this, but be explicit).
+    let body_end = out.find("\n\n[truncated").expect("marker present");
+    assert!(
+        out.is_char_boundary(body_end),
+        "marker must start at a char boundary"
+    );
 }
 
 // ── DOM nodes to HTML ───────────────────────────────────────────────
@@ -679,11 +984,11 @@ fn test_lower_multiline_code_after_loose_text_fence_opener_at_line_start() {
     assert!(!md.contains("BASH```"), "no `BASH```` jam, got: {md}");
 }
 
-// ── SLOP-004: multi-line inline code inside a paragraph stays inline ──────
+// ── Multi-line inline code inside a paragraph stays inline ──────────────
 
 #[test]
 fn test_lower_multiline_inline_code_in_paragraph_stays_inline() {
-    // Regression (SLOP-004): a multi-line inline <code> inside a <p> must NOT
+    // Regression: a multi-line inline <code> inside a <p> must NOT
     // emit a mid-paragraph fence; newlines normalize to spaces and the code
     // stays inline backticks (valid markdown).
     let p = DomNode::Element {
@@ -705,11 +1010,11 @@ fn test_lower_multiline_inline_code_in_paragraph_stays_inline() {
     assert!(!md.contains("```"), "no mid-paragraph fence, got: {md}");
 }
 
-// ── SLOP-101: multi-line code in a formatting wrapper inside a paragraph ────
+// ── Multi-line code in a formatting wrapper inside a paragraph ──────────
 
 #[test]
 fn test_lower_multiline_code_in_hi_wrapper_in_paragraph_stays_inline() {
-    // Regression (SLOP-101): tf_convert_formatting renames <strong> -> <hi>;
+    // Regression: tf_convert_formatting renames <strong> -> <hi>;
     // <hi> is an unknown container for gen_md and hits the `_` fallback. The
     // fallback must thread the incoming inline_ctx through, or a multi-line
     // <code> nested in the wrapper emits a mid-paragraph fence.
@@ -769,7 +1074,7 @@ fn test_lower_multiline_code_in_strong_wrapper_in_paragraph_stays_inline() {
 
 #[test]
 fn test_lower_multiline_code_in_del_wrapper_in_paragraph_stays_inline() {
-    // Regression (SLOP-101): <del> is an unknown container for gen_md (tf
+    // Regression: <del> is an unknown container for gen_md (tf
     // renames <del>/<s>/<strike> -> <del>); the `_` fallback must thread
     // inline_ctx through so the multi-line code stays inline backticks.
     let p = DomNode::Element {
@@ -847,11 +1152,11 @@ fn test_lower_multiline_code_language_from_pre_class() {
     );
 }
 
-// ── SLOP-003: multi-class values yield only the first language token ──────
+// ── Multi-class values yield only the first language token ─────────────
 
 #[test]
 fn test_lower_multiline_code_language_token_split_on_whitespace() {
-    // Regression (SLOP-003): a multi-class value like "language-python highlight"
+    // Regression: a multi-class value like "language-python highlight"
     // must yield "python" — not the bogus token "python highlight".
     let node = pre_node(
         &[("class", "language-python highlight")],
@@ -941,5 +1246,583 @@ fn test_lower_table_cell_parens_not_escaped() {
     assert!(
         !md.contains("\\("),
         "no \\( in table cells (some renderers show the backslash literally), got: {md}"
+    );
+}
+
+// ── Heading code spans must not break the link/image neutralizer ──────
+//
+// The `<code>`/`<img>` arms emit raw content. If that content contains an odd
+// number of backticks, escape_heading_links' backtick-toggle ends desynced and a
+// following constructed javascript:/data:/vbscript:/file: link is left LIVE. The
+// fix escapes inner backticks (`` ` `` -> `\``) at emission so the emitted span
+// is always balanced, and the security invariant (NO live dangerous-scheme link
+// out of a heading) holds regardless of code/alt content.
+
+/// Build an `<h2>` with the given inline children (elements or text).
+fn heading_h2(children: Vec<DomNode>) -> DomNode {
+    DomNode::Element {
+        tag: "h2".into(),
+        attrs: vec![],
+        children,
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }
+}
+
+fn code_el(text: &str) -> DomNode {
+    DomNode::Element {
+        tag: "code".into(),
+        attrs: vec![],
+        children: vec![DomNode::Text(text.into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }
+}
+
+fn ref_el(target: &str, text: &str) -> DomNode {
+    DomNode::Element {
+        tag: "ref".into(),
+        attrs: vec![("target".into(), target.into())],
+        children: vec![DomNode::Text(text.into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }
+}
+
+fn img_el(src: &str, alt: &str) -> DomNode {
+    DomNode::Element {
+        tag: "img".into(),
+        attrs: vec![("src".into(), src.into()), ("alt".into(), alt.into())],
+        children: vec![],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }
+}
+
+#[test]
+fn test_heading_code_odd_backtick_no_live_javascript_link() {
+    // <code>a`b</code> emits an odd (3) backtick count, which must not
+    // buggy path (`a`b`), desyncing the toggle so the trailing javascript: link
+    // is left unescaped. Fails on the previous code (link leaks live), passes on fix.
+    let h = heading_h2(vec![code_el("a`b"), ref_el("javascript:alert(1)", "go")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert!(
+        !md.contains("](javascript:"),
+        "javascript: link must be neutralized after odd-backtick code span, got: {md}"
+    );
+    // The code content must survive as readable text (escaped inner backtick).
+    assert!(
+        md.contains("`a\\`b`") || md.contains("a`b"),
+        "code content a`b must be preserved, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_two_code_spans_one_with_backtick_then_link() {
+    // Two consecutive code spans, the second containing a backtick, then a link.
+    // The toggle must end balanced so the trailing link is neutralized.
+    let h = heading_h2(vec![
+        code_el("x"),
+        code_el("y`z"),
+        ref_el("javascript:z", "go"),
+    ]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert!(
+        !md.contains("](javascript:"),
+        "javascript: link must be neutralized after two code spans, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_code_odd_backtick_then_safe_https_link() {
+    // The security posture neutralizes ALL constructed heading links, not just
+    // dangerous-scheme ones. A https link after a backtick code span must also be
+    // neutralized (no live link marker out of the heading).
+    let h = heading_h2(vec![code_el("a`b"), ref_el("https://example.com", "docs")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert!(
+        !md.contains("](https:"),
+        "https link must also be neutralized after odd-backtick code span, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_code_brackets_still_not_escaped() {
+    // A regression must NOT re-break: brackets/parens INSIDE a code span
+    // (e.g. func(a, b)) are genuine content and must not gain a backslash.
+    let h = heading_h2(vec![code_el("func(a, b)"), ref_el("javascript:x", "docs")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert!(
+        md.contains("`func(a, b)`"),
+        "code span must survive with no escaping, got: {md}"
+    );
+    assert!(
+        !md.contains("func\\"),
+        "no backslash inside the code span, got: {md}"
+    );
+    assert!(
+        !md.contains("](javascript:"),
+        "link must still be neutralized, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_code_odd_backtick_data_vbscript_file_links() {
+    // data:/vbscript:/file: schemes after an odd-backtick code span must all be
+    // neutralized (each fails on the previous code).
+    for scheme in [
+        "data:text/html,<script>1</script>",
+        "vbscript:msgbox",
+        "file:///etc/passwd",
+    ] {
+        let h = heading_h2(vec![code_el("a`b"), ref_el(scheme, "go")]);
+        let md = MarkdownLowerer::lower(&h, None);
+        let needle = format!("]({}:", scheme.split(':').next().unwrap());
+        assert!(
+            !md.contains(&needle),
+            "{scheme} link must be neutralized after odd-backtick code span, got: {md}"
+        );
+    }
+}
+
+#[test]
+fn test_heading_img_alt_with_backtick_then_link() {
+    // <img alt> with a backtick can desync the toggle just like <code>; the img
+    // arm must escape inner backticks so a following link is still neutralized.
+    let h = heading_h2(vec![
+        img_el("javascript:z", "a`b"),
+        ref_el("javascript:y", "go"),
+    ]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert!(
+        !md.contains("](javascript:"),
+        "javascript: link must be neutralized after backtick img alt, got: {md}"
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Heading neutralizer: no dangerous-scheme link or image destination may
+// NEVER be defeated by code-span content, no matter how degenerate (odd
+// backticks, backslash+backtick, trailing backslash, bare backslash,
+// brackets). The security invariant for every case below is:
+//     NO live `javascript:` / `data:` / `vbscript:` / `file:` link or
+//     image src may survive outside a heading.
+// Every *_leak_* test expects the DANGEROUS-scheme link to be dead; the
+// *_clean_* tests additionally assert code renders without a visible
+// backslash. Tests are written FIRST (TDD); each leak test FAILS on the
+// buggy pre-fix code and PASSES after the structural refactor.
+// ════════════════════════════════════════════════════════════════════════
+
+const DANGEROUS_TARGETS: [&str; 4] = [
+    "javascript:alert(1)",
+    "data:text/html,<script>1</script>",
+    "vbscript:msgbox",
+    "file:///etc/passwd",
+];
+
+/// Assert no live dangerous-scheme link survives out of the heading.
+/// A neutralized link is `\[label\]\(scheme:...)` (inert literal text);
+/// a LIVE one is `[label](scheme:...)` / `![alt](src)`.
+fn assert_no_live_danger(prefix: &str, md: &str) {
+    // A LIVE markdown destination is `](scheme:...)` — for a link `[x](s:...)`
+    // OR an image `![alt](s:...)` (the `]` is always immediately followed by
+    // `(`). After the neutralizer every bracket/paren gets escaped, so the
+    // literal substring `](scheme:` can no longer appear. This single check
+    // therefore covers links AND image srcs for every dangerous scheme.
+    for t in DANGEROUS_TARGETS {
+        let scheme = t.split(':').next().unwrap();
+        let live = format!("]({t}");
+        assert!(
+            !md.contains(&live),
+            "{prefix}: live {scheme} link/image destination leaked out of heading: {md}"
+        );
+    }
+}
+
+// ── Odd number of backticks in <code> + a javascript: link ─────────
+#[test]
+fn test_heading_odd_backtick_code_block_javascript_link_neutralized() {
+    let h = heading_h2(vec![code_el("a`b"), ref_el("javascript:alert(1)", "go")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_danger("odd-backtick code + javascript link", &md);
+}
+
+// ── Odd backtick in <code> + data:/vbscript:/file: links ───────────────
+#[test]
+fn test_heading_odd_backtick_code_block_other_schemes_neutralized() {
+    for &t in &DANGEROUS_TARGETS[1..] {
+        let h = heading_h2(vec![code_el("a`b"), ref_el(t, "go")]);
+        let md = MarkdownLowerer::lower(&h, None);
+        let scheme = t.split(':').next().unwrap();
+        assert!(
+            !md.contains(&format!("]({t}")),
+            "odd-backtick code + {scheme} link leaked: {md}"
+        );
+    }
+}
+
+// ── Backslash immediately before a backtick in <code> ─────────────
+#[test]
+fn test_heading_backslash_backtick_code_block_javascript_link_neutralized() {
+    let h = heading_h2(vec![code_el("a\\`b"), ref_el("javascript:alert(1)", "go")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_danger("backslash+backtick code + javascript link", &md);
+}
+
+// ── <code> content ending in a single backslash (e.g. C:\ path) ────
+#[test]
+fn test_heading_trailing_backslash_code_block_javascript_link_neutralized() {
+    let h = heading_h2(vec![code_el("C:\\"), ref_el("javascript:alert(1)", "go")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_danger("trailing-backslash code (C:\\) + javascript link", &md);
+    // Windows-path realism: the code span must still render cleanly (a code
+    // span is literal in CommonMark, so a single trailing backslash is fine).
+    assert!(
+        md.contains("`C:\\`"),
+        "code span C:\\ must render cleanly, got: {md}"
+    );
+}
+
+#[test]
+fn test_heading_trailing_backslash_code_block_other_schemes_neutralized() {
+    for &t in &DANGEROUS_TARGETS[1..] {
+        let h = heading_h2(vec![code_el("C:\\"), ref_el(t, "go")]);
+        let md = MarkdownLowerer::lower(&h, None);
+        let scheme = t.split(':').next().unwrap();
+        assert!(
+            !md.contains(&format!("]({t}")),
+            "trailing-backslash code + {scheme} link leaked: {md}"
+        );
+    }
+}
+
+// ── Bare backslash in <code> + <img src=javascript:q> (image src leak) ──
+#[test]
+fn test_heading_bare_backslash_code_then_image_src_neutralized() {
+    let h = heading_h2(vec![code_el("\\"), img_el("javascript:q", "pic")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert!(
+        !md.contains("](javascript:q)"),
+        "bare-backslash code must not leave image src live, got: {md}"
+    );
+}
+
+// ── Brackets inside <code> + link: must not leak, must stay clean ───────
+#[test]
+fn test_heading_code_brackets_rendered_clean_link_dead() {
+    let h = heading_h2(vec![code_el("x[0]"), ref_el("javascript:z", "docs")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_danger("code-brackets+link", &md);
+    // Brackets inside a code span are literal content; they must render
+    // cleanly with NO visible backslash injected by the neutralizer.
+    assert!(
+        md.contains("`x[0]`"),
+        "code brackets must stay clean, got: {md}"
+    );
+    assert!(
+        !md.contains("x\\["),
+        "no backslash inside code span for brackets, got: {md}"
+    );
+}
+
+// ── <img alt> with an odd backtick + link ───────────────────────────────
+#[test]
+fn test_heading_img_alt_odd_backtick_link_neutralized() {
+    let h = heading_h2(vec![
+        img_el("javascript:v", "tick`back"),
+        ref_el("javascript:w", "go"),
+    ]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_danger("img-alt odd backtick", &md);
+}
+
+// ── <img alt> with a trailing backslash + link ──────────────────────────
+#[test]
+fn test_heading_img_alt_trailing_backslash_link_neutralized() {
+    let h = heading_h2(vec![
+        img_el("javascript:u", "C:\\"),
+        ref_el("javascript:t", "go"),
+    ]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_danger("img-alt trailing backslash C:\\", &md);
+}
+
+// ── Plain heading (2024): must NOT gain a visible \( ─────────────────────
+#[test]
+fn test_heading_plain_parens_render_without_backslashes() {
+    let h = heading_h2(vec![DomNode::Text("(2024)".into())]);
+    let md = MarkdownLowerer::lower(&h, None);
+    // `lower_inline` single-escapes raw parens -> `\(2024\)`, which CommonMark
+    // RENDERS as `(2024)` (the backslash is an invisible escape prefix, NOT a
+    // visible glyph). The regression guard is: NO **double** backslash before a
+    // paren, which WOULD render a visible backslash.
+    assert!(md.contains("## "), "heading marker present, got: {md}");
+    assert!(
+        !md.contains(r"\\(2024\\)"),
+        "plain parens must NOT be double-escaped (visible backslash), got: {md}"
+    );
+}
+
+// ── <code>func(a, b)</code>: must NOT gain a visible \( inside code ─────
+#[test]
+fn test_heading_code_parens_render_without_backslashes() {
+    let h = heading_h2(vec![
+        DomNode::Text("Use ".into()),
+        code_el("func(a, b)"),
+        DomNode::Text(" now".into()),
+    ]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert!(
+        md.contains("`func(a, b)`"),
+        "func(a, b) code must stay clean (no \\(), got: {md}"
+    );
+    assert!(
+        !md.contains("func\\"),
+        "no backslash inside func code, got: {md}"
+    );
+}
+
+// ── Safe https link in a heading: inert text posture ─────────────────────
+#[test]
+fn test_heading_safe_https_link_rendered_inert() {
+    let h = heading_h2(vec![ref_el("https://example.com", "docs")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    // All constructed links are neutralized to inert literal text in headings.
+    assert!(
+        md.contains("\\[docs\\]"),
+        "https link must be inert text, got: {md}"
+    );
+    assert!(
+        md.contains("https://example.com"),
+        "url text preserved, got: {md}"
+    );
+}
+
+// ── Multiple code spans + a link ────────────────────────────────────────
+#[test]
+fn test_heading_multiple_code_spans_then_link_neutralized() {
+    let h = heading_h2(vec![
+        code_el("a\\`b"),
+        code_el("x"),
+        code_el("C:\\"),
+        ref_el("javascript:alert(1)", "go"),
+    ]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_danger("multiple code spans + link", &md);
+}
+
+// ── escape_heading_links as a pure function (stateless-bracket pass) ────
+#[test]
+fn test_escape_heading_links_pure_stateless() {
+    // Empty input stays empty.
+    assert_eq!(escape_heading_links(""), "");
+    // Bracket set all neutralized.
+    assert_eq!(escape_heading_links("["), "\\[");
+    assert_eq!(escape_heading_links("]"), "\\]");
+    assert_eq!(escape_heading_links("("), "\\(");
+    assert_eq!(escape_heading_links(")"), "\\)");
+    // Already-escaped (raw text) brackets are NOT double-escaped.
+    // Realistic already-escaped raw text is preserved exactly:
+    assert_eq!(escape_heading_links(r"\(2024\)"), r"\(2024\)");
+    // Backslash escape pairs are preserved verbatim.
+    assert_eq!(escape_heading_links(r"a\.b\*c"), r"a\.b\*c");
+    // A code span's interior is preserved verbatim (brackets stay clean).
+    assert_eq!(escape_heading_links("`func(a, b)`"), "`func(a, b)`");
+    assert_eq!(escape_heading_links("`x[0]`"), "`x[0]`");
+    // Code span + trailing link: delimiter escaped, code intact.
+    assert_eq!(
+        escape_heading_links("`C:\\`[docs](javascript:x)"),
+        "`C:\\`\\[docs\\]\\(javascript:x\\)"
+    );
+    // Leading/trailing backslash outside a span is preserved (no crash).
+    assert_eq!(escape_heading_links(r"\ end"), r"\ end");
+    assert_eq!(escape_heading_links(r"start \"), r"start \");
+    // Mixed: raw escaped text + constructed link + code span.
+    assert_eq!(
+        escape_heading_links(r"a \(b\) [c](url) `d[0]`"),
+        r"a \(b\) \[c\]\(url\) `d[0]`"
+    );
+}
+
+// ── Double code span with inner backtick stays balanced + link dead ─────
+#[test]
+fn test_heading_double_backtick_code_span_link_neutralized() {
+    // Content with an inner backtick must be wrapped in MORE backticks so the
+    // span is well-formed; the following link must still be neutralized.
+    let h = heading_h2(vec![code_el("a`b`c"), ref_el("javascript:m", "go")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_danger("double-backtick code span + link", &md);
+}
+
+// ── Regression: img alt backtick + javascript link must not leak ────────
+#[test]
+fn test_heading_img_alt_backtick_javascript_link_neutralized() {
+    let h = heading_h2(vec![
+        img_el("javascript:z", "a`b"),
+        ref_el("javascript:y", "go"),
+    ]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_danger("img-alt backtick + js link", &md);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// The image alt attribute shares the same desync class as <code>: a
+// backslash immediately before a backtick in the alt desyncs the neutralizer
+// attribute) must NOT leave a following dangerous link / image src LIVE
+// out of a heading. The <code> arm was fixed earlier; the <img alt> arm
+// still used the fragile `.replace('`', "\\`")` escape (which emits a
+// bare backtick after consuming the `\\` pair), so the neutralizer must
+// survive these inputs and keep every dangerous destination inert.
+// and pass after the escape_inline_fragment canonicalization.
+// ════════════════════════════════════════════════════════════════════════
+//
+// ── Backslash+backtick in <img alt> + a dangerous link ────────────
+#[test]
+fn test_heading_img_alt_backslash_backtick_javascript_link_neutralized() {
+    // alt = a, backslash, backtick, b — a backslash before a backtick must
+    let h = heading_h2(vec![
+        img_el("javascript:v", "a\\`b"),
+        ref_el("javascript:alert(1)", "go"),
+    ]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_danger("img-alt backslash+backtick + javascript link", &md);
+}
+
+// ── Backslash+backtick in <img alt> + a dangerous image src ────────
+#[test]
+fn test_heading_img_alt_backslash_backtick_image_src_neutralized() {
+    // A following <img src="javascript:q"> must also be neutralized.
+    let h = heading_h2(vec![
+        img_el("javascript:v", "a\\`b"),
+        img_el("javascript:q", "pic"),
+    ]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert!(
+        !md.contains("](javascript:q)"),
+        "img-alt backslash+backtick must not leave image src live, got: {md}"
+    );
+    assert_no_live_danger("img-alt backslash+backtick + image dst", &md);
+}
+
+// ── Backslash+backtick in <img alt> + data/vbscript/file links ─────
+#[test]
+fn test_heading_img_alt_backslash_backtick_other_schemes_neutralized() {
+    for &t in &DANGEROUS_TARGETS[1..] {
+        let h = heading_h2(vec![img_el("javascript:v", "a\\`b"), ref_el(t, "go")]);
+        let md = MarkdownLowerer::lower(&h, None);
+        let scheme = t.split(':').next().unwrap();
+        assert!(
+            !md.contains(&format!("]({t}")),
+            "img-alt backslash+backtick + {scheme} link leaked: {md}"
+        );
+    }
+}
+
+// ── Trailing backslash in <img alt> + data/vbscript/file links ─────
+#[test]
+fn test_heading_img_alt_trailing_backslash_other_schemes_neutralized() {
+    for &t in &DANGEROUS_TARGETS[1..] {
+        let h = heading_h2(vec![img_el("javascript:v", "C:\\"), ref_el(t, "go")]);
+        let md = MarkdownLowerer::lower(&h, None);
+        let scheme = t.split(':').next().unwrap();
+        assert!(
+            !md.contains(&format!("]({t}")),
+            "img-alt trailing backslash + {scheme} link leaked: {md}"
+        );
+    }
+}
+
+// ── Property / fuzz sweep (deterministic): the invariant must hold for any
+// raw text / code / img-alt built from arbitrary `\`, backticks, and
+// brackets, followed by ANY dangerous-scheme <ref> / <a> / <img src> link.
+// No live dangerous link/image may survive out of a heading.
+#[test]
+fn test_heading_property_sweep_no_dangerous_link_or_image_leaks() {
+    // Adversarial raw fragments drawn from every desync vector: odd backticks,
+    // backslash+backtick, trailing backslash, bare backslash, closing-only
+    // brackets, long backtick runs, leading/trailing delimiters.
+    let alt_fragments = [
+        "a\\`b",     // backslash immediately before backtick
+        "tick`back", // odd single backtick
+        "C:\\",      // trailing backslash (Windows path)
+        "\\",        // bare single backslash
+        "`",         // lone backtick
+        "```",       // triple backtick run
+        "`x[",       // open bracket after backtick
+        "x[0]",      // brackets
+        "a`,b\\`",   // mixed backtick/backslash
+        "\\\\`",     // escaped backslash then backtick (two backslashes then a backtick)
+        "",          // empty
+        "plain",     // no specials
+    ];
+    // Every dangerous destination form: <ref> link, <a> link, <img src>.
+    for &frag in &alt_fragments {
+        for &t in &DANGEROUS_TARGETS {
+            // Dangerous <ref> link after an img with this alt.
+            let h = heading_h2(vec![img_el("javascript:v", frag), ref_el(t, "go")]);
+            let md = MarkdownLowerer::lower(&h, None);
+            assert!(
+                !md.contains(&format!("]({t}")),
+                "alt={frag:?} + {t} ref link leaked: {md}"
+            );
+            // Dangerous <img src> after an img with this alt.
+            let h2 = heading_h2(vec![img_el("javascript:v", frag), img_el(t, "pic")]);
+            let md2 = MarkdownLowerer::lower(&h2, None);
+            assert!(
+                !md2.contains(&format!("]({t}")),
+                "alt={frag:?} + {t} img src leaked: {md2}"
+            );
+        }
+        // Dangerous <ref> link after a <code> with this content.
+        for &t in &DANGEROUS_TARGETS {
+            let h = heading_h2(vec![code_el(frag), ref_el(t, "go")]);
+            let md = MarkdownLowerer::lower(&h, None);
+            assert!(
+                !md.contains(&format!("]({t}")),
+                "code={frag:?} + {t} ref link leaked: {md}"
+            );
+            let h2 = heading_h2(vec![code_el(frag), img_el(t, "pic")]);
+            let md2 = MarkdownLowerer::lower(&h2, None);
+            assert!(
+                !md2.contains(&format!("]({t}")),
+                "code={frag:?} + {t} img src leaked: {md2}"
+            );
+        }
+    }
+}
+
+// ── Opposite: no OVER-escaping. Plain parens and code-with-brackets render
+// with NO visible backslash, and a safe https link is preserved.
+#[test]
+fn test_heading_neutralizer_does_not_over_escape() {
+    // Plain (2024) — single-escaped, no double backslash (no visible \().
+    let h = heading_h2(vec![DomNode::Text("Quantum (2024)".into())]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert!(
+        !md.contains(r"\\(2024\\)"),
+        "plain parens must not be double-escaped, got: {md}"
+    );
+    // Code with brackets/parens stays clean (no backslash inside the span).
+    let h2 = heading_h2(vec![code_el("func(a, b)"), code_el("x[0]")]);
+    let md2 = MarkdownLowerer::lower(&h2, None);
+    assert!(
+        md2.contains("`func(a, b)`"),
+        "func parens clean, got: {md2}"
+    );
+    assert!(md2.contains("`x[0]`"), "code brackets clean, got: {md2}");
+    assert!(
+        !md2.contains("func\\"),
+        "no visible backslash in func, got: {md2}"
+    );
+    // Safe https link in heading stays inert literal text.
+    let h3 = heading_h2(vec![ref_el("https://example.com", "docs")]);
+    let md3 = MarkdownLowerer::lower(&h3, None);
+    assert!(
+        md3.contains("https://example.com"),
+        "url text kept, got: {md3}"
+    );
+    assert!(
+        !md3.contains("](https://"),
+        "no live https link, got: {md3}"
     );
 }

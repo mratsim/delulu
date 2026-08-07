@@ -98,20 +98,19 @@ fn test_extraction_regression() {
     // Snapshot comparison: update with UPDATE_EXPECTED=1
     let expected = r#"
             
-                ## Understanding Quantum Computing: A Comprehensive Guide
+                
+                Quantum computing represents a fundamental shift in how we approach computation. Unlike classical computers that use bits representing either 0 or 1, quantum computers use quantum bits or qubits that can exist in multiple states simultaneously through superposition. This property, combined with entanglement and quantum interference, enables quantum computers to solve certain problems exponentially faster than their classical counterparts.
 
 
-                Quantum computing represents a fundamental shift in how we approach computation\. Unlike classical computers that use bits representing either 0 or 1, quantum computers use quantum bits or qubits that can exist in multiple states simultaneously through superposition\. This property, combined with entanglement and quantum interference, enables quantum computers to solve certain problems exponentially faster than their classical counterparts\.
+                The field has seen remarkable progress in recent years. Major technology companies including Google, IBM, and Microsoft have invested heavily in quantum computing research and development. Google's Sycamore processor demonstrated quantum supremacy in 2019 by performing a calculation in 200 seconds that would take a classical supercomputer approximately 10,000 years to complete.
 
 
-                The field has seen remarkable progress in recent years\. Major technology companies including Google, IBM, and Microsoft have invested heavily in quantum computing research and development\. Google's Sycamore processor demonstrated quantum supremacy in 2019 by performing a calculation in 200 seconds that would take a classical supercomputer approximately 10,000 years to complete\.
-
-
-                However, significant challenges remain before quantum computers become practical for everyday use\. Quantum decoherence, error correction, and the need for extremely low operating temperatures are just a few of the obstacles that researchers continue to address\. Despite these challenges, the potential applications in cryptography, drug discovery, materials science, and optimization problems make quantum computing one of the most exciting frontiers in modern technology\.
+                However, significant challenges remain before quantum computers become practical for everyday use. Quantum decoherence, error correction, and the need for extremely low operating temperatures are just a few of the obstacles that researchers continue to address. Despite these challenges, the potential applications in cryptography, drug discovery, materials science, and optimization problems make quantum computing one of the most exciting frontiers in modern technology.
 
 
             
         "#;
+
     if md != expected {
         eprintln!("--- ACTUAL OUTPUT ({} chars) ---", md.len());
         eprintln!("{}", md);

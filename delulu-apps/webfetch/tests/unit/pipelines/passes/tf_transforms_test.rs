@@ -587,11 +587,11 @@ fn test_tf_convert_accordion_native_details_untouched() {
     );
 }
 
-// ── SLOP-002: pretty-printed HTML (whitespace text / comment before button) ──
+// ── Pretty-printed HTML (whitespace text / comment before the button) ──
 
 #[test]
 fn test_tf_convert_accordion_pretty_printed_leading_whitespace_and_comment() {
-    // Regression (SLOP-002): pretty-printed HTML inserts whitespace text nodes
+    // Regression: pretty-printed HTML inserts whitespace text nodes
     // (and possibly comments) before the button. Detection must locate the
     // first ELEMENT child by index, not the literal first DOM node, or the
     // pass silently no-ops and tf_remove_cleaned destroys the question text.
@@ -621,11 +621,11 @@ fn test_tf_convert_accordion_pretty_printed_leading_whitespace_and_comment() {
     );
 }
 
-// ── SLOP-005: text-less / icon-only toggle buttons are left alone ─────────
+// ── Text-less / icon-only toggle buttons are left alone ────────────────
 
 #[test]
 fn test_tf_convert_accordion_textless_toggle_button_left_alone() {
-    // Regression (SLOP-005): a button with no visible text (empty, or
+    // Regression: a button with no visible text (empty, or
     // icon-only) must NOT be converted — it would produce an empty `### `
     // heading. The container stays a div and tf_remove_cleaned handles the
     // button as before.
@@ -663,7 +663,7 @@ fn test_tf_convert_accordion_textless_toggle_button_left_alone() {
     );
 }
 
-// ── SLOP-001: icon text nested in a NON-aria-hidden wrapper is still dropped ──
+// ── Icon text nested in a NON-aria-hidden wrapper is still dropped ───────
 
 #[test]
 fn test_tf_convert_accordion_drops_svg_text_even_without_aria_hidden_wrapper() {
@@ -683,11 +683,11 @@ fn test_tf_convert_accordion_drops_svg_text_even_without_aria_hidden_wrapper() {
     );
 }
 
-// ── SLOP-102: aria-hidden="false" (explicitly VISIBLE) text must survive ───
+// ── aria-hidden="false" (explicitly VISIBLE) text must survive ──────────
 
 #[test]
 fn test_tf_convert_accordion_aria_hidden_false_text_survives() {
-    // Regression (SLOP-102): collect_visible_text matched aria-hidden by KEY
+    // Regression: collect_visible_text matched aria-hidden by KEY
     // presence, so aria-hidden="false" (explicitly VISIBLE per ARIA) text was
     // silently destroyed — the trimmed summary went empty and the conversion
     // was skipped, letting tf_remove_cleaned delete the question entirely.
@@ -709,7 +709,7 @@ fn test_tf_convert_accordion_aria_hidden_false_text_survives() {
 
 #[test]
 fn test_tf_convert_accordion_aria_hidden_false_kept_in_summary() {
-    // Regression (SLOP-102): an aria-hidden="false" span among the question
+    // Regression: an aria-hidden="false" span among the question
     // text (e.g. "(updated 2024)") must be kept in the summary, not dropped.
     let mut root = parse_html(
         r#"<div><button aria-expanded="false"><span>Question?</span><span aria-hidden="false">(updated 2024)</span></button><div><div>Answer text.</div></div></div>"#,
@@ -779,9 +779,12 @@ fn collect_tag_count(node: &DomNode, tag: &str, count: &mut usize) {
 
 #[test]
 fn test_code_header_label_hoists_language_and_removes_label() {
-    // <p>BASH</p><pre>code</pre> — the label becomes the fence language and
-    // is deleted (its content is fully represented by the fence info string).
-    let mut root = parse_html("<p>BASH</p><pre>pip install sglang</pre>").unwrap();
+    // <p class="codeblock-header">BASH</p><pre>code</pre> — a classed chrome
+    // label (real chrome pills retain their wrapper class after
+    // tf_canonicalize_unwrap_containers) becomes the fence language and is
+    // deleted (its content is fully represented by the fence info string).
+    let mut root =
+        parse_html("<p class=\"codeblock-header\">BASH</p><pre>pip install sglang</pre>").unwrap();
     tf_convert_code_header_label(&mut root);
     let pre = find_node_matching(&root, "pre").expect("pre exists");
     assert_eq!(
@@ -821,6 +824,218 @@ fn test_code_header_label_requires_adjacent_sibling() {
     assert!(
         root.text_content().contains("Python"),
         "non-adjacent paragraph must survive"
+    );
+}
+
+// ── Legitimate content is never deleted ──────────────────────────
+
+#[test]
+fn test_code_header_label_heading_not_deleted() {
+    // <h2>Python</h2><pre> — the heading is a <head> element (this pass
+    // doesn't convert headings), not a p/span/div chrome label, so it must
+    // survive and no language may be hoisted.
+    let mut root = parse_html("<h2>Python</h2><pre>print(1)</pre>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        None,
+        "no language hoisted from a heading"
+    );
+    assert!(
+        root.text_content().contains("Python"),
+        "heading label must survive, got: {}",
+        root.text_content()
+    );
+    assert!(find_tag(&root, "h2"), "<h2> must survive");
+}
+
+#[test]
+fn test_code_header_label_list_item_not_deleted() {
+    // <ul><li>Go</li></ul><pre> — the li is not a p/span/div chrome label.
+    let mut root = parse_html("<ul><li>Go</li></ul><pre>package main</pre>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        None,
+        "no language hoisted from an li"
+    );
+    assert!(
+        root.text_content().contains("Go"),
+        "li label must survive, got: {}",
+        root.text_content()
+    );
+    assert!(find_tag(&root, "li"), "<li> must survive");
+}
+
+#[test]
+fn test_code_header_label_consecutive_pre_not_deleted() {
+    // Two consecutive <pre> elements where the first contains only "R": the
+    // first pre is a code block, not a chrome label — it must survive.
+    let mut root = parse_html("<pre>R</pre><pre>fn main() {}</pre>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let text = root.text_content();
+    assert!(
+        text.contains("R"),
+        "first pre (content 'R') must survive, got: {text}"
+    );
+    assert!(text.contains("fn main() {}"), "second pre must survive");
+}
+
+#[test]
+fn test_code_header_label_summary_not_deleted() {
+    // <details><summary>Python</summary><pre>...</pre></details> — the
+    // summary is not a p/span/div chrome label, so both it and the details
+    // structure must survive.
+    let mut root =
+        parse_html("<details><summary>Python</summary><pre>print(1)</pre></details>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    assert!(find_tag(&root, "details"), "<details> must survive");
+    assert!(find_tag(&root, "summary"), "<summary> must survive");
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        None,
+        "no language hoisted from a summary"
+    );
+    assert!(
+        root.text_content().contains("Python"),
+        "summary text must survive, got: {}",
+        root.text_content()
+    );
+}
+
+#[test]
+fn test_code_header_label_div_chrome_label_still_hoisted() {
+    // <div class="codeblock-header">BASH</div><pre> — a div is a chrome label
+    // element, so the language is hoisted and the div deleted.
+    let mut root =
+        parse_html("<div class=\"codeblock-header\">BASH</div><pre>pip install sglang</pre>")
+            .unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        Some("language-bash"),
+        "div chrome label language must be hoisted"
+    );
+    assert!(
+        !root.text_content().contains("BASH"),
+        "div chrome label must be removed, got: {}",
+        root.text_content()
+    );
+}
+
+#[test]
+fn test_code_header_label_pre_with_language_keeps_label() {
+    // A pre that already carries class="language-python" with a preceding
+    // <p>BASH</p> label: the label must SURVIVE (no double/overwrite), and the
+    // language must NOT be overwritten.
+    let mut root = parse_html("<p>BASH</p><pre class=\"language-python\">print(1)</pre>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        Some("language-python"),
+        "existing language must not be overwritten"
+    );
+    assert!(
+        root.text_content().contains("BASH"),
+        "label must survive when pre already has a language, got: {}",
+        root.text_content()
+    );
+}
+
+#[test]
+fn test_code_header_label_bare_p_language_word_not_deleted() {
+    // <p>Go</p><pre>package main</pre> — a bare <p> with no class whose text
+    // is a single language word is REAL content (the Finding-4 headline
+    // case), indistinguishable from a chrome pill. Because it carries no
+    // class, it must survive and NO language may be hoisted.
+    let mut root = parse_html("<p>Go</p><pre>package main</pre>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        None,
+        "no language hoisted from a class-less paragraph"
+    );
+    assert!(
+        root.text_content().contains("Go"),
+        "bare <p>Go</p> paragraph must survive, got: {}",
+        root.text_content()
+    );
+    assert!(find_tag(&root, "p"), "<p>Go</p> must survive");
+}
+
+#[test]
+fn test_code_header_label_bare_div_section_header_not_deleted() {
+    // <div>Python</div><pre>print(1)</pre> — a real section header <div> with
+    // no class is genuine content, not a chrome pill. It must survive and no
+    // language may be hoisted.
+    let mut root = parse_html("<div>Python</div><pre>print(1)</pre>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        None,
+        "no language hoisted from a class-less section div"
+    );
+    assert!(
+        root.text_content().contains("Python"),
+        "bare <div>Python</div> section header must survive, got: {}",
+        root.text_content()
+    );
+    assert!(find_tag(&root, "div"), "<div>Python</div> must survive");
+}
+
+#[test]
+fn test_code_header_label_section_title_class_not_deleted() {
+    // <div class="section-title">go</div><pre>package main</pre> — a classed
+    // content element whose class does NOT correlate with a code/highlight/
+    // header chrome theme. Such content must survive with NO language hoisted;
+    // only a chrome-correlating class on the label triggers hoisting/deletion.
+    let mut root =
+        parse_html("<div class=\"section-title\">go</div><pre>package main</pre>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        None,
+        "no language hoisted from a section-title div"
+    );
+    assert!(
+        root.text_content().contains("go"),
+        "section-title div text must survive, got: {}",
+        root.text_content()
+    );
+    assert!(
+        find_tag(&root, "div"),
+        "<div class=section-title> must survive"
+    );
+}
+
+#[test]
+fn test_code_header_label_highlight_class_hoists_as_chrome() {
+    // <p class="highlight">python</p><pre>print(1)</pre> — `highlight` is a
+    // chrome-correlating class token (a highlighted language pill), so this is
+    // treated as chrome: the language is hoisted and the label deleted. This is
+    // the intended, defensible direction (an actual highlighted-note paragraph
+    // with a single language word is an edge, but `highlight` strongly
+    // implies code chrome).
+    let mut root = parse_html("<p class=\"highlight\">python</p><pre>print(1)</pre>").unwrap();
+    tf_convert_code_header_label(&mut root);
+    let pre = find_node_matching(&root, "pre").expect("pre exists");
+    assert_eq!(
+        get_attr(pre, "class"),
+        Some("language-python"),
+        "highlight label language must be hoisted"
+    );
+    assert!(
+        !root.text_content().contains("python"),
+        "highlight chrome label must be removed, got: {}",
+        root.text_content()
     );
 }
 

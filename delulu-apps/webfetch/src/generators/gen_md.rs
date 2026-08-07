@@ -250,6 +250,114 @@ fn escape_markdown(text: &str) -> String {
     result
 }
 
+/// Canonicalize a RAW inline fragment so it is safe to embed in a markdown
+/// line AND cannot desync the heading link-neutralizer (`escape_heading_links`).
+///
+/// This is the single source of truth for making raw-emission content (e.g.
+/// an `<img alt>` attribute) inert before it enters a heading string. It
+/// escapes:
+///   1. every `[`/`]`/`(`/`)` bracket/paren (escape_markdown semantics),
+///   2. backticks, so no naked backtick can open an ambiguous code-span run,
+///   3. backslashes (including a lone TRAILING backslash), so a `\` at the
+///      end of a fragment cannot form an escape-pair with the next character.
+///
+/// `escape_markdown` already performs 1-3 (plus the other markdown specials);
+/// this wrapper pins the contract that every raw inline fragment feeding a
+/// heading goes through the SAME canonicalization, so the invariant
+/// "an unescaped `[`/`]`/`(`/`)` is a constructed link delimiter" holds
+/// globally. It is a no-op for content with no special characters.
+fn escape_inline_fragment(s: &str) -> String {
+    escape_markdown(s)
+}
+
+/// Neutralize markdown link/emphasis delimiters in a heading WITHOUT
+/// double-escaping already-escaped raw text.
+///
+/// `lower_inline` already runs `escape_markdown` on every raw text node, so
+/// a plain `(2024)` becomes `\(2024\)` (single-escaped) and a constructed
+/// `<ref>/<a>/<img>` is emitted as live `[docs](url)` / `![alt](src)` with
+/// **unescaped** brackets. Re-running `escape_markdown` on the whole string
+/// would re-escape the backslashes (`\(`) and show a *visible* `\(` on
+/// render. Instead we escape only the *unescaped* `[`/`]`/`(`/`)` markers that
+/// `lower_inline` injected for constructed links/images, turning them into
+/// inert literal text (a `javascript:`/`data:`/`vbscript:`/`file:` link or
+/// image src can never stay live out of an ATX line).
+///
+/// ## Robustness
+///
+/// This pass is **code-span aware**, but deliberately NOT a fragile
+/// backtick-toggle machine. An inline `<code>` span is emitted as a raw
+/// backtick span whose content is *literal* CommonMark (a backtick run of
+/// length N closes a span opened by a run of length >= N; shorter interior
+/// runs and `\`-escapes inside the span are plain content). The walker
+/// therefore tracks only the opened delimiter run and copies every code span
+/// verbatim — it can never desync on:
+///   * an odd number of inner backticks,
+///   * a backslash immediately before a backtick,
+///   * content ending in a single backslash such as a Windows path `C:\`
+///     — the trailing `\` is literal span content, NOT an escape
+///     pair that would eat the closing backtick and turn a following link
+///     delimiters into a LIVE link.
+///
+/// Brackets/parens OUTSIDE any code span are genuine link/image delimiters
+/// and are escaped (made inert); inside a span they are preserved verbatim so
+/// `` `func(a, b)` `` and `` `a[0]` `` render cleanly with no backslash.
+fn escape_heading_links(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    // Length of the backtick run that opened the current code span, if any.
+    let mut open_run: Option<usize> = None;
+    while let Some(c) = chars.next() {
+        if c == '`' {
+            // Count the full contiguous backtick run.
+            let mut run = 1;
+            while chars.peek() == Some(&'`') {
+                chars.next();
+                run += 1;
+            }
+            match open_run {
+                None => {
+                    // Opens a code span; its interior is literal content, so
+                    // brackets/parens inside must be preserved (no escape).
+                    open_run = Some(run);
+                    out.push_str(&"`".repeat(run));
+                }
+                Some(open) if run >= open => {
+                    // A backtick run >= the opener closes the span. The run may
+                    // be LONGER than the opener when two code spans sit next to
+                    // each other (close-run + next open-run merge into one run);
+                    // the surplus backticks reopen a new span so a following
+                    // link is still correctly seen as OUTSIDE any code span.
+                    out.push_str(&"`".repeat(run));
+                    let surplus = run - open;
+                    open_run = if surplus > 0 { Some(surplus) } else { None };
+                }
+                Some(_) => {
+                    // A shorter interior run is literal span content.
+                    out.push_str(&"`".repeat(run));
+                }
+            }
+        } else if c == '\\' && open_run.is_none() {
+            // Outside a code span, keep an existing escape sequence
+            // (already-escaped raw text) as-is so it is not double-escaped.
+            out.push(c);
+            if let Some(&n) = chars.peek() {
+                out.push(n);
+                chars.next();
+            }
+        } else if open_run.is_none() && matches!(c, '[' | ']' | '(' | ')') {
+            // Outside a code span, an unescaped bracket/paren can only come
+            // from a constructed link/image marker — make it inert literal
+            // text.
+            out.push('\\');
+            out.push(c);
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // MarkdownLowerer
 // ---------------------------------------------------------------------------
@@ -306,10 +414,16 @@ impl MarkdownLowerer {
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 let level = tag[1..].parse::<usize>().unwrap_or(1);
                 let prefix = "#".repeat(level);
-                let text = children
-                    .iter()
-                    .map(|c| c.text_content())
-                    .collect::<String>();
+                // Build heading text via the inline lowering path so inline
+                // links/code/emphasis survive, then collapse attacker newlines
+                // and trim it. lower_inline already escapes every raw text
+                // node; escape_heading_links neutralizes ONLY the constructed
+                // link delimiters so plain text is never double-escaped.
+                let text = escape_heading_links(
+                    Self::lower_inline(children, base_url)
+                        .replace('\n', " ")
+                        .trim(),
+                );
                 out.push_str(&prefix);
                 out.push(' ');
                 out.push_str(&text);
@@ -326,10 +440,17 @@ impl MarkdownLowerer {
                     && (1..=6).contains(&level)
                 {
                     let prefix = "#".repeat(level);
-                    let text = children
-                        .iter()
-                        .map(|c| c.text_content())
-                        .collect::<String>();
+                    // Build heading text via the inline lowering path so inline
+                    // links/code/emphasis survive, then collapse attacker
+                    // newlines and trim it. lower_inline already escapes every
+                    // raw text node; escape_heading_links neutralizes ONLY the
+                    // constructed link delimiters so plain text is never
+                    // double-escaped.
+                    let text = escape_heading_links(
+                        Self::lower_inline(children, base_url)
+                            .replace('\n', " ")
+                            .trim(),
+                    );
                     // Block-level output: ensure the heading lands at
                     // line-start even when the preceding sibling was loose
                     // text — a `### ` marker glued mid-line is body text, not
@@ -451,11 +572,19 @@ impl MarkdownLowerer {
             // ── Images ─────────────────────────────────────────────────
             "img" => {
                 let src = node.attr("src").unwrap_or("");
-                let alt = node.attr("alt").unwrap_or("");
+                // Canonicalize the alt as raw inline content via
+                // escape_inline_fragment (escape_markdown). This escapes any
+                // brackets/parens, backticks, and backslashes (including a lone
+                // trailing backslash) in the alt BEFORE it enters the heading
+                // string. Critically it doubles a backslash that precedes a
+                // backtick, so escape_heading_links consumes both as a complete
+                // escape pair and can never leave a bare backtick to open a
+                // phantom code span (the backslash-before-backtick desync class).
+                let alt = escape_inline_fragment(node.attr("alt").unwrap_or(""));
                 let resolved = resolve_url(src, base_url);
                 out.push('!');
                 out.push('[');
-                out.push_str(alt);
+                out.push_str(&alt);
                 out.push_str("](");
                 out.push_str(&resolved);
                 out.push(')');
@@ -512,16 +641,51 @@ impl MarkdownLowerer {
 
             // ── Inline code ────────────────────────────────────────────
             "code" => {
-                // Inline code is structurally `<code>`; render as inline
-                // backticks, collapsing newlines to spaces so a degenerate
+                // Inline code is structurally `<code>`; render as an inline
+                // backtick span, collapsing newlines to spaces so a degenerate
                 // multi-line inline <code> stays valid inline markdown.
                 let text = children
                     .iter()
                     .map(|c| c.text_content())
                     .collect::<String>();
-                out.push('`');
-                out.push_str(&text.replace('\n', " "));
-                out.push('`');
+                let content = text.replace('\n', " ");
+                // CommonMark code spans are parsed by BACKTICK-RUN LENGTH: the
+                // span opens/closes with a backtick run and its interior (literal
+                // content) may hold shorter runs. To keep the emitted span
+                // well-formed for ANY content we wrap it in ONE MORE backtick than
+                // the longest interior run, so interior backticks stay literal
+                // (no visible backslash: `func(a, b)`, `a`b`, `C:\` all stay clean).
+                // The ONE degenerate case that can never be wrapped safely is
+                // content with a leading or trailing backtick: that backtick would
+                // merge with the wrapping delimiter into a single longer unclosed
+                // run, letting a following dangerous link bypass the neutralizer.
+                // For that case we fall back to emitting the whole fragment as
+                // canonicalized literal text (escape_inline_fragment), which is
+                // provably safe because no bare backtick run survives to desync
+                // the heading link-neutralizer.
+                // An empty inline <code> renders as nothing: emitting the empty
+                // span (`` ``) would look like a single unclosed backtick run to
+                // the heading neutralizer and let a following link bypass it.
+                if content.is_empty() {
+                    // skip
+                } else if content.starts_with('`') || content.ends_with('`') {
+                    out.push_str(&escape_inline_fragment(&content));
+                } else {
+                    let max_run = content
+                        .chars()
+                        .fold((0usize, 0usize), |(cur, mx), ch| {
+                            if ch == '`' {
+                                (cur + 1, mx.max(cur + 1))
+                            } else {
+                                (0, mx)
+                            }
+                        })
+                        .1;
+                    let delim = "`".repeat(max_run + 1);
+                    out.push_str(&delim);
+                    out.push_str(&content);
+                    out.push_str(&delim);
+                }
             }
 
             // ── Math (LaTeXML MathML) ────────────────────────────────
@@ -736,6 +900,11 @@ impl MarkdownLowerer {
         for row in &md_rows {
             for (j, cell) in row.iter().enumerate() {
                 col_widths[j] = col_widths[j].max(cell.len());
+                // Bound the alignment width: a single pathological wide cell
+                // must not amplify right-padding across all N rows to
+                // O(N * max_cell_width) — cap each column at 64 chars so
+                // output stays O(N * M * 64).
+                col_widths[j] = col_widths[j].min(64);
             }
         }
 
@@ -781,10 +950,16 @@ impl MarkdownLowerer {
         out.push('\n');
     }
 
-    /// Cap output size to MAX_OUTPUT_SIZE bytes.
+    /// Cap output size to MAX_OUTPUT_SIZE bytes, truncating at the last
+    /// UTF-8 char boundary <= MAX_OUTPUT_SIZE so `truncate` never panics
+    /// mid-character on multibyte output (CJK/emoji pages).
     fn cap_size(mut s: String) -> String {
         if s.len() > MAX_OUTPUT_SIZE {
-            s.truncate(MAX_OUTPUT_SIZE);
+            let mut end = MAX_OUTPUT_SIZE;
+            while end > 0 && !s.is_char_boundary(end) {
+                end -= 1;
+            }
+            s.truncate(end);
             s.push_str("\n\n[truncated: output exceeded 500 KiB]");
         }
         s
