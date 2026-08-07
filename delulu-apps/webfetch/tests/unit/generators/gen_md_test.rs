@@ -920,6 +920,27 @@ fn test_lower_single_line_code_inline_backticks() {
     assert_eq!(md, "`inline`", "single-line code stays inline, got: {md}");
 }
 
+#[test]
+fn test_lower_multiline_code_fence_longer_than_interior_backtick_run() {
+    // Regression: a `<pre>` whose content contains a line with 4 consecutive
+    // backticks must be fenced with a 5-backtick delimiter so the interior
+    // run cannot close the block early and leak the rest as markdown.
+    let node = pre_node(
+        &[("class", "language-bash")],
+        "line1\n````dangerous```\nline2",
+    );
+    let md = MarkdownLowerer::lower(&node, None);
+    assert!(
+        md.contains("`````bash\nline1\n````dangerous```\nline2\n`````\n\n"),
+        "fence must be longer than the interior 4-backtick run, got: {md}",
+    );
+    assert!(
+        !md.lines()
+            .any(|l| l.starts_with("dangerous") && !l.starts_with("`````")),
+        "no content may leak outside the fenced block, got: {md}",
+    );
+}
+
 // ── SPEC-001: headings must land on a fresh line after loose text ─────────
 
 #[test]
@@ -953,6 +974,37 @@ fn test_lower_head_after_loose_text_starts_fresh_line() {
     assert!(
         !md.contains("benefit.###"),
         "heading must not glue onto the preceding text, got: {md}"
+    );
+}
+
+#[test]
+fn test_lower_html_heading_after_loose_text_starts_fresh_line() {
+    // An <h1>..<h6> element following loose text must start on a fresh line,
+    // or the `## ` marker is glued mid-line and is not a CommonMark heading.
+    let container = DomNode::Element {
+        tag: "div".into(),
+        attrs: vec![],
+        children: vec![
+            DomNode::Text("intro sentence.".into()),
+            DomNode::Element {
+                tag: "h2".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("Deep dive".into())],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            },
+        ],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    let md = MarkdownLowerer::lower(&container, None);
+    assert!(
+        md.contains("\n## Deep dive"),
+        "heading must start on a fresh line, got: {md}",
+    );
+    assert!(
+        !md.contains("sentence.##"),
+        "heading must not glue onto the preceding text, got: {md}",
     );
 }
 
@@ -1016,8 +1068,8 @@ fn test_lower_multiline_inline_code_in_paragraph_stays_inline() {
 fn test_lower_multiline_code_in_hi_wrapper_in_paragraph_stays_inline() {
     // Regression: tf_convert_formatting renames <strong> -> <hi>;
     // <hi> is an unknown container for gen_md and hits the `_` fallback. The
-    // fallback must thread the incoming inline_ctx through, or a multi-line
-    // <code> nested in the wrapper emits a mid-paragraph fence.
+    // fallback must keep the nested <code> inline, or a multi-line <code>
+    // nested in the wrapper emits a mid-paragraph fence.
     let p = DomNode::Element {
         tag: "p".into(),
         attrs: vec![],
@@ -1075,8 +1127,8 @@ fn test_lower_multiline_code_in_strong_wrapper_in_paragraph_stays_inline() {
 #[test]
 fn test_lower_multiline_code_in_del_wrapper_in_paragraph_stays_inline() {
     // Regression: <del> is an unknown container for gen_md (tf
-    // renames <del>/<s>/<strike> -> <del>); the `_` fallback must thread
-    // inline_ctx through so the multi-line code stays inline backticks.
+    // renames <del>/<s>/<strike> -> <del>); the `_` fallback must keep the
+    // nested multi-line code inline so it stays inline backticks.
     let p = DomNode::Element {
         tag: "p".into(),
         attrs: vec![],
@@ -1214,6 +1266,41 @@ fn test_lower_details_summary_block() {
     );
 }
 
+#[test]
+fn test_lower_details_summary_html_escapes_angle_brackets() {
+    // Regression: summary text is raw-HTML content, so attacker `<>` and `&`
+    // must be HTML-escaped (not markdown-escaped) so a `<` cannot break out
+    // of the raw-HTML summary and no literal backslashes appear.
+    let nodes = [DomNode::Element {
+        tag: "details".into(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "summary".into(),
+            attrs: vec![],
+            children: vec![DomNode::Text(
+                "Is SGLang (v0.3) <fast> & <reliable>?".into(),
+            )],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert!(
+        md.contains("<summary>Is SGLang (v0.3) &lt;fast&gt; &amp; &lt;reliable&gt;?</summary>"),
+        "summary must HTML-escape < > &, got: {md}",
+    );
+    assert!(
+        !md.contains("<summary>Is SGLang (v0.3) <fast>"),
+        "raw < must not survive in the summary, got: {md}",
+    );
+    assert!(
+        !md.contains('\\'),
+        "no markdown backslashes in the summary, got: {md}",
+    );
+}
+
 // ── Table cells: parens must NOT be backslash-escaped ────────────────
 
 #[test]
@@ -1249,14 +1336,55 @@ fn test_lower_table_cell_parens_not_escaped() {
     );
 }
 
+#[test]
+fn test_lower_table_cell_collapses_embedded_newline() {
+    // A cell whose TEXT contains an embedded newline must render as a single
+    // pipe row — the newline is collapsed to a space so it cannot break the
+    // GFM table structure.
+    let nodes = [DomNode::Element {
+        tag: "table".into(),
+        attrs: vec![],
+        children: vec![DomNode::Element {
+            tag: "tr".into(),
+            attrs: vec![],
+            children: vec![DomNode::Element {
+                tag: "td".into(),
+                attrs: vec![],
+                children: vec![DomNode::Text("hello\nworld".into())],
+                scores: std::collections::HashMap::new(),
+                metadata: std::collections::HashMap::new(),
+            }],
+            scores: std::collections::HashMap::new(),
+            metadata: std::collections::HashMap::new(),
+        }],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    let content_row = md
+        .lines()
+        .find(|l| l.starts_with('|') && l.contains("hello world"))
+        .expect("a pipe row carrying the cell text must exist, got: {md}");
+    assert!(
+        content_row.contains("hello world"),
+        "embedded newline must collapse to a space, content row: {content_row}",
+    );
+    assert!(
+        !content_row.contains('\n'),
+        "content row must not carry an embedded newline, content row: {content_row}",
+    );
+}
+
 // ── Heading code spans must not break the link/image neutralizer ──────
 //
 // The `<code>`/`<img>` arms emit raw content. If that content contains an odd
 // number of backticks, escape_heading_links' backtick-toggle ends desynced and a
 // following constructed javascript:/data:/vbscript:/file: link is left LIVE. The
-// fix escapes inner backticks (`` ` `` -> `\``) at emission so the emitted span
-// is always balanced, and the security invariant (NO live dangerous-scheme link
-// out of a heading) holds regardless of code/alt content.
+// inline `<code>` arm sizes its backtick delimiter to one more than the longest
+// interior backtick run so inner runs stay literal, and for the leading/
+// trailing-backtick edge case falls back to canonicalized literal text. Either
+// way the emitted span is always balanced, so the security invariant (NO live
+// dangerous-scheme link out of a heading) holds regardless of code/alt content.
 
 /// Build an `<h2>` with the given inline children (elements or text).
 fn heading_h2(children: Vec<DomNode>) -> DomNode {
@@ -1301,9 +1429,10 @@ fn img_el(src: &str, alt: &str) -> DomNode {
 
 #[test]
 fn test_heading_code_odd_backtick_no_live_javascript_link() {
-    // <code>a`b</code> emits an odd (3) backtick count, which must not
-    // buggy path (`a`b`), desyncing the toggle so the trailing javascript: link
-    // is left unescaped. Fails on the previous code (link leaks live), passes on fix.
+    // <code>a`b</code> emits an odd (3) backtick count. If that odd/even
+    // toggle were allowed to desync (the emitted span `a`b` is unbalanced), the
+    // trailing javascript: link would be left unescaped. The delimiter sizing
+    // must keep the span balanced so the link stays neutralized.
     let h = heading_h2(vec![code_el("a`b"), ref_el("javascript:alert(1)", "go")]);
     let md = MarkdownLowerer::lower(&h, None);
     assert!(

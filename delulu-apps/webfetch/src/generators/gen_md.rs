@@ -28,6 +28,31 @@ fn extract_code_block(node: &DomNode) -> (String, String) {
     (language, code)
 }
 
+/// Length of the longest consecutive run of backticks in `s` (0 if none).
+/// Used to size fenced-code delimiters so interior backtick runs never
+/// close the fence early.
+fn longest_backtick_run(s: &str) -> usize {
+    s.chars()
+        .fold((0usize, 0usize), |(cur, mx), ch| {
+            if ch == '`' {
+                (cur + 1, mx.max(cur + 1))
+            } else {
+                (0, mx)
+            }
+        })
+        .1
+}
+
+/// Escape text for safe inclusion as raw-HTML element content (`<summary>`).
+/// `&`, `<` and `>` are escaped so attacker-sourced text cannot prematurely
+/// close the raw-HTML tag or inject markup; the text renders cleanly with no
+/// literal backslashes.
+fn escape_html_content(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 /// First whitespace-delimited `language-*` token in a class value, if any.
 fn code_language_token(class: &str) -> Option<String> {
     class
@@ -451,6 +476,12 @@ impl MarkdownLowerer {
                         .replace('\n', " ")
                         .trim(),
                 );
+                // Block-level output: ensure the heading lands at line-start
+                // even when the preceding sibling was loose text — a `## `
+                // marker glued mid-line is body text, not a CommonMark heading.
+                if !out.is_empty() && !out.ends_with('\n') {
+                    out.push('\n');
+                }
                 out.push_str(&prefix);
                 out.push(' ');
                 out.push_str(&text);
@@ -512,7 +543,7 @@ impl MarkdownLowerer {
                     {
                         let text = child.text_content().trim().to_string();
                         out.push_str("<summary>");
-                        out.push_str(&escape_markdown(&text));
+                        out.push_str(&escape_html_content(&text));
                         out.push_str("</summary>\n");
                         // Blank line after <summary> so the body parses as
                         // markdown inside the block (GFM: content separated
@@ -653,17 +684,23 @@ impl MarkdownLowerer {
                 // code-block header label) — `BASH```` is not a valid
                 // CommonMark fence opener.
                 let (lang, code) = extract_code_block(node);
+                // Size the fence longer than the longest interior backtick run
+                // so a code line containing 3+ consecutive backticks cannot close
+                // the block early and leak the rest as markdown. Default is 3.
+                let longest_run = longest_backtick_run(&code);
+                let fence = "`".repeat(longest_run.saturating_add(1).max(3));
                 if !out.is_empty() && !out.ends_with('\n') {
                     out.push('\n');
                 }
-                out.push_str("```");
+                out.push_str(&fence);
                 out.push_str(&lang);
                 out.push('\n');
                 out.push_str(&code);
                 if !code.ends_with('\n') {
                     out.push('\n');
                 }
-                out.push_str("```\n\n");
+                out.push_str(&fence);
+                out.push_str("\n\n");
             }
 
             // ── Inline code ────────────────────────────────────────────
@@ -821,7 +858,9 @@ impl MarkdownLowerer {
     /// parens (`\(`/`\)`) — harmless in prose (GFM renders them as `(`),
     /// but some renderers show the backslash literally inside table cells,
     /// which makes the header look broken ("vLLM \\(PagedAttention\\)").
-    /// Revert exactly those two, keep everything else escaped.
+    /// Revert exactly those two, keep everything else escaped. Embedded
+    /// newlines (`\n`/`\r`) in cell text are collapsed to a single space so
+    /// an escaped cell can never carry a newline that would break the pipe row.
     fn escape_table_cell(cell: &str) -> String {
         let mut out = String::with_capacity(cell.len());
         let mut chars = cell.chars().peekable();
@@ -841,6 +880,7 @@ impl MarkdownLowerer {
                     }
                 },
                 '|' => out.push_str("\\|"),
+                '\n' | '\r' => out.push(' '),
                 other => out.push(other),
             }
         }

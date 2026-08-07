@@ -456,6 +456,57 @@ pub static TF_RECALL: Lazy<&[PassFn]> = Lazy::new(|| {
     ]
 });
 
+/// Human-readable names for each pass in [`TF_RECALL`], aligned index-for-index.
+///
+/// Diagnostic/test-only export mirroring [`TF_BALANCED_NAMES`] so per-pass
+/// trace tooling can label recall-level passes too.
+///
+/// Pre: Same feature-gating as `TF_RECALL` so both slices stay aligned under
+///      both `use-xpath` and non-`use-xpath` builds.
+/// Post: `TF_RECALL_NAMES.len() == TF_RECALL.len()`, each name non-empty.
+///
+/// Does not affect extraction behavior in any way.
+pub static TF_RECALL_NAMES: Lazy<&[&str]> = Lazy::new(|| {
+    &[
+        "tf_extract_script_templates",
+        "tf_convert_figure_with_table",
+        "tf_convert_accordion_to_details",
+        "tf_remove_cleaned",
+        #[cfg(not(feature = "use-xpath"))]
+        "tf_remove_teaser",
+        #[cfg(feature = "use-xpath")]
+        "tf_remove_teaser_xpath",
+        #[cfg(not(feature = "use-xpath"))]
+        "apply_tf_remove_unlikely_candidates_with_backup",
+        #[cfg(feature = "use-xpath")]
+        "apply_tf_remove_unlikely_candidates_xpath_with_backup",
+        "tf_strip_unwrapped",
+        #[cfg(not(feature = "use-xpath"))]
+        "apply_tf_filter_by_link_density_with_backup",
+        #[cfg(feature = "use-xpath")]
+        "apply_tf_filter_by_link_density_xpath_with_backup",
+        "tf_convert_headings",
+        "tf_convert_lists",
+        "tf_convert_quotes",
+        "normalize_code_blocks",
+        "tf_convert_formatting",
+        "tf_convert_breaks",
+        "tf_convert_refs_and_details",
+        "tf_canonicalize_strip_non_content",
+        #[cfg(not(feature = "use-xpath"))]
+        "apply_tf_isolate_container_with_backup",
+        #[cfg(feature = "use-xpath")]
+        "apply_tf_isolate_container_xpath_with_backup",
+        #[cfg(not(feature = "use-xpath"))]
+        "tf_discard_image_elements",
+        #[cfg(feature = "use-xpath")]
+        "tf_discard_image_elements_xpath",
+        "tf_canonicalize_unwrap_containers",
+        "tf_convert_code_header_label",
+        "tf_filter_tag_catalog",
+    ]
+});
+
 // ---------------------------------------------------------------------------
 // Orchestrator
 // ---------------------------------------------------------------------------

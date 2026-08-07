@@ -44,6 +44,7 @@
   full post list requires JS rendering (obscura) or the Next.js data route —
   documents the JS-hydrated case for the navigation pipeline. Raw HTML only.
   Fetched: 2026-08-06 (curl, Safari UA).
+## blog/particula.tech/
 - `sglang-vs-vllm-inference-engine-comparison.html.zst` — Long-form article:
   https://particula.tech/blog/sglang-vs-vllm-inference-engine-comparison.
   SGLang-vs-vLLM comparison with h2/h3 section headings, a benchmark `<table>`,
@@ -51,6 +52,7 @@
   heading rendering (`head rend="hX"`) and over-escaping of `+`/`.` were
   reproduced here. Raw HTML only.
   Fetched: 2026-08-06.
+
 ## wikipedia/
 - `rust-programming-language.html.zst` — Wikipedia article: Rust (programming language).
   Large encyclopedia article (~1 MB HTML): infobox, code examples, references.

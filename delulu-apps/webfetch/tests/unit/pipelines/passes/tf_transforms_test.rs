@@ -728,6 +728,42 @@ fn test_tf_convert_accordion_aria_hidden_false_kept_in_summary() {
     );
 }
 
+#[test]
+fn test_tf_convert_accordion_only_accepts_item_containers() {
+    // Regression: page-level wrappers must never be turned into <details>.
+    // The accordion pattern inside <body>/<main> is left untouched, while
+    // the same pattern inside a div/li item container IS converted.
+    let mut root = parse_html(
+        r#"<body><button aria-expanded="false"><span>Q?</span></button><div>Ans</div></body>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root, &|n| tf_convert_accordion_to_details(n));
+    assert!(
+        !find_tag(&root, "details"),
+        "<body> must not be converted to <details>",
+    );
+
+    let mut root_main = parse_html(
+        r#"<main><button aria-expanded="false"><span>Q?</span></button><div>Ans</div></main>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root_main, &|n| tf_convert_accordion_to_details(n));
+    assert!(
+        !find_tag(&root_main, "details"),
+        "<main> must not be converted to <details>",
+    );
+
+    let mut root_li = parse_html(
+        r#"<li><button aria-expanded="false"><span>Q?</span></button><div>Ans</div></li>"#,
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root_li, &|n| tf_convert_accordion_to_details(n));
+    assert!(
+        find_tag(&root_li, "details"),
+        "<li> is a valid item container and must be converted",
+    );
+}
+
 // ── R3a: details/summary are preserved ────────────────────────────────
 
 #[test]
@@ -1084,5 +1120,25 @@ fn test_unwrap_div_with_block_child_still_unwraps() {
     assert!(
         md.contains("a\n\nb"),
         "inner paragraphs must not jam in markdown, got: {md}"
+    );
+}
+
+#[test]
+fn test_unwrap_div_with_only_whitespace_wrapper_not_become_p() {
+    // A div whose children are inline elements that render NO non-whitespace
+    // text (e.g. <span> </span>) is empty in effect and must NOT be promoted
+    // to a <p> (a bare empty paragraph). The non-empty guard evaluates each
+    // child's RENDERED text, not just raw text-node emptiness.
+    let mut root = parse_html("<div><span> </span><span>\n</span></div>").unwrap();
+    tf_canonicalize_unwrap_containers(&mut root);
+    assert!(
+        !find_tag(&root, "p"),
+        "whitespace-only div must not become a <p>, got: {}",
+        root.text_content()
+    );
+    assert!(
+        root.text_content().trim().is_empty(),
+        "unwrapping leaves only whitespace text, got: {}",
+        root.text_content()
     );
 }

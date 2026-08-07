@@ -418,6 +418,25 @@ fn test_tf_balanced_names_aligned_with_passes() {
     }
 }
 
+/// `TF_RECALL_NAMES` must stay aligned index-for-index with `TF_RECALL` and
+/// contain no empty labels, mirroring the guaranteed alignment of
+/// `TF_BALANCED_NAMES` with `TF_BALANCED`.
+#[test]
+fn test_tf_recall_names_aligned_with_passes() {
+    let passes = *super::TF_RECALL;
+    let names = *super::TF_RECALL_NAMES;
+    assert_eq!(
+        names.len(),
+        passes.len(),
+        "TF_RECALL_NAMES ({}) must have one entry per TF_RECALL pass ({})",
+        names.len(),
+        passes.len(),
+    );
+    for (i, name) in names.iter().enumerate() {
+        assert!(!name.is_empty(), "TF_RECALL_NAMES[{i}] must be non-empty");
+    }
+}
+
 // ── Issue W: macros must be path-hygienic ─────────────────────────────
 //
 // This nested module deliberately does NOT `use` (or inherit via the parent's
@@ -521,11 +540,19 @@ fn test_bal_pipeline_accordion_details_and_table_survival() {
     // marked as a data table so tf_canonicalize_unwrap_containers preserves it.
     crate::pipelines::passes::rd_analysis::mark_data_tables_by_structure(&mut doc);
 
-    // Intermediate tree: right after tf_extract_script_templates +
-    // tf_convert_figure_with_table + tf_convert_accordion_to_details
-    // (TF_BALANCED[0..3], BEFORE tf_remove_cleaned).
+    // Intermediate tree: right after the pre-cleaning conversions
+    // (tf_extract_script_templates + tf_convert_figure_with_table +
+    // tf_convert_accordion_to_details), BEFORE tf_remove_cleaned. The boundary
+    // is located by the accordion pass's name so a future pass insertion does
+    // not silently shift what this assertion actually checks.
     let passes = *super::TF_BALANCED;
-    for pass in &passes[..3] {
+    let names = *super::TF_BALANCED_NAMES;
+    let pre_clean_boundary = names
+        .iter()
+        .position(|n| *n == "tf_convert_accordion_to_details")
+        .map(|i| i + 1)
+        .expect("tf_convert_accordion_to_details must be in TF_BALANCED");
+    for pass in &passes[..pre_clean_boundary] {
         pass(&mut doc);
     }
     assert!(
@@ -547,7 +574,7 @@ fn test_bal_pipeline_accordion_details_and_table_survival() {
     );
 
     // Full pipeline: table survives, accordions stay <details><summary>.
-    for pass in &passes[3..] {
+    for pass in &passes[pre_clean_boundary..] {
         pass(&mut doc);
     }
     assert!(

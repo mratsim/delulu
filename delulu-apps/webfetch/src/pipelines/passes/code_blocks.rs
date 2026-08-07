@@ -54,6 +54,22 @@ fn code_language_from_class(class: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Append `language-<lang>` to an element's `class` (creating the attribute
+/// if absent, deduplicating existing tokens). Shared by code-block
+/// normalization and the code-header-label pass so both hoist the language
+/// onto a class with identical token handling.
+pub fn push_language_class(attrs: &mut Vec<(String, String)>, lang: &str) {
+    let token = format!("language-{lang}");
+    if let Some((_, class)) = attrs.iter_mut().find(|(k, _)| k == "class") {
+        if !class.split_whitespace().any(|t| t == token) {
+            class.push(' ');
+            class.push_str(&token);
+        }
+    } else {
+        attrs.push(("class".to_string(), token));
+    }
+}
+
 /// Normalize a `<pre>` block in place: unwrap a nested `<code>` child and
 /// resolve the language onto the pre's own class.
 ///
@@ -98,17 +114,7 @@ fn normalize_pre_block(attrs: &mut Vec<(String, String)>, children: &mut Vec<Dom
     *children = spliced;
     // Hoist the language onto the pre's own class (append, dedup).
     if let Some(lang) = language {
-        if let Some((_, class)) = attrs.iter_mut().find(|(k, _)| k == "class") {
-            if !class
-                .split_whitespace()
-                .any(|t| t == format!("language-{lang}"))
-            {
-                class.push(' ');
-                class.push_str(&format!("language-{lang}"));
-            }
-        } else {
-            attrs.push(("class".to_string(), format!("language-{lang}")));
-        }
+        push_language_class(attrs, &lang);
     }
 }
 

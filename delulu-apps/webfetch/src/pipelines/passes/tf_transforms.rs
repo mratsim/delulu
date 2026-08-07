@@ -1,4 +1,5 @@
 use crate::pipelines::DomNode;
+use crate::pipelines::passes::code_blocks::push_language_class;
 use crate::pipelines::walkers::{WalkerAction, WalkerFilter, walk_post_mut};
 use std::collections::HashMap;
 
@@ -312,16 +313,17 @@ pub fn tf_canonicalize_unwrap_containers(node: &mut DomNode) {
                     WalkerAction::ReplaceWithChildren
                 } else if tag == "div"
                     && children.iter().all(|c| is_inline_content(c))
-                    && children
-                        .iter()
-                        .any(|c| !matches!(c, DomNode::Text(t) if t.trim().is_empty()))
+                    && children.iter().any(|c| !c.text_content().trim().is_empty())
                 {
                     // A div whose children are all inline is a paragraph,
                     // not a layout container. Unwrapping it would demote the
                     // text to loose nodes that jam onto the next block
                     // (a "TL;DR" label div before the summary paragraph
                     // rendered as "TL;DRSGLang's..."). Rename to <p> to keep
-                    // the paragraph boundary.
+                    // the paragraph boundary. The non-empty guard evaluates each
+                    // child's RENDERED text so an inline wrapper holding only
+                    // whitespace (e.g. <span> </span>) is not treated as a real
+                    // paragraph.
                     tag.clear();
                     tag.push_str("p");
                     WalkerAction::Continue
@@ -395,6 +397,16 @@ pub fn tf_convert_figure_with_table(node: &mut DomNode) {
     convert(node);
 }
 
+/// Item-container tags that an accordion-style `<details>` conversion is
+/// allowed to apply to. Page-level layout elements (`body`, `main`, `header`,
+/// ...) must never be converted into `<details>`, so conversion is restricted
+/// to these container tags.
+const ACCORDION_CONTAINER_TAGS: [&str; 5] = ["div", "li", "item", "dd", "dt"];
+
+fn is_accordion_container(tag: &str) -> bool {
+    ACCORDION_CONTAINER_TAGS.contains(&tag)
+}
+
 /// Convert div-based FAQ accordions to semantic `<details><summary>`.
 ///
 /// Many sites (e.g. particula.tech) build FAQ items as:
@@ -424,6 +436,8 @@ pub fn tf_convert_figure_with_table(node: &mut DomNode) {
 /// - There must be ≥1 following sibling ELEMENT (the content panel).
 ///   A lone button (e.g. a real "Subscribe" control) is left alone.
 /// - Native `<details>`/`<summary>` are untouched by this pass.
+/// - The container must be an item tag (div, li, item, dd, dt). Page-level
+///   wrappers (`body`, `main`, `header`, ...) are never converted.
 ///
 /// The `<summary>` keeps the button's visible text only (see
 /// [`collect_visible_text`]): `<svg>`, `<path>`, `<rect>` and elements
@@ -444,7 +458,9 @@ pub fn tf_convert_figure_with_table(node: &mut DomNode) {
 /// Note: No direct Python trafilatura equivalent — Rust-specific.
 pub fn tf_convert_accordion_to_details(node: &mut DomNode) -> WalkerAction {
     match node {
-        DomNode::Element { tag, children, .. } => {
+        // Restrict conversion to item-container tags (div, li, item, dd, dt) so
+        // page-level wrappers like <body>/<main> are never turned into <details>.
+        DomNode::Element { tag, children, .. } if is_accordion_container(tag) => {
             // The button must be the first ELEMENT child (whitespace text and
             // comments are skipped) and carry `aria-expanded`.
             let Some(button_idx) = first_element_child_idx(children) else {
@@ -718,20 +734,6 @@ fn code_label_language(label: &str) -> Option<String> {
         _ => return None,
     };
     Some(lang.to_string())
-}
-
-/// Append `language-<lang>` to an element's `class` (creating it if absent,
-/// deduplicating existing tokens).
-fn push_language_class(attrs: &mut Vec<(String, String)>, lang: &str) {
-    let token = format!("language-{lang}");
-    if let Some((_, class)) = attrs.iter_mut().find(|(k, _)| k == "class") {
-        if !class.split_whitespace().any(|t| t == token) {
-            class.push(' ');
-            class.push_str(&token);
-        }
-    } else {
-        attrs.push(("class".to_string(), token));
-    }
 }
 
 // ---------------------------------------------------------------------------
