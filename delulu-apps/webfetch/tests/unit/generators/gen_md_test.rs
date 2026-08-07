@@ -1364,11 +1364,7 @@ fn test_lower_table_cell_collapses_embedded_newline() {
     let content_row = md
         .lines()
         .find(|l| l.starts_with('|') && l.contains("hello world"))
-        .expect("a pipe row carrying the cell text must exist, got: {md}");
-    assert!(
-        content_row.contains("hello world"),
-        "embedded newline must collapse to a space, content row: {content_row}",
-    );
+        .unwrap_or_else(|| panic!("a pipe row carrying the cell text must exist, got: {md}"));
     assert!(
         !content_row.contains('\n'),
         "content row must not carry an embedded newline, content row: {content_row}",
