@@ -397,14 +397,20 @@ pub fn tf_convert_figure_with_table(node: &mut DomNode) {
     convert(node);
 }
 
-/// Item-container tags that an accordion-style `<details>` conversion is
-/// allowed to apply to. Page-level layout elements (`body`, `main`, `header`,
-/// ...) must never be converted into `<details>`, so conversion is restricted
-/// to these container tags.
-const ACCORDION_CONTAINER_TAGS: [&str; 5] = ["div", "li", "item", "dd", "dt"];
+/// Page-level layout/layout-chrome tags that an accordion-style `<details>`
+/// conversion must NEVER apply to. Conversion is open to any other container
+/// tag (div, li, item, dd, dt, section, article, ...) because real FAQ
+/// wrappers frequently use semantic content elements such as `<section>` /
+/// `<article>`; the pass's strict detection (first ELEMENT child is a
+/// `<button aria-expanded>` with >=1 following sibling ELEMENT) already makes
+/// page-level false positives very unlikely. Only unambiguous page chrome is
+/// excluded here.
+const PAGE_LEVEL_TAGS: [&str; 8] = [
+    "body", "main", "html", "header", "footer", "nav", "aside", "form",
+];
 
 fn is_accordion_container(tag: &str) -> bool {
-    ACCORDION_CONTAINER_TAGS.contains(&tag)
+    !PAGE_LEVEL_TAGS.contains(&tag)
 }
 
 /// Convert div-based FAQ accordions to semantic `<details><summary>`.
@@ -436,8 +442,9 @@ fn is_accordion_container(tag: &str) -> bool {
 /// - There must be ≥1 following sibling ELEMENT (the content panel).
 ///   A lone button (e.g. a real "Subscribe" control) is left alone.
 /// - Native `<details>`/`<summary>` are untouched by this pass.
-/// - The container must be an item tag (div, li, item, dd, dt). Page-level
-///   wrappers (`body`, `main`, `header`, ...) are never converted.
+/// - The container must not be a page-level layout tag (`body`, `main`, `header`,
+///   `nav`, `aside`, ...). Item containers (div, li, section, article, ...)
+///   convert to `<details>`. Page-level wrappers are never converted.
 ///
 /// The `<summary>` keeps the button's visible text only (see
 /// [`collect_visible_text`]): `<svg>`, `<path>`, `<rect>` and elements
@@ -458,8 +465,9 @@ fn is_accordion_container(tag: &str) -> bool {
 /// Note: No direct Python trafilatura equivalent — Rust-specific.
 pub fn tf_convert_accordion_to_details(node: &mut DomNode) -> WalkerAction {
     match node {
-        // Restrict conversion to item-container tags (div, li, item, dd, dt) so
-        // page-level wrappers like <body>/<main> are never turned into <details>.
+        // Skip page-level layout wrappers (body/main/header/nav/aside/...) so
+        // they are never turned into <details>; real FAQ item containers (div,
+        // li, section, article, ...) convert normally.
         DomNode::Element { tag, children, .. } if is_accordion_container(tag) => {
             // The button must be the first ELEMENT child (whitespace text and
             // comments are skipped) and carry `aria-expanded`.

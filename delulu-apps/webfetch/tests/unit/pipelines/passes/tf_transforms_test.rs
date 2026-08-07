@@ -764,6 +764,41 @@ fn test_tf_convert_accordion_only_accepts_item_containers() {
     );
 }
 
+#[test]
+fn test_tf_convert_accordion_semantic_faq_wrapper_converts() {
+    // FAQ content is often wrapped in a semantic element (<section>/<article>)
+    // rather than a <div>. Such a wrapper MUST be treated as a valid item
+    // container: converting it to <details><summary> is what preserves the
+    // question text, because the <button> carrying it would otherwise be
+    // destroyed by tf_remove_cleaned.
+    let mut root_sec = parse_html(
+        "<section><button aria-expanded=\"false\"><span>How do I install?</span></button><div>Run setup.sh.</div></section>",
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root_sec, &|n| tf_convert_accordion_to_details(n));
+    let summary_sec = find_node_matching(&root_sec, "summary")
+        .expect("<section> FAQ must be converted: <summary> should exist");
+    assert_eq!(
+        summary_sec.text_content(),
+        "How do I install?",
+        "question text in a <section> wrapper must survive into <summary>",
+    );
+
+    // <article> is equally a legitimate FAQ content wrapper.
+    let mut root_art = parse_html(
+        "<article><button aria-expanded=\"false\"><span>Refund policy?</span></button><div>Full refund.</div></article>",
+    )
+    .unwrap();
+    walk_pre_mut_test(&mut root_art, &|n| tf_convert_accordion_to_details(n));
+    let summary_art = find_node_matching(&root_art, "summary")
+        .expect("<article> FAQ must be converted: <summary> should exist");
+    assert_eq!(
+        summary_art.text_content(),
+        "Refund policy?",
+        "question text in an <article> wrapper must survive into <summary>",
+    );
+}
+
 // ── R3a: details/summary are preserved ────────────────────────────────
 
 #[test]
