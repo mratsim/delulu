@@ -1826,3 +1826,186 @@ fn test_heading_neutralizer_does_not_over_escape() {
         "no live https link, got: {md3}"
     );
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// Angle-bracket canonicalization (autolink / raw-HTML injection)
+//
+// `escape_inline_fragment` is the single canonicalization point for raw
+// inline content. A raw `<`/`>` can form a LIVE CommonMark autolink
+// `<scheme:...>` or raw HTML out of a heading or body line. These tests
+// pin the fix: `<`/`>` are escaped (`\<`/`\>`) so angle-bracket content
+// can never reconstruct an autolink/HTML tag, and a trailing backslash never
+// survives as a lone escape-pair opener. Written FIRST (TDD); the
+// angle-bracket cases FAIL on the pre-fix stub and PASS after the fix.
+// ════════════════════════════════════════════════════════════════════════
+
+/// Assert no LIVE `<scheme:...>` autolink opener survives. After the fix every
+/// `<` is backslash-escaped (`\<`), so a live opener would be a `<` NOT
+/// preceded by a backslash. A bare substring check is insufficient because
+/// `\<javascript:` contains `<javascript:` as a substring; we verify the
+/// character immediately before each `<` is a backslash.
+fn assert_no_live_autolink(prefix: &str, md: &str) {
+    let needle = "<javascript:";
+    let mut from = 0;
+    while let Some(pos) = md[from..].find(needle) {
+        let abs = from + pos;
+        let prev = if abs == 0 {
+            None
+        } else {
+            md[..abs].chars().last()
+        };
+        assert!(
+            prev == Some('\\'),
+            "{prefix}: live autolink opener <javascript: present with prev={prev:?}, got: {md}"
+        );
+        from = abs + 1;
+    }
+}
+
+/// Assert no RAW (unescaped) `<tag` opener survives anywhere in `md`.
+fn assert_no_live_tag(prefix: &str, md: &str, tag: &str) {
+    let needle = format!("<{tag}");
+    let mut from = 0;
+    while let Some(pos) = md[from..].find(&needle) {
+        let abs = from + pos;
+        let prev = if abs == 0 {
+            None
+        } else {
+            md[..abs].chars().last()
+        };
+        assert!(
+            prev == Some('\\'),
+            "{prefix}: raw <{tag} tag present with prev={prev:?}, got: {md}"
+        );
+        from = abs + 1;
+    }
+}
+
+// ── escape_inline_fragment as a canonicalizer ───────────────────────────
+#[test]
+fn test_escape_inline_fragment_escapes_angle_brackets() {
+    // Exact equality: both angle brackets are backslash-escaped and the parens
+    // retain escape_markdown's single-escape.
+    assert_eq!(
+        escape_inline_fragment("<javascript:alert(1)>"),
+        r"\<javascript:alert\(1\)\>"
+    );
+}
+
+#[test]
+fn test_escape_inline_fragment_escapes_html_tag() {
+    let out = escape_inline_fragment("<img src=x onerror=alert(1)>");
+    assert_eq!(
+        out, r"\<img src=x onerror=alert\(1\)\>",
+        "raw HTML tag must be backslash-escaped, got: {out:?}"
+    );
+}
+
+#[test]
+fn test_escape_inline_fragment_trailing_backslash_doubled() {
+    // A lone trailing backslash must be doubled so it cannot form an
+    // escape-pair that eats a following closing delimiter.
+    let out = escape_inline_fragment("C:\\");
+    assert!(
+        out.ends_with(r"\\"),
+        "trailing backslash must be escaped as literal \\\\, got: {out:?}"
+    );
+    assert!(
+        !out.ends_with('\\') || out.ends_with(r"\\"),
+        "no lone unescaped trailing backslash, got: {out:?}"
+    );
+}
+
+#[test]
+fn test_escape_inline_fragment_keeps_escape_markdown_escaping() {
+    // Must retain all prior escape_markdown behavior (no regression).
+    assert_eq!(escape_inline_fragment("(2024)"), r"\(2024\)");
+    assert_eq!(escape_inline_fragment("a`b"), r"a\`b");
+    assert_eq!(escape_inline_fragment("a\\b"), r"a\\b");
+    // `.` and `+` stay unescaped (not line-start list markers here).
+    assert_eq!(escape_inline_fragment("3.1 30%+"), "3.1 30%+");
+}
+
+// ── Heading text raw angle-bracket autolink (primary vector) ────────────
+#[test]
+fn test_heading_angle_bracket_autolink_escaped() {
+    let h = heading_h2(vec![DomNode::Text("<javascript:alert(1)>".into())]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_autolink("heading raw text", &md);
+    assert!(
+        md.contains(r"\<javascript:"),
+        "< must be backslash-escaped in heading text, got: {md}"
+    );
+    assert!(md.contains("## "), "heading marker present, got: {md}");
+}
+
+#[test]
+fn test_heading_angle_bracket_html_tag_escaped() {
+    // Partial-tag HTML in heading text must not become raw HTML out of the
+    // ATX line (e.g. `<img src=x onerror=...>`).
+    let h = heading_h2(vec![DomNode::Text("<img src=x onerror=alert(1)>".into())]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_tag("heading html", &md, "img");
+    assert!(md.contains(r"\<img"), "tag opener escaped, got: {md}");
+}
+
+#[test]
+fn test_head_rend_heading_angle_bracket_autolink_escaped() {
+    // tf_convert_headings path (head rend=hX) must also escape angle brackets.
+    let nodes = [DomNode::Element {
+        tag: "head".into(),
+        attrs: vec![("rend".into(), "h2".into())],
+        children: vec![DomNode::Text("<javascript:alert(1)>".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    }];
+    let md = MarkdownLowerer::lower(&nodes[0], None);
+    assert_no_live_autolink("head-rend heading", &md);
+    assert!(
+        md.contains(r"\<javascript:"),
+        "< escaped in head-rend heading, got: {md}"
+    );
+}
+
+// ── <img alt> raw angle-bracket content (escape_inline_fragment path) ───
+#[test]
+fn test_heading_img_alt_angle_brackets_escaped() {
+    let h = heading_h2(vec![img_el("pic.png", "<script>alert(1)</script>")]);
+    let md = MarkdownLowerer::lower(&h, None);
+    assert_no_live_tag("img-alt", &md, "script");
+    assert!(
+        md.contains(r"\<script"),
+        "alt < escaped via escape_inline_fragment, got: {md}"
+    );
+}
+
+// ── Body (paragraph) raw angle-bracket content ─────────────────────────
+#[test]
+fn test_paragraph_angle_bracket_html_escaped() {
+    // Body text must also be canonicalized so a raw <img x> cannot inject
+    // HTML / autolinks below a heading.
+    let p = DomNode::Element {
+        tag: "p".into(),
+        attrs: vec![],
+        children: vec![DomNode::Text("<img src=x onerror=alert(1)>".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    let md = MarkdownLowerer::lower(&p, None);
+    assert_no_live_tag("body html", &md, "img");
+    assert!(md.contains(r"\<img"), "body < escaped, got: {md}");
+}
+
+#[test]
+fn test_paragraph_angle_bracket_autolink_escaped() {
+    let p = DomNode::Element {
+        tag: "p".into(),
+        attrs: vec![],
+        children: vec![DomNode::Text("<javascript:alert(1)>".into())],
+        scores: std::collections::HashMap::new(),
+        metadata: std::collections::HashMap::new(),
+    };
+    let md = MarkdownLowerer::lower(&p, None);
+    assert_no_live_autolink("body text", &md);
+    assert!(md.contains(r"\<javascript:"), "body < escaped, got: {md}");
+}

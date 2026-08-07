@@ -250,24 +250,41 @@ fn escape_markdown(text: &str) -> String {
     result
 }
 
-/// Canonicalize a RAW inline fragment so it is safe to embed in a markdown
-/// line AND cannot desync the heading link-neutralizer (`escape_heading_links`).
+/// Canonicalize a RAW inline fragment so it is safe to embed in markdown
+/// output AND cannot desync the heading link-neutralizer (`escape_heading_links`).
 ///
 /// This is the single source of truth for making raw-emission content (e.g.
-/// an `<img alt>` attribute) inert before it enters a heading string. It
-/// escapes:
-///   1. every `[`/`]`/`(`/`)` bracket/paren (escape_markdown semantics),
-///   2. backticks, so no naked backtick can open an ambiguous code-span run,
-///   3. backslashes (including a lone TRAILING backslash), so a `\` at the
-///      end of a fragment cannot form an escape-pair with the next character.
+/// an `<img alt>` attribute, a degenerate `<code>` fragment, or a raw body
+/// text node) inert before it enters a heading or body line. On top of
+/// `escape_markdown` (which escapes `\ _ * { } [ ] ( ) # | \` and backticks)
+/// it additionally:
+///   1. escapes `<` and `>` to `\<` / `\>` so CommonMark sees literal text
+///      instead of a LIVE `<scheme:...>` autolink or a raw HTML tag (the
+///      angle-bracket / autolink injection class — `escape_markdown` leaves
+///      these unescaped, and this wrapper closes that gap),
+///   2. doubles every backslash (including a lone TRAILING backslash), so a
+///      `C:\` fragment can never form an escape-pair that eats a following
+///      closing delimiter (the escape-pair desync class).
 ///
-/// `escape_markdown` already performs 1-3 (plus the other markdown specials);
-/// this wrapper pins the contract that every raw inline fragment feeding a
-/// heading goes through the SAME canonicalization, so the invariant
-/// "an unescaped `[`/`]`/`(`/`)` is a constructed link delimiter" holds
-/// globally. It is a no-op for content with no special characters.
+/// `.` and `+` are intentionally NOT escaped (they are only special as
+/// line-start list markers, which cannot occur mid-heading / mid-line), so
+/// decimals like `3.1` and signs like `30%+` stay clean. The result is
+/// idempotent for the content the pipeline emits: already-escaped text is
+/// preserved except for a second pass over `<`/`>`, which finds nothing to
+/// escape. It is a no-op for content with no special characters.
 fn escape_inline_fragment(s: &str) -> String {
-    escape_markdown(s)
+    let escaped = escape_markdown(s);
+    // Escape the angle brackets `escape_markdown` left bare so they cannot
+    // open a live autolink (`<scheme:...>`) or raw HTML tag.
+    let mut out = String::with_capacity(escaped.len() + 2);
+    for ch in escaped.chars() {
+        match ch {
+            '<' => out.push_str("\\<"),
+            '>' => out.push_str("\\>"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 /// Neutralize markdown link/emphasis delimiters in a heading WITHOUT
@@ -345,6 +362,13 @@ fn escape_heading_links(s: &str) -> String {
                 out.push(n);
                 chars.next();
             }
+        } else if open_run.is_none() && matches!(c, '<' | '>') {
+            // Outside a code span, escape `<`/`>` so a raw angle bracket
+            // cannot open a live autolink (`<scheme:...>`) or raw HTML tag
+            // out of the ATX heading line. Inside a code span they stay
+            // literal (a code span is already inert content).
+            out.push('\\');
+            out.push(c);
         } else if open_run.is_none() && matches!(c, '[' | ']' | '(' | ')') {
             // Outside a code span, an unescaped bracket/paren can only come
             // from a constructed link/image marker — make it inert literal
@@ -394,7 +418,10 @@ impl MarkdownLowerer {
     fn lower_node(node: &DomNode, base_url: Option<&str>, out: &mut String, indent: usize) {
         match node {
             DomNode::Text(text) => {
-                out.push_str(&escape_markdown(text));
+                // Route every raw text node (body + heading text) through the
+                // canonicalizer so `<`/`>` (and all other markdown specials)
+                // cannot reconstruct a live autolink or raw HTML tag.
+                out.push_str(&escape_inline_fragment(text));
             }
             el @ DomNode::Element { .. } => Self::lower_element(el, base_url, out, indent),
             DomNode::Comment(_) | DomNode::Doctype(_) => {
